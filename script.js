@@ -1211,10 +1211,10 @@ class MatchThreePro {
     }
     
     initializeSDK() {
-        // Пытаемся загрузить SDK асинхронно
+        // Пытаемся загрузить SDK асинхронно (не блокируем игру)
         (async () => {
             try {
-                // В Base app SDK должен быть доступен автоматически
+                // В Base app SDK должен быть доступен автоматически через глобальные объекты
                 // Проверяем различные способы доступа
                 let sdkInstance = null;
                 
@@ -1226,14 +1226,9 @@ class MatchThreePro {
                 else if (window.miniappSdk) {
                     sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
                 }
-                // Способ 3: через динамический импорт (для разработки)
-                else {
-                    try {
-                        const sdkModule = await import('@farcaster/miniapp-sdk');
-                        sdkInstance = sdkModule.sdk;
-                    } catch (importError) {
-                        console.log('SDK import failed, trying to use global SDK');
-                    }
+                // Способ 3: через window.farcaster.miniapp (альтернативный путь)
+                else if (window.farcaster && window.farcaster.miniapp) {
+                    sdkInstance = window.farcaster.miniapp;
                 }
                 
                 if (sdkInstance && sdkInstance.actions && sdkInstance.actions.ready) {
@@ -1242,6 +1237,7 @@ class MatchThreePro {
                     console.log('MiniApp SDK ready');
                 } else {
                     console.log('MiniApp SDK not found - game will work without it');
+                    // В Base app SDK должен быть доступен автоматически, но если его нет - игра все равно работает
                 }
             } catch (error) {
                 // SDK недоступен (приложение запущено вне Base app)
@@ -1274,10 +1270,13 @@ window.addEventListener('DOMContentLoaded', async () => {
                 <p style="font-size: 0.8em; color: #999;">${error.message}</p>
             </div>`;
         }
-        // Все равно пытаемся вызвать ready() для SDK
+        // Пытаемся вызвать ready() для SDK через глобальные объекты
         try {
-            const sdkModule = await import('@farcaster/miniapp-sdk');
-            await sdkModule.sdk.actions.ready();
+            if (window.farcaster && window.farcaster.miniapp && window.farcaster.miniapp.actions) {
+                await window.farcaster.miniapp.actions.ready();
+            } else if (window.miniappSdk && window.miniappSdk.actions) {
+                await window.miniappSdk.actions.ready();
+            }
         } catch (sdkError) {
             console.log('SDK ready call failed:', sdkError);
         }
