@@ -205,6 +205,26 @@
         </div>
     </div>
     
+    <!-- Простой тест для проверки выполнения JavaScript -->
+    <script>
+        console.log('HTML script tag executed');
+        window.addEventListener('DOMContentLoaded', () => {
+            console.log('DOMContentLoaded fired');
+        });
+    </script>
+    
     <script type="module" src="script.js"></script>
+    <script>
+        // Проверяем, загрузился ли модуль
+        setTimeout(() => {
+            if (!window.game) {
+                console.error('Game not initialized after 3 seconds');
+                const gameBoard = document.getElementById('gameBoard');
+                if (gameBoard) {
+                    gameBoard.innerHTML = '<div style="color: white; padding: 20px; text-align: center;"><h3>Game failed to load</h3><p>Check console for errors</p></div>';
+                }
+            }
+        }, 3000);
+    </script>
 </body>
 </html>

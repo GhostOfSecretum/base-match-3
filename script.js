@@ -1257,6 +1257,8 @@ let game;
 
 // Добавляем немедленное логирование для проверки загрузки скрипта
 console.log('Script.js loaded');
+console.log('Script.js module type:', typeof window !== 'undefined' ? 'browser' : 'node');
+console.log('Document ready state:', typeof document !== 'undefined' ? document.readyState : 'N/A');
 
 // Скрываем индикатор загрузки после инициализации
 function hideLoadingIndicator() {
