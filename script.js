@@ -1087,69 +1087,121 @@ class MatchThreePro {
     }
     
     setupEventListeners() {
-        document.getElementById('newGameBtn').addEventListener('click', () => this.newGame());
-        document.getElementById('restartBtn').addEventListener('click', () => this.newGame());
-        document.getElementById('hintBtn').addEventListener('click', () => this.findHint());
+        const newGameBtn = document.getElementById('newGameBtn');
+        if (newGameBtn) {
+            newGameBtn.addEventListener('click', () => this.newGame());
+        }
         
-        // Лидерборд
-        document.getElementById('leaderboardBtn').addEventListener('click', () => {
-            this.showLeaderboard('all');
-        });
+        const restartBtn = document.getElementById('restartBtn');
+        if (restartBtn) {
+            restartBtn.addEventListener('click', () => this.newGame());
+        }
         
-        document.getElementById('closeLeaderboardBtn').addEventListener('click', () => {
-            document.getElementById('leaderboardModal').classList.remove('show');
-        });
+        const hintBtn = document.getElementById('hintBtn');
+        if (hintBtn) {
+            hintBtn.addEventListener('click', () => this.findHint());
+        }
+        
+        // Лидерборд (если элементы существуют)
+        const leaderboardBtn = document.getElementById('leaderboardBtn');
+        if (leaderboardBtn) {
+            leaderboardBtn.addEventListener('click', () => {
+                this.showLeaderboard('all');
+            });
+        }
+        
+        const closeLeaderboardBtn = document.getElementById('closeLeaderboardBtn');
+        if (closeLeaderboardBtn) {
+            closeLeaderboardBtn.addEventListener('click', () => {
+                const modal = document.getElementById('leaderboardModal');
+                if (modal) modal.classList.remove('show');
+            });
+        }
         
         // Вкладки лидерборда
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const filter = btn.dataset.tab;
-                this.showLeaderboard(filter);
+                if (typeof this.showLeaderboard === 'function') {
+                    this.showLeaderboard(filter);
+                }
             });
         });
         
         // Очистка лидерборда
-        document.getElementById('clearLeaderboardBtn').addEventListener('click', () => {
-            if (confirm('Are you sure you want to clear all leaderboard data? This cannot be undone.')) {
-                this.leaderboard.clearLeaderboard();
-                this.showLeaderboard('all');
-            }
-        });
+        const clearLeaderboardBtn = document.getElementById('clearLeaderboardBtn');
+        if (clearLeaderboardBtn) {
+            clearLeaderboardBtn.addEventListener('click', () => {
+                if (confirm('Are you sure you want to clear all leaderboard data? This cannot be undone.')) {
+                    if (this.leaderboard && typeof this.leaderboard.clearLeaderboard === 'function') {
+                        this.leaderboard.clearLeaderboard();
+                        this.showLeaderboard('all');
+                    }
+                }
+            });
+        }
         
         // Закрытие модалок по клику на backdrop
         document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
             backdrop.addEventListener('click', (e) => {
                 if (e.target === backdrop) {
-                    backdrop.closest('.modal').classList.remove('show');
+                    const modal = backdrop.closest('.modal');
+                    if (modal) modal.classList.remove('show');
                 }
             });
         });
         
-        // Подключение кошелька
-        document.getElementById('connectWalletBtn').addEventListener('click', async () => {
-            if (this.walletManager.isConnected()) {
-                if (confirm('Disconnect wallet?')) {
-                    this.walletManager.disconnect();
-                    this.updateWalletDisplay();
-                }
-            } else {
-                const result = await this.walletManager.connect();
-                if (result.success) {
-                    this.updateWalletDisplay();
+        // Подключение кошелька (если элемент существует)
+        const connectWalletBtn = document.getElementById('connectWalletBtn');
+        if (connectWalletBtn && this.walletManager) {
+            connectWalletBtn.addEventListener('click', async () => {
+                if (this.walletManager.isConnected()) {
+                    if (confirm('Disconnect wallet?')) {
+                        this.walletManager.disconnect();
+                        if (typeof this.updateWalletDisplay === 'function') {
+                            this.updateWalletDisplay();
+                        }
+                    }
                 } else {
-                    this.walletManager.showWalletModal(result.error);
+                    const result = await this.walletManager.connect();
+                    if (result.success) {
+                        if (typeof this.updateWalletDisplay === 'function') {
+                            this.updateWalletDisplay();
+                        }
+                    } else {
+                        if (this.walletManager.showWalletModal) {
+                            this.walletManager.showWalletModal(result.error);
+                        }
+                    }
                 }
-            }
-        });
+            });
+        }
         
         // Закрытие модалки кошелька
-        document.getElementById('closeWalletModalBtn').addEventListener('click', () => {
-            document.getElementById('walletModal').classList.remove('show');
-        });
+        const closeWalletModalBtn = document.getElementById('closeWalletModalBtn');
+        if (closeWalletModalBtn) {
+            closeWalletModalBtn.addEventListener('click', () => {
+                const modal = document.getElementById('walletModal');
+                if (modal) modal.classList.remove('show');
+            });
+        }
         
-        // Обновляем UI кошелька при инициализации
-        this.walletManager.updateWalletUI();
-        this.updateWalletDisplay();
+        // Обновляем UI кошелька при инициализации (если методы существуют)
+        if (this.walletManager && typeof this.walletManager.updateWalletUI === 'function') {
+            try {
+                this.walletManager.updateWalletUI();
+            } catch (e) {
+                console.log('Wallet UI update failed:', e);
+            }
+        }
+        
+        if (typeof this.updateWalletDisplay === 'function') {
+            try {
+                this.updateWalletDisplay();
+            } catch (e) {
+                console.log('Wallet display update failed:', e);
+            }
+        }
     }
     
     sleep(ms) {
