@@ -394,16 +394,20 @@ class MatchThreePro {
         }
         
         // Загружаем и инициализируем MiniApp SDK (не блокируем запуск игры)
-        try {
-            const sdkModule = await import('@farcaster/miniapp-sdk');
-            sdk = sdkModule.sdk;
-            // Уведомляем Base app, что приложение готово
-            await sdk.actions.ready();
-        } catch (error) {
-            // SDK недоступен (приложение запущено вне Base app)
-            console.log('MiniApp SDK not available (running outside Base app):', error.message);
-            // Игра должна работать и без SDK
-        }
+        // Вызываем ready() асинхронно, чтобы не блокировать игру
+        (async () => {
+            try {
+                const sdkModule = await import('@farcaster/miniapp-sdk');
+                sdk = sdkModule.sdk;
+                // Уведомляем Base app, что приложение готово
+                await sdk.actions.ready();
+                console.log('MiniApp SDK ready');
+            } catch (error) {
+                // SDK недоступен (приложение запущено вне Base app)
+                console.log('MiniApp SDK not available (running outside Base app):', error.message);
+                // Игра должна работать и без SDK
+            }
+        })();
     }
     
     updateWalletDisplay() {
@@ -1213,7 +1217,26 @@ class MatchThreePro {
 let game;
 
 window.addEventListener('DOMContentLoaded', async () => {
-    game = new MatchThreePro();
-    window.game = game; // Сохраняем в window для доступа из WalletManager
-    await game.init();
+    try {
+        game = new MatchThreePro();
+        window.game = game; // Сохраняем в window для доступа из WalletManager
+        await game.init();
+    } catch (error) {
+        console.error('Error initializing game:', error);
+        // Показываем ошибку пользователю
+        const gameBoard = document.getElementById('gameBoard');
+        if (gameBoard) {
+            gameBoard.innerHTML = `<div style="color: white; padding: 20px; text-align: center;">
+                <p>Error loading game. Please refresh the page.</p>
+                <p style="font-size: 0.8em; color: #999;">${error.message}</p>
+            </div>`;
+        }
+        // Все равно пытаемся вызвать ready() для SDK
+        try {
+            const sdkModule = await import('@farcaster/miniapp-sdk');
+            await sdkModule.sdk.actions.ready();
+        } catch (sdkError) {
+            console.log('SDK ready call failed:', sdkError);
+        }
+    }
 });
