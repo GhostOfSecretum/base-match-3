@@ -19,6 +19,7 @@
       }
     }' />
     <link rel="stylesheet" href="style.css">
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
 </head>
 <body>
     <div class="game-wrapper">
@@ -56,6 +57,17 @@
                         </div>
                     </div>
                 </div>
+                
+                <div class="wallet-panel">
+                    <button id="connectWalletBtn" class="btn btn-wallet">
+                        <span class="btn-icon">🔗</span>
+                        <span>Connect Wallet</span>
+                    </button>
+                    <div id="walletInfo" class="wallet-info" style="display: none;">
+                        <div class="wallet-address" id="walletAddress"></div>
+                        <div class="wallet-network" id="walletNetwork"></div>
+                    </div>
+                </div>
             </div>
             
             <div class="objectives-panel">
@@ -85,6 +97,32 @@
                     <span class="btn-icon">💡</span>
                     <span>Hint</span>
                 </button>
+                <button id="leaderboardBtn" class="btn btn-secondary">
+                    <span class="btn-icon">🏆</span>
+                    <span>Leaderboard</span>
+                </button>
+            </div>
+            
+            <div class="player-info">
+                <div class="player-name-display">
+                    <span class="player-label">Wallet:</span>
+                    <span id="currentPlayerName" class="player-name">Connect Wallet</span>
+                </div>
+            </div>
+            
+            <div id="walletModal" class="modal">
+                <div class="modal-backdrop"></div>
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>Wallet Connection</h2>
+                    </div>
+                    <div class="modal-body">
+                        <div id="walletModalMessage" class="wallet-modal-message"></div>
+                    </div>
+                    <div class="modal-footer">
+                        <button id="closeWalletModalBtn" class="btn btn-primary">Close</button>
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -112,6 +150,39 @@
                 </div>
                 <div class="modal-footer">
                     <button id="restartBtn" class="btn btn-primary">Play Again</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="leaderboardModal" class="modal">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content leaderboard-modal">
+                <div class="modal-header">
+                    <h2>🏆 Leaderboard</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="leaderboard-tabs">
+                        <button class="tab-btn active" data-tab="all">All Time</button>
+                        <button class="tab-btn" data-tab="today">Today</button>
+                        <button class="tab-btn" data-tab="week">This Week</button>
+                    </div>
+                    <div class="leaderboard-content">
+                        <div id="leaderboardList" class="leaderboard-list"></div>
+                    </div>
+                    <div class="leaderboard-stats">
+                        <div class="stat-item">
+                            <span class="stat-label">Total Players:</span>
+                            <span id="totalPlayers" class="stat-value">0</span>
+                        </div>
+                        <div class="stat-item">
+                            <span class="stat-label">Total Games:</span>
+                            <span id="totalGames" class="stat-value">0</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="clearLeaderboardBtn" class="btn btn-secondary">Clear All</button>
+                    <button id="closeLeaderboardBtn" class="btn btn-primary">Close</button>
                 </div>
             </div>
         </div>
