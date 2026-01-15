@@ -1200,31 +1200,39 @@ class MatchThreePro {
         // Пытаемся загрузить SDK асинхронно
         (async () => {
             try {
-                // Проверяем, доступен ли SDK через window (если загружен через script tag)
-                if (window.miniappSdk) {
-                    sdk = window.miniappSdk.sdk;
-                    await sdk.actions.ready();
-                    console.log('MiniApp SDK ready (from window)');
-                    return;
-                }
+                // В Base app SDK должен быть доступен автоматически
+                // Проверяем различные способы доступа
+                let sdkInstance = null;
                 
-                // Пытаемся загрузить через динамический импорт
-                const sdkModule = await import('@farcaster/miniapp-sdk');
-                sdk = sdkModule.sdk;
-                await sdk.actions.ready();
-                console.log('MiniApp SDK ready (from import)');
-            } catch (error) {
-                // SDK недоступен (приложение запущено вне Base app)
-                console.log('MiniApp SDK not available (running outside Base app):', error.message);
-                // Игра должна работать и без SDK
-                // Но все равно вызываем ready() если SDK доступен через Base app
-                if (window.miniappSdk) {
+                // Способ 1: через window.farcaster (если доступен)
+                if (window.farcaster && window.farcaster.miniapp) {
+                    sdkInstance = window.farcaster.miniapp;
+                }
+                // Способ 2: через window.miniappSdk
+                else if (window.miniappSdk) {
+                    sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
+                }
+                // Способ 3: через динамический импорт (для разработки)
+                else {
                     try {
-                        await window.miniappSdk.sdk.actions.ready();
-                    } catch (e) {
-                        // Игнорируем
+                        const sdkModule = await import('@farcaster/miniapp-sdk');
+                        sdkInstance = sdkModule.sdk;
+                    } catch (importError) {
+                        console.log('SDK import failed, trying to use global SDK');
                     }
                 }
+                
+                if (sdkInstance && sdkInstance.actions && sdkInstance.actions.ready) {
+                    sdk = sdkInstance;
+                    await sdk.actions.ready();
+                    console.log('MiniApp SDK ready');
+                } else {
+                    console.log('MiniApp SDK not found - game will work without it');
+                }
+            } catch (error) {
+                // SDK недоступен (приложение запущено вне Base app)
+                console.log('MiniApp SDK initialization failed:', error.message);
+                // Игра должна работать и без SDK
             }
         })();
     }
