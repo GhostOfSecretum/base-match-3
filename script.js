@@ -383,9 +383,17 @@ class MatchThreePro {
         this.removeInitialMatches();
         this.createParticles();
         this.updateUI();
-        this.updateWalletDisplay();
         
-        // Загружаем и инициализируем MiniApp SDK
+        // Обновляем отображение кошелька, если элементы существуют
+        if (typeof this.updateWalletDisplay === 'function') {
+            try {
+                this.updateWalletDisplay();
+            } catch (e) {
+                // Игнорируем ошибки, если элементы не найдены
+            }
+        }
+        
+        // Загружаем и инициализируем MiniApp SDK (не блокируем запуск игры)
         try {
             const sdkModule = await import('@farcaster/miniapp-sdk');
             sdk = sdkModule.sdk;
@@ -393,7 +401,8 @@ class MatchThreePro {
             await sdk.actions.ready();
         } catch (error) {
             // SDK недоступен (приложение запущено вне Base app)
-            console.log('MiniApp SDK not available (running outside Base app)');
+            console.log('MiniApp SDK not available (running outside Base app):', error.message);
+            // Игра должна работать и без SDK
         }
     }
     
