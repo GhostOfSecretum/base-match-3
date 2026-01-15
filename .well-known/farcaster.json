@@ -23,7 +23,7 @@
     "tags": ["match-3", "puzzle", "crypto", "base", "gaming"],
     "heroImageUrl": "https://base-match-3.vercel.app/hero.png",
     "tagline": "Match crypto tokens",
-    "ogTitle": "Base Match-3 - Crypto Puzzle Game",
+    "ogTitle": "Base Match-3",
     "ogDescription": "Match crypto tokens in this fast-paced puzzle game on Base.",
     "ogImageUrl": "https://base-match-3.vercel.app/og-image.png",
     "noindex": false
