@@ -395,19 +395,7 @@ class MatchThreePro {
         
         // Загружаем и инициализируем MiniApp SDK (не блокируем запуск игры)
         // Вызываем ready() асинхронно, чтобы не блокировать игру
-        (async () => {
-            try {
-                const sdkModule = await import('@farcaster/miniapp-sdk');
-                sdk = sdkModule.sdk;
-                // Уведомляем Base app, что приложение готово
-                await sdk.actions.ready();
-                console.log('MiniApp SDK ready');
-            } catch (error) {
-                // SDK недоступен (приложение запущено вне Base app)
-                console.log('MiniApp SDK not available (running outside Base app):', error.message);
-                // Игра должна работать и без SDK
-            }
-        })();
+        this.initializeSDK();
     }
     
     updateWalletDisplay() {
@@ -1206,6 +1194,39 @@ class MatchThreePro {
                 console.log('Wallet display update failed:', e);
             }
         }
+    }
+    
+    initializeSDK() {
+        // Пытаемся загрузить SDK асинхронно
+        (async () => {
+            try {
+                // Проверяем, доступен ли SDK через window (если загружен через script tag)
+                if (window.miniappSdk) {
+                    sdk = window.miniappSdk.sdk;
+                    await sdk.actions.ready();
+                    console.log('MiniApp SDK ready (from window)');
+                    return;
+                }
+                
+                // Пытаемся загрузить через динамический импорт
+                const sdkModule = await import('@farcaster/miniapp-sdk');
+                sdk = sdkModule.sdk;
+                await sdk.actions.ready();
+                console.log('MiniApp SDK ready (from import)');
+            } catch (error) {
+                // SDK недоступен (приложение запущено вне Base app)
+                console.log('MiniApp SDK not available (running outside Base app):', error.message);
+                // Игра должна работать и без SDK
+                // Но все равно вызываем ready() если SDK доступен через Base app
+                if (window.miniappSdk) {
+                    try {
+                        await window.miniappSdk.sdk.actions.ready();
+                    } catch (e) {
+                        // Игнорируем
+                    }
+                }
+            }
+        })();
     }
     
     sleep(ms) {
