@@ -1255,21 +1255,56 @@ class MatchThreePro {
 // Запускаем игру
 let game;
 
-window.addEventListener('DOMContentLoaded', async () => {
+// Добавляем немедленное логирование для проверки загрузки скрипта
+console.log('Script.js loaded');
+
+// Функция инициализации игры
+async function initializeGame() {
+    console.log('initializeGame() called');
+    
+    // Проверяем, что DOM готов
+    if (document.readyState === 'loading') {
+        console.log('Waiting for DOM to load...');
+        await new Promise(resolve => {
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', resolve);
+            } else {
+                resolve();
+            }
+        });
+    }
+    
+    console.log('DOM is ready, initializing game...');
+    
     try {
+        // Проверяем наличие необходимых элементов
+        const gameBoard = document.getElementById('gameBoard');
+        if (!gameBoard) {
+            throw new Error('gameBoard element not found');
+        }
+        console.log('gameBoard element found');
+        
         game = new MatchThreePro();
+        console.log('MatchThreePro instance created');
+        
         window.game = game; // Сохраняем в window для доступа из WalletManager
         await game.init();
+        console.log('Game initialized successfully');
     } catch (error) {
         console.error('Error initializing game:', error);
+        console.error('Error stack:', error.stack);
+        
         // Показываем ошибку пользователю
         const gameBoard = document.getElementById('gameBoard');
         if (gameBoard) {
-            gameBoard.innerHTML = `<div style="color: white; padding: 20px; text-align: center;">
-                <p>Error loading game. Please refresh the page.</p>
-                <p style="font-size: 0.8em; color: #999;">${error.message}</p>
+            gameBoard.innerHTML = `<div style="color: white; padding: 20px; text-align: center; background: rgba(255,0,0,0.2); border-radius: 10px;">
+                <h3>Error loading game</h3>
+                <p>Please refresh the page.</p>
+                <p style="font-size: 0.8em; color: #999; margin-top: 10px;">${error.message}</p>
+                <pre style="font-size: 0.7em; color: #666; text-align: left; margin-top: 10px; overflow: auto;">${error.stack}</pre>
             </div>`;
         }
+        
         // Пытаемся вызвать ready() для SDK через глобальные объекты
         try {
             if (window.farcaster && window.farcaster.miniapp && window.farcaster.miniapp.actions) {
@@ -1281,4 +1316,12 @@ window.addEventListener('DOMContentLoaded', async () => {
             console.log('SDK ready call failed:', sdkError);
         }
     }
-});
+}
+
+// Запускаем игру при загрузке DOM
+if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', initializeGame);
+} else {
+    // DOM уже загружен
+    initializeGame();
+}
