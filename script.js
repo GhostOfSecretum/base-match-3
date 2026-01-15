@@ -377,25 +377,39 @@ class MatchThreePro {
     }
     
     async init() {
-        this.createBoard();
-        this.render();
-        this.setupEventListeners();
-        this.removeInitialMatches();
-        this.createParticles();
-        this.updateUI();
-        
-        // Обновляем отображение кошелька, если элементы существуют
-        if (typeof this.updateWalletDisplay === 'function') {
-            try {
-                this.updateWalletDisplay();
-            } catch (e) {
-                // Игнорируем ошибки, если элементы не найдены
+        try {
+            console.log('Initializing game...');
+            this.createBoard();
+            console.log('Board created');
+            this.render();
+            console.log('Board rendered');
+            this.setupEventListeners();
+            console.log('Event listeners set up');
+            this.removeInitialMatches();
+            console.log('Initial matches removed');
+            this.createParticles();
+            console.log('Particles created');
+            this.updateUI();
+            console.log('UI updated');
+            
+            // Обновляем отображение кошелька, если элементы существуют
+            if (typeof this.updateWalletDisplay === 'function') {
+                try {
+                    this.updateWalletDisplay();
+                } catch (e) {
+                    console.log('Wallet display update skipped:', e.message);
+                }
             }
+            
+            // Загружаем и инициализируем MiniApp SDK (не блокируем запуск игры)
+            // Вызываем ready() асинхронно, чтобы не блокировать игру
+            this.initializeSDK();
+            
+            console.log('Game initialized successfully');
+        } catch (error) {
+            console.error('Error in init():', error);
+            throw error;
         }
-        
-        // Загружаем и инициализируем MiniApp SDK (не блокируем запуск игры)
-        // Вызываем ready() асинхронно, чтобы не блокировать игру
-        this.initializeSDK();
     }
     
     updateWalletDisplay() {
