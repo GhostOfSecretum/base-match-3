@@ -1,0 +1,17 @@
+{
+  "name": "base-match-3",
+  "version": "1.0.0",
+  "description": "Match-3 puzzle game with crypto tokens for Base Mini Apps",
+  "main": "script.js",
+  "type": "module",
+  "scripts": {
+    "dev": "python3 -m http.server 8000",
+    "start": "python3 -m http.server 8000"
+  },
+  "keywords": ["base", "miniapp", "match-3", "puzzle", "crypto"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@farcaster/miniapp-sdk": "^0.2.1"
+  }
+}

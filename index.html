@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Base Match-3</title>
+    <meta name="fc:miniapp" content='{
+      "version":"next",
+      "imageUrl":"https://your-app.com/embed-image.png",
+      "button":{
+          "title":"Play Now",
+          "action":{
+          "type":"launch_miniapp",
+          "name":"Base Match-3",
+          "url":"https://your-app.com",
+          "splashImageUrl":"https://your-app.com/splash.png",
+          "splashBackgroundColor":"#000000"
+          }
+      }
+    }' />
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-wrapper">
+        <div class="particles-container" id="particlesContainer"></div>
+        
+        <div class="game-container">
+            <div class="game-header">
+                <div class="logo">
+                    <img src="assets/Logotype/Base_lockup_white.svg" alt="Base" class="base-logo" />
+                    <h1>MATCH-3</h1>
+                </div>
+                
+                <div class="stats-panel">
+                    <div class="stat-card">
+                        <div class="stat-icon">⭐</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Score</div>
+                            <div class="stat-value" id="score">0</div>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">🎯</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Moves</div>
+                            <div class="stat-value" id="moves">30</div>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">🔥</div>
+                        <div class="stat-content">
+                            <div class="stat-label">Combo</div>
+                            <div class="stat-value" id="combo">x1</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="objectives-panel">
+                <div class="objective-title">Level Goals:</div>
+                <div class="objectives-list" id="objectivesList">
+                    <div class="objective-item">
+                        <span class="objective-icon">🎯</span>
+                        <span class="objective-text">Score <strong id="targetScore">5000</strong> points</span>
+                        <div class="objective-progress">
+                            <div class="progress-bar" id="scoreProgress"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="board-wrapper">
+                <div class="game-board" id="gameBoard"></div>
+                <div class="board-glow"></div>
+            </div>
+            
+            <div class="game-controls">
+                <button id="newGameBtn" class="btn btn-primary">
+                    <span class="btn-icon">🔄</span>
+                    <span>New Game</span>
+                </button>
+                <button id="hintBtn" class="btn btn-secondary">
+                    <span class="btn-icon">💡</span>
+                    <span>Hint</span>
+                </button>
+            </div>
+        </div>
+        
+        <div id="comboDisplay" class="combo-display"></div>
+        <div id="scorePopup" class="score-popup"></div>
+        
+        <div id="gameOverModal" class="modal">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="gameOverTitle">Game Over!</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="final-stats">
+                        <div class="final-stat">
+                            <div class="final-stat-value" id="finalScore">0</div>
+                            <div class="final-stat-label">Points</div>
+                        </div>
+                        <div class="final-stat">
+                            <div class="final-stat-value" id="finalCombo">0</div>
+                            <div class="final-stat-label">Max Combo</div>
+                        </div>
+                    </div>
+                    <p id="gameOverMessage"></p>
+                </div>
+                <div class="modal-footer">
+                    <button id="restartBtn" class="btn btn-primary">Play Again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script type="module" src="script.js"></script>
+</body>
+</html>

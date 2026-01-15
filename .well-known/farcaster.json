@@ -1,0 +1,31 @@
+{
+  "accountAssociation": {
+    "header": "",
+    "payload": "",
+    "signature": ""
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Base Match-3",
+    "homeUrl": "https://your-app.com",
+    "iconUrl": "https://your-app.com/icon.png",
+    "splashImageUrl": "https://your-app.com/splash.png",
+    "splashBackgroundColor": "#000000",
+    "webhookUrl": "https://your-app.com/api/webhook",
+    "subtitle": "Fast, fun, crypto match-3",
+    "description": "Match crypto tokens in this fast-paced puzzle game. Create combos, unlock special tokens, and climb the leaderboard!",
+    "screenshotUrls": [
+      "https://your-app.com/screenshot1.png",
+      "https://your-app.com/screenshot2.png",
+      "https://your-app.com/screenshot3.png"
+    ],
+    "primaryCategory": "games",
+    "tags": ["match-3", "puzzle", "crypto", "base", "gaming"],
+    "heroImageUrl": "https://your-app.com/hero.png",
+    "tagline": "Match crypto tokens",
+    "ogTitle": "Base Match-3 - Crypto Puzzle Game",
+    "ogDescription": "Match crypto tokens in this fast-paced puzzle game on Base.",
+    "ogImageUrl": "https://your-app.com/og-image.png",
+    "noindex": false
+  }
+}
