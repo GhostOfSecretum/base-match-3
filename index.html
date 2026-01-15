@@ -20,8 +20,25 @@
       }
     }' />
     <link rel="stylesheet" href="style.css">
+    <style>
+        /* Индикатор загрузки */
+        #loadingIndicator {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-family: 'Coinbase Text', sans-serif;
+            text-align: center;
+            z-index: 10000;
+        }
+        #loadingIndicator.hidden {
+            display: none;
+        }
+    </style>
 </head>
 <body>
+    <div id="loadingIndicator">Loading game...</div>
     <div class="game-wrapper">
         <div class="particles-container" id="particlesContainer"></div>
         

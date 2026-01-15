@@ -1258,6 +1258,14 @@ let game;
 // Добавляем немедленное логирование для проверки загрузки скрипта
 console.log('Script.js loaded');
 
+// Скрываем индикатор загрузки после инициализации
+function hideLoadingIndicator() {
+    const indicator = document.getElementById('loadingIndicator');
+    if (indicator) {
+        indicator.classList.add('hidden');
+    }
+}
+
 // Функция инициализации игры
 async function initializeGame() {
     console.log('initializeGame() called');
@@ -1290,6 +1298,9 @@ async function initializeGame() {
         window.game = game; // Сохраняем в window для доступа из WalletManager
         await game.init();
         console.log('Game initialized successfully');
+        
+        // Скрываем индикатор загрузки
+        hideLoadingIndicator();
     } catch (error) {
         console.error('Error initializing game:', error);
         console.error('Error stack:', error.stack);
