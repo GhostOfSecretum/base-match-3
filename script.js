@@ -645,12 +645,29 @@ class MatchThreePro {
     
     render() {
         const gameBoard = document.getElementById('gameBoard');
+        const fragment = document.createDocumentFragment(); // Используем DocumentFragment для батчинга
+        
+        // Сохраняем существующие ячейки для переиспользования обработчиков
+        const existingCells = new Map();
+        gameBoard.querySelectorAll('.cell').forEach(cell => {
+            const key = `${cell.dataset.row}-${cell.dataset.col}`;
+            existingCells.set(key, cell);
+        });
+        
+        // Очищаем доску
         gameBoard.innerHTML = '';
         
         for (let row = 0; row < this.boardSize; row++) {
             for (let col = 0; col < this.boardSize; col++) {
-                const cell = document.createElement('div');
+                const cellKey = `${row}-${col}`;
+                let cell = existingCells.get(cellKey);
                 const cellData = this.board[row][col];
+                
+                // Переиспользуем существующую ячейку если возможно, иначе создаем новую
+                if (!cell) {
+                    cell = document.createElement('div');
+                }
+                
                 let className = `cell type-${cellData.type}`;
                 
                 if (cellData.special) {
@@ -660,6 +677,9 @@ class MatchThreePro {
                 cell.className = className;
                 cell.dataset.row = row;
                 cell.dataset.col = col;
+                
+                // Очищаем содержимое для переиспользования
+                cell.innerHTML = '';
                 
                 // Добавляем изображение логотипа, если это обычная ячейка (не специальная)
                 if (cellData.type >= 0 && cellData.type < this.numTypes && !cellData.special) {
@@ -673,14 +693,50 @@ class MatchThreePro {
                     cell.appendChild(logoContainer);
                 }
                 
-                // Добавляем обработчики для свайпов (touch и mouse)
-                this.setupDragHandlers(cell, row, col);
+                // Добавляем обработчики только если их еще нет
+                if (!cell.hasAttribute('data-handlers-attached')) {
+                    this.setupDragHandlers(cell, row, col);
+                    cell.setAttribute('data-handlers-attached', 'true');
+                }
                 
-                gameBoard.appendChild(cell);
+                fragment.appendChild(cell);
             }
         }
         
+        gameBoard.appendChild(fragment);
         this.updateUI();
+    }
+    
+    // Обновляет только одну ячейку вместо полной перерисовки
+    updateCell(row, col) {
+        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        if (!cell) {
+            // Если ячейка не существует, перерисовываем всю доску
+            this.render();
+            return;
+        }
+        
+        const cellData = this.board[row][col];
+        let className = `cell type-${cellData.type}`;
+        
+        if (cellData.special) {
+            className += ` type-${cellData.special}`;
+        }
+        
+        cell.className = className;
+        cell.innerHTML = '';
+        
+        // Добавляем изображение логотипа, если это обычная ячейка (не специальная)
+        if (cellData.type >= 0 && cellData.type < this.numTypes && !cellData.special) {
+            const logoContainer = document.createElement('div');
+            logoContainer.className = 'cell-logo-container';
+            const img = document.createElement('img');
+            img.src = this.cryptoImages[cellData.type];
+            img.className = 'cell-logo';
+            img.alt = '';
+            logoContainer.appendChild(img);
+            cell.appendChild(logoContainer);
+        }
     }
     
     setupDragHandlers(cell, row, col) {
@@ -946,8 +1002,9 @@ class MatchThreePro {
         [this.board[row1][col1], this.board[row2][col2]] = 
         [this.board[row2][col2], this.board[row1][col1]];
         
-        // Обновляем отображение
-        this.render();
+        // Обновляем только две ячейки вместо полной перерисовки
+        this.updateCell(row1, col1);
+        this.updateCell(row2, col2);
         
         const matches = this.findAllMatches();
         
@@ -958,10 +1015,11 @@ class MatchThreePro {
             await this.processMatches(matches);
         } else {
             // Возвращаем обратно
-            await this.sleep(100);
+            await this.sleep(50); // Уменьшили задержку
             [this.board[row1][col1], this.board[row2][col2]] = 
             [this.board[row2][col2], this.board[row1][col1]];
-            this.render();
+            this.updateCell(row1, col1);
+            this.updateCell(row2, col2);
         }
         
         // Сбрасываем состояние перетаскивания
@@ -1320,9 +1378,9 @@ class MatchThreePro {
         if (specialCells.length > 0) {
             specialCells.forEach(({row, col, special}) => {
                 this.board[row][col].special = special;
+                this.updateCell(row, col); // Обновляем только измененные ячейки
             });
-            this.render(); // Обновляем отображение для показа специальных фигур
-            await this.sleep(150);
+            await this.sleep(100); // Уменьшили задержку
         }
         
         // Подсчитываем очки с учетом комбо и бонусов за T/L-образные фигуры
@@ -1378,7 +1436,7 @@ class MatchThreePro {
             });
         });
         
-        await this.sleep(300);
+        await this.sleep(200); // Уменьшили задержку анимации
         
         // Обрабатываем специальные фигуры
         const cellsToRemove = new Set();
@@ -1434,7 +1492,10 @@ class MatchThreePro {
         // Заполнение пустых мест
         this.fillEmptySpaces();
         
-        this.render();
+        // Используем requestAnimationFrame для более плавного рендеринга
+        requestAnimationFrame(() => {
+            this.render();
+        });
         
         // Проверяем новые совпадения (каскад)
         const newMatches = this.findAllMatches();
@@ -1450,6 +1511,8 @@ class MatchThreePro {
     }
     
     async dropTiles() {
+        const cellsToUpdate = [];
+        
         for (let col = 0; col < this.boardSize; col++) {
             let writeIndex = this.boardSize - 1;
             
@@ -1458,29 +1521,39 @@ class MatchThreePro {
                     if (writeIndex !== row) {
                         this.board[writeIndex][col] = { ...this.board[row][col] };
                         this.board[row][col] = { type: -1, special: null };
-                        
-                        // Анимация падения
-                        const cell = document.querySelector(`[data-row="${writeIndex}"][data-col="${col}"]`);
-                        if (cell) {
-                            cell.classList.add('falling');
-                        }
+                        cellsToUpdate.push({ row: writeIndex, col, oldRow: row });
                     }
                     writeIndex--;
                 }
             }
         }
         
-        await this.sleep(200);
+        // Анимация падения для измененных ячеек
+        cellsToUpdate.forEach(({row, col}) => {
+            const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+            if (cell) {
+                cell.classList.add('falling');
+            }
+        });
+        
+        await this.sleep(150); // Уменьшили задержку
     }
     
     fillEmptySpaces() {
+        const cellsToUpdate = [];
         for (let row = 0; row < this.boardSize; row++) {
             for (let col = 0; col < this.boardSize; col++) {
                 if (this.board[row][col].type === -1) {
-                    this.board[row][col] = { type: this.getRandomType(), special: null };
+                    this.board[row][col] = { type: this.getSafeType(row, col), special: null };
+                    cellsToUpdate.push({ row, col });
                 }
             }
         }
+        
+        // Обновляем только измененные ячейки
+        cellsToUpdate.forEach(({row, col}) => {
+            this.updateCell(row, col);
+        });
     }
     
     showCombo(combo) {
