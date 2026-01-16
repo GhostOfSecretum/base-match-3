@@ -246,6 +246,11 @@ body::before {
     box-shadow: 0 4px 15px rgba(0, 82, 255, 0.4);
     width: 100%;
     justify-content: center;
+    position: relative;
+    z-index: 1000;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    pointer-events: auto;
 }
 
 .btn-wallet:hover {

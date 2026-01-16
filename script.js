@@ -253,7 +253,7 @@ class WalletManager {
             walletNetwork.textContent = `Network: ${networkName}`;
             walletNetwork.className = 'wallet-network ' + (this.chainId === BASE_NETWORK.chainId ? 'base-network' : 'wrong-network');
         } else {
-            connectBtn.innerHTML = '<span class="btn-icon">🔗</span><span>Connect Wallet</span>';
+            connectBtn.innerHTML = '<span>Connect Wallet</span>';
             connectBtn.classList.remove('connected');
             walletInfo.style.display = 'none';
         }
@@ -711,17 +711,29 @@ class MatchThreePro {
         // Глобальные обработчики для мыши (чтобы перетаскивание работало даже вне ячейки)
         document.addEventListener('mousemove', (e) => {
             if (this.dragStartCell && !this.isProcessing) {
+                // Проверяем, что курсор не на кнопке
+                const target = e.target;
+                if (target && (target.closest('.btn-wallet') || target.closest('button'))) {
+                    return; // Игнорируем события на кнопках
+                }
                 this.handleDragMove(e);
             }
         });
         
         document.addEventListener('mouseup', (e) => {
             if (this.dragStartCell && !this.isProcessing) {
+                // Проверяем, что клик не на кнопке
+                const target = e.target;
+                if (target && (target.closest('.btn-wallet') || target.closest('button'))) {
+                    this.handleDragCancel();
+                    return; // Не обрабатываем drag для кнопок
+                }
+                
                 // Находим ячейку под курсором
-                const target = document.elementFromPoint(e.clientX, e.clientY);
-                if (target && target.classList.contains('cell')) {
-                    const row = parseInt(target.dataset.row);
-                    const col = parseInt(target.dataset.col);
+                const elementUnderPoint = document.elementFromPoint(e.clientX, e.clientY);
+                if (elementUnderPoint && elementUnderPoint.classList.contains('cell')) {
+                    const row = parseInt(elementUnderPoint.dataset.row);
+                    const col = parseInt(elementUnderPoint.dataset.col);
                     this.handleDragEnd(e, row, col);
                 } else {
                     // Если отпустили вне ячейки, отменяем перетаскивание
@@ -1863,7 +1875,12 @@ class MatchThreePro {
         // Подключение кошелька (если элемент существует)
         const connectWalletBtn = document.getElementById('connectWalletBtn');
         if (connectWalletBtn && this.walletManager) {
-            connectWalletBtn.addEventListener('click', async () => {
+            // Функция обработки нажатия на кнопку
+            const handleWalletButton = async (e) => {
+                // Предотвращаем всплытие, чтобы не конфликтовать с drag-обработчиками
+                e.preventDefault();
+                e.stopPropagation();
+                
                 if (this.walletManager.isConnected()) {
                     if (confirm('Disconnect wallet?')) {
                         this.walletManager.disconnect();
@@ -1883,7 +1900,16 @@ class MatchThreePro {
                         }
                     }
                 }
-            });
+            };
+            
+            // Обработчики для клика и touch (для мобильных устройств)
+            connectWalletBtn.addEventListener('click', handleWalletButton);
+            connectWalletBtn.addEventListener('touchend', (e) => {
+                // Для touch используем touchend с небольшой задержкой
+                e.preventDefault();
+                e.stopPropagation();
+                handleWalletButton(e);
+            }, { passive: false });
         }
         
         // Закрытие модалки кошелька
