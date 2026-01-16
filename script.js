@@ -428,7 +428,7 @@ class LeaderboardManager {
 
 class MatchThreePro {
     constructor() {
-        this.boardSize = 8;
+        this.boardSize = 7;
         this.numTypes = 6;
         this.board = [];
         this.selectedCell = null;

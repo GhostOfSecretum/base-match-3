@@ -431,7 +431,7 @@ body::before {
 
 .game-board {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
+    grid-template-columns: repeat(7, 1fr);
     gap: 2px;
     background: var(--board-bg);
     padding: 2px;
