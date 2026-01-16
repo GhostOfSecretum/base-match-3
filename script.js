@@ -451,6 +451,11 @@ class MatchThreePro {
             ROCKET_H: 'rocket-h',
             ROCKET_V: 'rocket-v'
         };
+        
+        // Переменные для свайпов
+        this.dragStartCell = null;
+        this.isDragging = false;
+        this.dragStartPos = null;
     }
     
     async init() {
@@ -462,6 +467,8 @@ class MatchThreePro {
             console.log('Board rendered');
             this.setupEventListeners();
             console.log('Event listeners set up');
+            this.setupGlobalDragHandlers();
+            console.log('Global drag handlers set up');
             this.removeInitialMatches();
             console.log('Initial matches removed');
             this.createParticles();
@@ -642,12 +649,175 @@ class MatchThreePro {
                 cell.className = className;
                 cell.dataset.row = row;
                 cell.dataset.col = col;
-                cell.addEventListener('click', () => this.handleCellClick(row, col));
+                
+                // Добавляем обработчики для свайпов (touch и mouse)
+                this.setupDragHandlers(cell, row, col);
+                
                 gameBoard.appendChild(cell);
             }
         }
         
         this.updateUI();
+    }
+    
+    setupDragHandlers(cell, row, col) {
+        // Touch события
+        cell.addEventListener('touchstart', (e) => this.handleDragStart(e, row, col), { passive: false });
+        cell.addEventListener('touchmove', (e) => this.handleDragMove(e), { passive: false });
+        cell.addEventListener('touchend', (e) => {
+            // Находим ячейку под точкой касания
+            const touch = e.changedTouches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+            if (target && target.classList.contains('cell')) {
+                const targetRow = parseInt(target.dataset.row);
+                const targetCol = parseInt(target.dataset.col);
+                this.handleDragEnd(e, targetRow, targetCol);
+            } else {
+                this.handleDragCancel();
+            }
+        }, { passive: false });
+        cell.addEventListener('touchcancel', () => this.handleDragCancel(), { passive: false });
+        
+        // Mouse события - только mousedown на ячейке
+        cell.addEventListener('mousedown', (e) => this.handleDragStart(e, row, col));
+        
+        // Предотвращаем контекстное меню при долгом нажатии
+        cell.addEventListener('contextmenu', (e) => e.preventDefault());
+    }
+    
+    setupGlobalDragHandlers() {
+        // Глобальные обработчики для мыши (чтобы перетаскивание работало даже вне ячейки)
+        document.addEventListener('mousemove', (e) => {
+            if (this.dragStartCell && !this.isProcessing) {
+                this.handleDragMove(e);
+            }
+        });
+        
+        document.addEventListener('mouseup', (e) => {
+            if (this.dragStartCell && !this.isProcessing) {
+                // Находим ячейку под курсором
+                const target = document.elementFromPoint(e.clientX, e.clientY);
+                if (target && target.classList.contains('cell')) {
+                    const row = parseInt(target.dataset.row);
+                    const col = parseInt(target.dataset.col);
+                    this.handleDragEnd(e, row, col);
+                } else {
+                    // Если отпустили вне ячейки, отменяем перетаскивание
+                    this.handleDragCancel();
+                }
+            }
+        });
+    }
+    
+    getEventPos(e) {
+        if (e.touches && e.touches.length > 0) {
+            return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+        }
+        return { x: e.clientX, y: e.clientY };
+    }
+    
+    handleDragStart(e, row, col) {
+        if (this.isProcessing) {
+            e.preventDefault();
+            return;
+        }
+        
+        this.dragStartCell = { row, col };
+        this.isDragging = false;
+        this.dragStartPos = this.getEventPos(e);
+        this.selectedCell = { row, col };
+        this.highlightCell(row, col, true);
+        
+        // Добавляем класс для визуальной обратной связи
+        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        if (cell) {
+            cell.classList.add('dragging');
+        }
+        
+        e.preventDefault();
+    }
+    
+    handleDragMove(e) {
+        if (!this.dragStartCell || this.isProcessing) return;
+        
+        const currentPos = this.getEventPos(e);
+        const deltaX = Math.abs(currentPos.x - this.dragStartPos.x);
+        const deltaY = Math.abs(currentPos.y - this.dragStartPos.y);
+        const threshold = 10; // Минимальное расстояние для начала перетаскивания
+        
+        if (deltaX > threshold || deltaY > threshold) {
+            if (!this.isDragging) {
+                this.isDragging = true;
+            }
+            e.preventDefault();
+        }
+        
+        // Для touch событий обрабатываем здесь
+        if (e.type === 'touchmove') {
+            e.preventDefault();
+        }
+    }
+    
+    handleDragEnd(e, row, col) {
+        if (!this.dragStartCell || this.isProcessing) {
+            this.resetDrag();
+            return;
+        }
+        
+        const { row: startRow, col: startCol } = this.dragStartCell;
+        
+        // Убираем класс dragging
+        const startCell = document.querySelector(`[data-row="${startRow}"][data-col="${startCol}"]`);
+        if (startCell) {
+            startCell.classList.remove('dragging');
+        }
+        
+        // Если не было перетаскивания, просто снимаем выделение
+        if (!this.isDragging) {
+            if (startRow === row && startCol === col) {
+                // Клик по той же ячейке - снимаем выделение
+                this.selectedCell = null;
+                this.highlightCell(row, col, false);
+            }
+            this.resetDrag();
+            return;
+        }
+        
+        // Проверяем, является ли целевая ячейка соседней
+        const isAdjacent = Math.abs(startRow - row) + Math.abs(startCol - col) === 1;
+        
+        if (isAdjacent) {
+            this.swapCells(startRow, startCol, row, col);
+        } else {
+            // Если перетащили не на соседнюю ячейку, просто меняем выделение
+            this.highlightCell(startRow, startCol, false);
+            this.selectedCell = { row, col };
+            this.highlightCell(row, col, true);
+        }
+        
+        this.resetDrag();
+        e.preventDefault();
+    }
+    
+    handleDragCancel() {
+        if (this.dragStartCell) {
+            const cell = document.querySelector(`[data-row="${this.dragStartCell.row}"][data-col="${this.dragStartCell.col}"]`);
+            if (cell) {
+                cell.classList.remove('dragging');
+            }
+            this.highlightCell(this.dragStartCell.row, this.dragStartCell.col, false);
+        }
+        this.resetDrag();
+    }
+    
+    resetDrag() {
+        // Убираем класс dragging со всех ячеек на всякий случай
+        document.querySelectorAll('.cell.dragging').forEach(cell => {
+            cell.classList.remove('dragging');
+        });
+        this.dragStartCell = null;
+        this.isDragging = false;
+        this.dragStartPos = null;
     }
     
     handleCellClick(row, col) {
@@ -706,6 +876,9 @@ class MatchThreePro {
             [this.board[row2][col2], this.board[row1][col1]];
             this.render();
         }
+        
+        // Сбрасываем состояние перетаскивания
+        this.resetDrag();
     }
     
     // Находит максимальную горизонтальную линию определенного типа, начиная с позиции

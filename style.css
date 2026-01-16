@@ -467,7 +467,7 @@ body::before {
 .cell {
     aspect-ratio: 1;
     border-radius: 6px;
-    cursor: pointer;
+    cursor: grab;
     transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
     display: flex;
     align-items: center;
@@ -481,6 +481,10 @@ body::before {
         inset 0 1px 0 rgba(255, 255, 255, 0.1),
         0 2px 8px rgba(0, 0, 0, 0.3);
     will-change: transform;
+    touch-action: none;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
 }
 
 .cell::after {
@@ -522,6 +526,21 @@ body::before {
     transform: scale(1.15);
     z-index: 20;
     animation: selectedPulse 1s ease-in-out infinite;
+}
+
+.cell.dragging {
+    opacity: 0.7;
+    transform: scale(1.1);
+    z-index: 30;
+    cursor: grabbing;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.cell:active {
+    cursor: grabbing;
 }
 
 @keyframes selectedPulse {
