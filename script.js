@@ -508,13 +508,59 @@ class MatchThreePro {
         for (let row = 0; row < this.boardSize; row++) {
             this.board[row] = [];
             for (let col = 0; col < this.boardSize; col++) {
-                this.board[row][col] = { type: this.getRandomType(), special: null };
+                // Выбираем тип, который не создаст совпадение
+                this.board[row][col] = { type: this.getSafeType(row, col), special: null };
             }
         }
     }
     
     getRandomType() {
         return Math.floor(Math.random() * this.numTypes);
+    }
+    
+    // Проверяет, создаст ли размещение типа type в позиции (row, col) совпадение
+    wouldCreateMatch(row, col, type) {
+        // Проверяем горизонтальное совпадение (две ячейки слева)
+        if (col >= 2) {
+            const left1 = this.getCellType(row, col - 1);
+            const left2 = this.getCellType(row, col - 2);
+            // Проверяем, что обе ячейки существуют и совпадают с типом
+            if (left1 !== null && left2 !== null && left1 === type && left2 === type) {
+                return true;
+            }
+        }
+        
+        // Проверяем вертикальное совпадение (две ячейки сверху)
+        if (row >= 2) {
+            const top1 = this.getCellType(row - 1, col);
+            const top2 = this.getCellType(row - 2, col);
+            // Проверяем, что обе ячейки существуют и совпадают с типом
+            if (top1 !== null && top2 !== null && top1 === type && top2 === type) {
+                return true;
+            }
+        }
+        
+        return false;
+    }
+    
+    // Возвращает безопасный тип для позиции (row, col), который не создаст совпадение
+    getSafeType(row, col) {
+        // Собираем все типы, которые не создадут совпадение
+        const safeTypes = [];
+        for (let type = 0; type < this.numTypes; type++) {
+            if (!this.wouldCreateMatch(row, col, type)) {
+                safeTypes.push(type);
+            }
+        }
+        
+        // Если есть безопасные типы, выбираем случайный из них
+        if (safeTypes.length > 0) {
+            return safeTypes[Math.floor(Math.random() * safeTypes.length)];
+        }
+        
+        // Если все типы создадут совпадение (маловероятно, но на всякий случай),
+        // выбираем случайный тип
+        return this.getRandomType();
     }
     
     getCellType(row, col) {
@@ -530,18 +576,52 @@ class MatchThreePro {
     removeInitialMatches() {
         let hasMatches = true;
         let attempts = 0;
-        while (hasMatches && attempts < 100) {
+        const maxAttempts = 200; // Увеличиваем лимит попыток
+        
+        while (hasMatches && attempts < maxAttempts) {
             const matches = this.findAllMatches();
             if (matches.length === 0) {
                 hasMatches = false;
             } else {
+                // Используем Set для отслеживания всех ячеек, которые нужно заменить
+                const cellsToReplace = new Set();
                 matches.forEach(match => {
                     match.forEach(({row, col}) => {
-                        this.board[row][col] = { type: this.getRandomType(), special: null };
+                        cellsToReplace.add(`${row}-${col}`);
                     });
+                });
+                
+                // Заменяем ячейки безопасными типами
+                cellsToReplace.forEach(key => {
+                    const [row, col] = key.split('-').map(Number);
+                    this.board[row][col] = { type: this.getSafeType(row, col), special: null };
                 });
             }
             attempts++;
+        }
+        
+        // Финальная проверка - если все еще есть совпадения, заменяем их принудительно
+        const finalMatches = this.findAllMatches();
+        if (finalMatches.length > 0) {
+            console.warn('Initial matches still present after removal attempts, forcing replacement');
+            const cellsToReplace = new Set();
+            finalMatches.forEach(match => {
+                match.forEach(({row, col}) => {
+                    cellsToReplace.add(`${row}-${col}`);
+                });
+            });
+            
+            cellsToReplace.forEach(key => {
+                const [row, col] = key.split('-').map(Number);
+                // Пробуем разные типы, пока не найдем безопасный
+                let safeType = this.getSafeType(row, col);
+                let attempts = 0;
+                while (this.wouldCreateMatch(row, col, safeType) && attempts < 10) {
+                    safeType = this.getRandomType();
+                    attempts++;
+                }
+                this.board[row][col] = { type: safeType, special: null };
+            });
         }
     }
     
@@ -626,6 +706,225 @@ class MatchThreePro {
             [this.board[row2][col2], this.board[row1][col1]];
             this.render();
         }
+    }
+    
+    // Находит максимальную горизонтальную линию определенного типа, начиная с позиции
+    findHorizontalLine(row, col, type) {
+        if (this.getCellType(row, col) !== type) return null;
+        
+        const line = [{ row, col }];
+        
+        // Ищем влево
+        let leftCol = col - 1;
+        while (leftCol >= 0 && this.getCellType(row, leftCol) === type) {
+            line.unshift({ row, col: leftCol });
+            leftCol--;
+        }
+        
+        // Ищем вправо
+        let rightCol = col + 1;
+        while (rightCol < this.boardSize && this.getCellType(row, rightCol) === type) {
+            line.push({ row, col: rightCol });
+            rightCol++;
+        }
+        
+        return line.length >= 3 ? line : null;
+    }
+    
+    // Находит максимальную вертикальную линию определенного типа, начиная с позиции
+    findVerticalLine(row, col, type) {
+        if (this.getCellType(row, col) !== type) return null;
+        
+        const line = [{ row, col }];
+        
+        // Ищем вверх
+        let upRow = row - 1;
+        while (upRow >= 0 && this.getCellType(upRow, col) === type) {
+            line.unshift({ row: upRow, col });
+            upRow--;
+        }
+        
+        // Ищем вниз
+        let downRow = row + 1;
+        while (downRow < this.boardSize && this.getCellType(downRow, col) === type) {
+            line.push({ row: downRow, col });
+            downRow++;
+        }
+        
+        return line.length >= 3 ? line : null;
+    }
+    
+    // Проверяет горизонтальную линию определенного типа (для обратной совместимости)
+    getHorizontalLine(row, startCol, endCol, type) {
+        const line = [];
+        for (let col = startCol; col <= endCol; col++) {
+            if (this.getCellType(row, col) === type) {
+                line.push({ row, col });
+            } else {
+                return null; // Линия прервана
+            }
+        }
+        return line.length >= 3 ? line : null;
+    }
+    
+    // Проверяет вертикальную линию определенного типа (для обратной совместимости)
+    getVerticalLine(startRow, endRow, col, type) {
+        const line = [];
+        for (let row = startRow; row <= endRow; row++) {
+            if (this.getCellType(row, col) === type) {
+                line.push({ row, col });
+            } else {
+                return null; // Линия прервана
+            }
+        }
+        return line.length >= 3 ? line : null;
+    }
+    
+    // Находит T-образные совпадения (более гибкий алгоритм)
+    findTShapedMatches(visited) {
+        const matches = [];
+        const processed = new Set();
+        
+        // Проходим по всем ячейкам и ищем T-образные фигуры
+        for (let row = 0; row < this.boardSize; row++) {
+            for (let col = 0; col < this.boardSize; col++) {
+                const cellType = this.getCellType(row, col);
+                if (cellType === null) continue;
+                
+                const cellKey = `${row}-${col}`;
+                // Не пропускаем ячейки, которые уже в visited - они могут быть частью T-образной фигуры
+                // но мы проверим это позже при создании match
+                if (processed.has(cellKey)) continue;
+                
+                // Находим максимальные линии, проходящие через эту ячейку
+                const horizontalLine = this.findHorizontalLine(row, col, cellType);
+                const verticalLine = this.findVerticalLine(row, col, cellType);
+                
+                // Если обе линии существуют и пересекаются в этой ячейке - это T-образная фигура
+                if (horizontalLine && verticalLine && horizontalLine.length >= 3 && verticalLine.length >= 3) {
+                    // Проверяем, что линии действительно пересекаются в этой точке
+                    const isInHorizontal = horizontalLine.some(c => c.row === row && c.col === col);
+                    const isInVertical = verticalLine.some(c => c.row === row && c.col === col);
+                    
+                    if (isInHorizontal && isInVertical) {
+                        // Проверяем, что пересечение не на краю обеих линий (это было бы L, а не T)
+                        const hIndex = horizontalLine.findIndex(c => c.row === row && c.col === col);
+                        const vIndex = verticalLine.findIndex(c => c.row === row && c.col === col);
+                        const isHorizontalEnd = hIndex === 0 || hIndex === horizontalLine.length - 1;
+                        const isVerticalEnd = vIndex === 0 || vIndex === verticalLine.length - 1;
+                        
+                        // T-образная фигура: пересечение НЕ на краю хотя бы одной линии
+                        // (если на краю обеих - это L)
+                        const isTShape = !isHorizontalEnd || !isVerticalEnd;
+                        
+                        if (isTShape) {
+                            // Создаем уникальное совпадение
+                            const match = [];
+                            const seen = new Set();
+                            
+                            [...horizontalLine, ...verticalLine].forEach(cell => {
+                                const key = `${cell.row}-${cell.col}`;
+                                if (!seen.has(key)) {
+                                    seen.add(key);
+                                    // Добавляем ячейку, даже если она уже в visited (она будет удалена)
+                                    match.push(cell);
+                                }
+                            });
+                            
+                            // T-образная фигура должна иметь минимум 5 ячеек (3+3-1)
+                            if (match.length >= 5) {
+                                matches.push(match);
+                                match.forEach(cell => {
+                                    visited.add(`${cell.row}-${cell.col}`);
+                                    processed.add(`${cell.row}-${cell.col}`);
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        return matches;
+    }
+    
+    // Находит L-образные совпадения (упрощенный и более надежный алгоритм)
+    findLShapedMatches(visited) {
+        const matches = [];
+        const processed = new Set();
+        
+        // Проходим по всем ячейкам и ищем L-образные фигуры
+        for (let row = 0; row < this.boardSize; row++) {
+            for (let col = 0; col < this.boardSize; col++) {
+                const cellType = this.getCellType(row, col);
+                if (cellType === null) continue;
+                
+                const cellKey = `${row}-${col}`;
+                if (processed.has(cellKey)) continue;
+                
+                // Находим максимальные линии, проходящие через эту ячейку
+                const horizontalLine = this.findHorizontalLine(row, col, cellType);
+                const verticalLine = this.findVerticalLine(row, col, cellType);
+                
+                // Проверяем, что обе линии существуют и имеют минимум 3 ячейки
+                if (!horizontalLine || !verticalLine || 
+                    horizontalLine.length < 3 || verticalLine.length < 3) {
+                    continue;
+                }
+                
+                // Проверяем, что ячейка является частью обеих линий
+                const isInHorizontal = horizontalLine.some(c => c.row === row && c.col === col);
+                const isInVertical = verticalLine.some(c => c.row === row && c.col === col);
+                
+                if (!isInHorizontal || !isInVertical) continue;
+                
+                // Определяем позицию ячейки в линиях
+                const hIndex = horizontalLine.findIndex(c => c.row === row && c.col === col);
+                const vIndex = verticalLine.findIndex(c => c.row === row && c.col === col);
+                
+                const isHorizontalStart = hIndex === 0;
+                const isHorizontalEnd = hIndex === horizontalLine.length - 1;
+                const isVerticalStart = vIndex === 0;
+                const isVerticalEnd = vIndex === verticalLine.length - 1;
+                
+                // L-образная фигура: ячейка должна быть углом
+                // Угол = ячейка на начале ИЛИ конце хотя бы одной линии
+                // Это включает случаи, когда ячейка на краю обеих линий (угол 3x3)
+                const isLCorner = isHorizontalStart || isHorizontalEnd || 
+                                 isVerticalStart || isVerticalEnd;
+                
+                // T-образная фигура: пересечение в центре обеих линий (не на краю ни одной)
+                // Если ячейка не на краю обеих линий - это T, а не L
+                const isTCenter = !isHorizontalStart && !isHorizontalEnd && 
+                                !isVerticalStart && !isVerticalEnd;
+                
+                // Если это угол и не центр T-образной фигуры - это L-образная фигура
+                if (isLCorner && !isTCenter) {
+                    // Создаем уникальное совпадение
+                    const match = [];
+                    const seen = new Set();
+                    
+                    [...horizontalLine, ...verticalLine].forEach(cell => {
+                        const key = `${cell.row}-${cell.col}`;
+                        if (!seen.has(key)) {
+                            seen.add(key);
+                            match.push(cell);
+                        }
+                    });
+                    
+                    // L-образная фигура должна иметь минимум 5 ячеек (3+3-1)
+                    if (match.length >= 5) {
+                        matches.push(match);
+                        match.forEach(cell => {
+                            visited.add(`${cell.row}-${cell.col}`);
+                            processed.add(`${cell.row}-${cell.col}`);
+                        });
+                    }
+                }
+            }
+        }
+        
+        return matches;
     }
     
     findAllMatches() {
@@ -716,6 +1015,24 @@ class MatchThreePro {
             }
         }
         
+        // T-образные совпадения
+        const tMatches = this.findTShapedMatches(visited);
+        matches.push(...tMatches);
+        // Обновляем visited после добавления T-образных
+        tMatches.forEach(match => {
+            match.forEach(cell => visited.add(`${cell.row}-${cell.col}`));
+        });
+        
+        // L-образные совпадения (ищем после T, но до финальной проверки visited)
+        // Создаем копию visited для L-образных, чтобы не пропустить фигуры
+        const lVisited = new Set(visited);
+        const lMatches = this.findLShapedMatches(lVisited);
+        matches.push(...lMatches);
+        // Обновляем основной visited после добавления L-образных
+        lMatches.forEach(match => {
+            match.forEach(cell => visited.add(`${cell.row}-${cell.col}`));
+        });
+        
         return matches;
     }
     
@@ -748,16 +1065,39 @@ class MatchThreePro {
             await this.sleep(150);
         }
         
-        // Подсчитываем очки с учетом комбо
+        // Подсчитываем очки с учетом комбо и бонусов за T/L-образные фигуры
         let totalMatched = 0;
+        let tShapeBonus = 0;
+        let lShapeBonus = 0;
+        
         matches.forEach(match => {
             totalMatched += match.length;
+            
+            // Проверяем, является ли совпадение T-образным или L-образным
+            if (this.isTShapedMatch(match)) {
+                tShapeBonus += match.length;
+            } else if (this.isLShapedMatch(match)) {
+                lShapeBonus += match.length;
+            }
         });
         
         const baseScore = totalMatched * 10;
         const comboMultiplier = Math.min(this.combo, 5);
-        const scoreGain = baseScore * comboMultiplier;
+        
+        // Бонусы: T-образные фигуры дают +50% очков, L-образные +30%
+        const tShapeBonusScore = tShapeBonus * 10 * 0.5;
+        const lShapeBonusScore = lShapeBonus * 10 * 0.3;
+        
+        const scoreGain = (baseScore + tShapeBonusScore + lShapeBonusScore) * comboMultiplier;
         this.score += scoreGain;
+        
+        // Показываем специальные сообщения для T/L-образных фигур
+        if (tShapeBonus > 0) {
+            this.showSpecialPopup('T-SHAPE BONUS!', tShapeBonusScore * comboMultiplier);
+        }
+        if (lShapeBonus > 0) {
+            this.showSpecialPopup('L-SHAPE BONUS!', lShapeBonusScore * comboMultiplier);
+        }
         
         // Показываем комбо
         if (this.combo > 1) {
@@ -903,6 +1243,97 @@ class MatchThreePro {
         setTimeout(() => {
             popup.classList.remove('show');
         }, 1000);
+    }
+    
+    showSpecialPopup(text, score) {
+        const popup = document.getElementById('scorePopup');
+        popup.textContent = `${text} +${Math.round(score)}`;
+        popup.style.left = '50%';
+        popup.style.top = '35%';
+        popup.style.fontSize = '1.2em';
+        popup.style.color = '#ffd700';
+        popup.classList.add('show');
+        
+        setTimeout(() => {
+            popup.classList.remove('show');
+            popup.style.fontSize = '';
+            popup.style.color = '';
+        }, 1500);
+    }
+    
+    // Проверяет, является ли совпадение T-образным
+    isTShapedMatch(match) {
+        if (match.length < 5) return false; // T-образная фигура минимум 5 ячеек
+        
+        // Группируем ячейки по строкам и столбцам
+        const rows = new Set(match.map(c => c.row));
+        const cols = new Set(match.map(c => c.col));
+        
+        // T-образная фигура имеет одну строку с 3+ ячейками и один столбец с 3+ ячейками
+        // которые пересекаются в одной точке
+        let hasHorizontalLine = false;
+        let hasVerticalLine = false;
+        let intersectionPoint = null;
+        
+        // Проверяем горизонтальные линии
+        rows.forEach(row => {
+            const cellsInRow = match.filter(c => c.row === row);
+            if (cellsInRow.length >= 3) {
+                hasHorizontalLine = true;
+                // Проверяем вертикальные линии, пересекающиеся с этой строкой
+                cols.forEach(col => {
+                    const cellsInCol = match.filter(c => c.col === col);
+                    if (cellsInCol.length >= 3 && cellsInRow.some(c => c.col === col)) {
+                        hasVerticalLine = true;
+                        intersectionPoint = { row, col };
+                    }
+                });
+            }
+        });
+        
+        return hasHorizontalLine && hasVerticalLine && intersectionPoint !== null;
+    }
+    
+    // Проверяет, является ли совпадение L-образным
+    isLShapedMatch(match) {
+        if (match.length < 5) return false; // L-образная фигура минимум 5 ячеек
+        
+        // Группируем ячейки по строкам и столбцам
+        const rows = new Set(match.map(c => c.row));
+        const cols = new Set(match.map(c => c.col));
+        
+        // L-образная фигура имеет одну строку с 3+ ячейками и один столбец с 3+ ячейками
+        // которые соединены в углу (не пересекаются в центре)
+        let hasHorizontalLine = false;
+        let hasVerticalLine = false;
+        let cornerPoint = null;
+        
+        // Проверяем горизонтальные линии
+        rows.forEach(row => {
+            const cellsInRow = match.filter(c => c.row === row);
+            if (cellsInRow.length >= 3) {
+                hasHorizontalLine = true;
+                // Проверяем вертикальные линии, соединенные в углу
+                cols.forEach(col => {
+                    const cellsInCol = match.filter(c => c.col === col);
+                    if (cellsInCol.length >= 3) {
+                        // Угол: ячейка должна быть в конце одной линии и началом другой
+                        const cornerCell = match.find(c => c.row === row && c.col === col);
+                        if (cornerCell) {
+                            // Проверяем, что это действительно угол (конец одной линии, начало другой)
+                            const isCorner = (cellsInRow.some(c => c.col === col) && 
+                                             cellsInCol.some(c => c.row === row));
+                            if (isCorner) {
+                                hasVerticalLine = true;
+                                cornerPoint = { row, col };
+                            }
+                        }
+                    }
+                });
+            }
+        });
+        
+        return hasHorizontalLine && hasVerticalLine && cornerPoint !== null && !this.isTShapedMatch(match);
     }
     
     createExplosionParticles(row, col) {
