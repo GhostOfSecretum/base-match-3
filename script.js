@@ -467,6 +467,12 @@ class MatchThreePro {
         this.isDragging = false;
         this.dragStartPos = null;
         this.lastTouchMoveTime = 0;
+        
+        // Кеш DOM элементов для производительности
+        this.domCache = {
+            gameBoard: null,
+            cells: new Map() // Кеш ячеек для быстрого доступа
+        };
     }
     
     async init() {
@@ -644,8 +650,12 @@ class MatchThreePro {
     }
     
     render() {
-        const gameBoard = document.getElementById('gameBoard');
-        const fragment = document.createDocumentFragment(); // Используем DocumentFragment для батчинга
+        // Кешируем gameBoard элемент
+        if (!this.domCache.gameBoard) {
+            this.domCache.gameBoard = document.getElementById('gameBoard');
+        }
+        const gameBoard = this.domCache.gameBoard;
+        const fragment = document.createDocumentFragment();
         
         // Сохраняем существующие ячейки для переиспользования обработчиков
         const existingCells = new Map();
@@ -653,6 +663,9 @@ class MatchThreePro {
             const key = `${cell.dataset.row}-${cell.dataset.col}`;
             existingCells.set(key, cell);
         });
+        
+        // Очищаем кеш ячеек
+        this.domCache.cells.clear();
         
         // Очищаем доску
         gameBoard.innerHTML = '';
@@ -699,6 +712,9 @@ class MatchThreePro {
                     cell.setAttribute('data-handlers-attached', 'true');
                 }
                 
+                // Кешируем ячейку
+                this.domCache.cells.set(cellKey, cell);
+                
                 fragment.appendChild(cell);
             }
         }
@@ -707,9 +723,22 @@ class MatchThreePro {
         this.updateUI();
     }
     
+    // Получает ячейку из кеша или DOM
+    getCellElement(row, col) {
+        const cellKey = `${row}-${col}`;
+        let cell = this.domCache.cells.get(cellKey);
+        if (!cell) {
+            cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+            if (cell) {
+                this.domCache.cells.set(cellKey, cell);
+            }
+        }
+        return cell;
+    }
+    
     // Обновляет только одну ячейку вместо полной перерисовки
     updateCell(row, col) {
-        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        const cell = this.getCellElement(row, col);
         if (!cell) {
             // Если ячейка не существует, перерисовываем всю доску
             this.render();
@@ -867,7 +896,7 @@ class MatchThreePro {
         this.highlightCell(row, col, true);
         
         // Добавляем класс для визуальной обратной связи
-        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        const cell = this.getCellElement(row, col);
         if (cell) {
             cell.classList.add('dragging');
         }
@@ -906,7 +935,7 @@ class MatchThreePro {
         const { row: startRow, col: startCol } = this.dragStartCell;
         
         // Убираем класс dragging
-        const startCell = document.querySelector(`[data-row="${startRow}"][data-col="${startCol}"]`);
+        const startCell = this.getCellElement(startRow, startCol);
         if (startCell) {
             startCell.classList.remove('dragging');
         }
@@ -940,7 +969,7 @@ class MatchThreePro {
     
     handleDragCancel() {
         if (this.dragStartCell) {
-            const cell = document.querySelector(`[data-row="${this.dragStartCell.row}"][data-col="${this.dragStartCell.col}"]`);
+            const cell = this.getCellElement(this.dragStartCell.row, this.dragStartCell.col);
             if (cell) {
                 cell.classList.remove('dragging');
             }
@@ -991,7 +1020,7 @@ class MatchThreePro {
     }
     
     highlightCell(row, col, highlight) {
-        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        const cell = this.getCellElement(row, col);
         if (cell) {
             cell.classList.toggle('selected', highlight);
         }
@@ -1015,7 +1044,7 @@ class MatchThreePro {
             await this.processMatches(matches);
         } else {
             // Возвращаем обратно
-            await this.sleep(50); // Уменьшили задержку
+            await this.sleep(30); // Минимальная задержка для визуальной обратной связи
             [this.board[row1][col1], this.board[row2][col2]] = 
             [this.board[row2][col2], this.board[row1][col1]];
             this.updateCell(row1, col1);
@@ -1380,7 +1409,7 @@ class MatchThreePro {
                 this.board[row][col].special = special;
                 this.updateCell(row, col); // Обновляем только измененные ячейки
             });
-            await this.sleep(100); // Уменьшили задержку
+            await this.sleep(50); // Минимальная задержка для показа специальных фигур
         }
         
         // Подсчитываем очки с учетом комбо и бонусов за T/L-образные фигуры
@@ -1428,7 +1457,7 @@ class MatchThreePro {
         // Анимация удаления
         matches.forEach(match => {
             match.forEach(({row, col}) => {
-                const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+                const cell = this.getCellElement(row, col);
                 if (cell) {
                     cell.classList.add('matched');
                     this.createExplosionParticles(row, col);
@@ -1436,7 +1465,7 @@ class MatchThreePro {
             });
         });
         
-        await this.sleep(200); // Уменьшили задержку анимации
+        await this.sleep(100); // Минимальная задержка анимации
         
         // Обрабатываем специальные фигуры
         const cellsToRemove = new Set();
@@ -1530,13 +1559,13 @@ class MatchThreePro {
         
         // Анимация падения для измененных ячеек
         cellsToUpdate.forEach(({row, col}) => {
-            const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+            const cell = this.getCellElement(row, col);
             if (cell) {
                 cell.classList.add('falling');
             }
         });
         
-        await this.sleep(150); // Уменьшили задержку
+        await this.sleep(80); // Быстрая анимация падения
     }
     
     fillEmptySpaces() {
@@ -1670,7 +1699,7 @@ class MatchThreePro {
     }
     
     createExplosionParticles(row, col) {
-        const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        const cell = this.getCellElement(row, col);
         if (!cell) return;
         
         // Определяем, является ли устройство мобильным
