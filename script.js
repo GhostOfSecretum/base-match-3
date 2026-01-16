@@ -233,7 +233,14 @@ class WalletManager {
         this.chainId = null;
         
         localStorage.removeItem('walletConnected');
+        
+        // Принудительно обновляем UI
         this.updateWalletUI();
+        
+        // Также обновляем display в игре, если он доступен
+        if (window.game && typeof window.game.updateWalletDisplay === 'function') {
+            window.game.updateWalletDisplay();
+        }
     }
     
     updateWalletUI() {
@@ -242,20 +249,29 @@ class WalletManager {
         const walletAddress = document.getElementById('walletAddress');
         const walletNetwork = document.getElementById('walletNetwork');
         
+        if (!connectBtn) return; // Защита от отсутствия элемента
+        
         if (this.account) {
             connectBtn.innerHTML = '<span>Disconnect</span>';
             connectBtn.classList.add('connected');
             
-            walletInfo.style.display = 'flex';
-            walletAddress.textContent = `${this.account.slice(0, 6)}...${this.account.slice(-4)}`;
-            
-            const networkName = this.chainId === BASE_NETWORK.chainId ? 'Base' : 'Unknown';
-            walletNetwork.textContent = `Network: ${networkName}`;
-            walletNetwork.className = 'wallet-network ' + (this.chainId === BASE_NETWORK.chainId ? 'base-network' : 'wrong-network');
+            if (walletInfo) {
+                walletInfo.style.display = 'flex';
+            }
+            if (walletAddress) {
+                walletAddress.textContent = `${this.account.slice(0, 6)}...${this.account.slice(-4)}`;
+            }
+            if (walletNetwork) {
+                const networkName = this.chainId === BASE_NETWORK.chainId ? 'Base' : 'Unknown';
+                walletNetwork.textContent = `Network: ${networkName}`;
+                walletNetwork.className = 'wallet-network ' + (this.chainId === BASE_NETWORK.chainId ? 'base-network' : 'wrong-network');
+            }
         } else {
             connectBtn.innerHTML = '<span>Connect Wallet</span>';
             connectBtn.classList.remove('connected');
-            walletInfo.style.display = 'none';
+            if (walletInfo) {
+                walletInfo.style.display = 'none';
+            }
         }
     }
     
@@ -2046,40 +2062,81 @@ class MatchThreePro {
         // Подключение кошелька (если элемент существует)
         const connectWalletBtn = document.getElementById('connectWalletBtn');
         if (connectWalletBtn && this.walletManager) {
+            // Определяем, является ли устройство мобильным
+            const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+            
+            // Флаг для предотвращения двойного срабатывания
+            let isProcessing = false;
+            
             // Функция обработки нажатия на кнопку
             const handleWalletButton = async (e) => {
                 // Предотвращаем всплытие, чтобы не конфликтовать с drag-обработчиками
                 e.preventDefault();
                 e.stopPropagation();
                 
-                if (this.walletManager.isConnected()) {
-                    if (confirm('Disconnect wallet?')) {
-                        this.walletManager.disconnect();
-                        if (typeof this.updateWalletDisplay === 'function') {
-                            this.updateWalletDisplay();
+                // Предотвращаем двойное срабатывание
+                if (isProcessing) return;
+                isProcessing = true;
+                
+                try {
+                    if (this.walletManager.isConnected()) {
+                        // На мобильных отключаем без confirm, на десктопе показываем confirm
+                        let shouldDisconnect = true;
+                        if (!isMobile) {
+                            shouldDisconnect = confirm('Disconnect wallet?');
                         }
-                    }
-                } else {
-                    const result = await this.walletManager.connect();
-                    if (result.success) {
-                        if (typeof this.updateWalletDisplay === 'function') {
-                            this.updateWalletDisplay();
+                        
+                        if (shouldDisconnect) {
+                            this.walletManager.disconnect();
+                            // Принудительно обновляем UI
+                            if (typeof this.updateWalletDisplay === 'function') {
+                                this.updateWalletDisplay();
+                            }
+                            // Также вызываем обновление UI кошелька напрямую
+                            if (this.walletManager.updateWalletUI) {
+                                this.walletManager.updateWalletUI();
+                            }
                         }
                     } else {
-                        if (this.walletManager.showWalletModal) {
-                            this.walletManager.showWalletModal(result.error);
+                        const result = await this.walletManager.connect();
+                        if (result.success) {
+                            if (typeof this.updateWalletDisplay === 'function') {
+                                this.updateWalletDisplay();
+                            }
+                        } else {
+                            if (this.walletManager.showWalletModal) {
+                                this.walletManager.showWalletModal(result.error);
+                            }
                         }
                     }
+                } catch (error) {
+                    console.error('Error handling wallet button:', error);
+                } finally {
+                    // Сбрасываем флаг через небольшую задержку
+                    setTimeout(() => {
+                        isProcessing = false;
+                    }, 300);
                 }
             };
             
             // Обработчики для клика и touch (для мобильных устройств)
             connectWalletBtn.addEventListener('click', handleWalletButton);
+            
+            // Для touch событий используем более надежную обработку
+            let touchStartTime = 0;
+            connectWalletBtn.addEventListener('touchstart', (e) => {
+                touchStartTime = Date.now();
+                e.stopPropagation(); // Предотвращаем всплытие к drag-обработчикам
+            }, { passive: true });
+            
             connectWalletBtn.addEventListener('touchend', (e) => {
-                // Для touch используем touchend с небольшой задержкой
-                e.preventDefault();
-                e.stopPropagation();
-                handleWalletButton(e);
+                // Проверяем, что это был тап (не свайп)
+                const touchDuration = Date.now() - touchStartTime;
+                if (touchDuration < 300) { // Короткий тап (< 300ms)
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleWalletButton(e);
+                }
             }, { passive: false });
         }
         
