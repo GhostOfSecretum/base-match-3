@@ -1,3 +1,7 @@
+// НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
+console.log('=== SCRIPT.JS STARTING ===');
+console.log('Timestamp:', new Date().toISOString());
+
 // MiniApp SDK будет загружен динамически
 let sdk = null;
 
