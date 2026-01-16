@@ -466,6 +466,7 @@ class MatchThreePro {
         this.dragStartCell = null;
         this.isDragging = false;
         this.dragStartPos = null;
+        this.lastTouchMoveTime = 0;
     }
     
     async init() {
@@ -683,21 +684,65 @@ class MatchThreePro {
     }
     
     setupDragHandlers(cell, row, col) {
-        // Touch события
-        cell.addEventListener('touchstart', (e) => this.handleDragStart(e, row, col), { passive: false });
-        cell.addEventListener('touchmove', (e) => this.handleDragMove(e), { passive: false });
-        cell.addEventListener('touchend', (e) => {
-            // Находим ячейку под точкой касания
-            const touch = e.changedTouches[0];
-            const target = document.elementFromPoint(touch.clientX, touch.clientY);
-            if (target && target.classList.contains('cell')) {
-                const targetRow = parseInt(target.dataset.row);
-                const targetCol = parseInt(target.dataset.col);
-                this.handleDragEnd(e, targetRow, targetCol);
-            } else {
-                this.handleDragCancel();
+        // Touch события - упрощенная обработка для лучшей производительности
+        cell.addEventListener('touchstart', (e) => {
+            if (e.touches.length === 1) { // Только одно касание
+                this.handleDragStart(e, row, col);
             }
         }, { passive: false });
+        
+        // Throttled touchmove для лучшей производительности
+        let lastTouchMove = 0;
+        cell.addEventListener('touchmove', (e) => {
+            const now = Date.now();
+            if (now - lastTouchMove > 16) { // ~60fps
+                this.handleDragMove(e);
+                lastTouchMove = now;
+            }
+        }, { passive: false });
+        
+        cell.addEventListener('touchend', (e) => {
+            if (!this.dragStartCell) return;
+            
+            const { row: startRow, col: startCol } = this.dragStartCell;
+            
+            // Используем сохраненную позицию для определения направления свайпа
+            const touch = e.changedTouches[0];
+            const finalX = touch.clientX;
+            const finalY = touch.clientY;
+            
+            // Находим ячейку под точкой касания
+            const target = document.elementFromPoint(finalX, finalY);
+            let targetRow = row;
+            let targetCol = col;
+            
+            if (target && target.classList.contains('cell')) {
+                targetRow = parseInt(target.dataset.row);
+                targetCol = parseInt(target.dataset.col);
+            } else if (this.isDragging) {
+                // Если свайп был, но не попали на ячейку, определяем направление
+                const deltaX = finalX - this.dragStartPos.x;
+                const deltaY = finalY - this.dragStartPos.y;
+                const minSwipeDistance = 30; // Минимальное расстояние для свайпа
+                
+                if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
+                    // Горизонтальный свайп
+                    targetCol = startCol + (deltaX > 0 ? 1 : -1);
+                    targetRow = startRow;
+                } else if (Math.abs(deltaY) > minSwipeDistance) {
+                    // Вертикальный свайп
+                    targetRow = startRow + (deltaY > 0 ? 1 : -1);
+                    targetCol = startCol;
+                }
+                
+                // Ограничиваем границами доски
+                targetRow = Math.max(0, Math.min(this.boardSize - 1, targetRow));
+                targetCol = Math.max(0, Math.min(this.boardSize - 1, targetCol));
+            }
+            
+            this.handleDragEnd(e, targetRow, targetCol);
+        }, { passive: false });
+        
         cell.addEventListener('touchcancel', () => this.handleDragCancel(), { passive: false });
         
         // Mouse события - только mousedown на ячейке
@@ -756,6 +801,9 @@ class MatchThreePro {
             return;
         }
         
+        // Сбрасываем предыдущее состояние
+        this.resetDrag();
+        
         this.dragStartCell = { row, col };
         this.isDragging = false;
         this.dragStartPos = this.getEventPos(e);
@@ -769,6 +817,7 @@ class MatchThreePro {
         }
         
         e.preventDefault();
+        e.stopPropagation();
     }
     
     handleDragMove(e) {
@@ -777,7 +826,7 @@ class MatchThreePro {
         const currentPos = this.getEventPos(e);
         const deltaX = Math.abs(currentPos.x - this.dragStartPos.x);
         const deltaY = Math.abs(currentPos.y - this.dragStartPos.y);
-        const threshold = 10; // Минимальное расстояние для начала перетаскивания
+        const threshold = 5; // Уменьшили порог для более чувствительных свайпов
         
         if (deltaX > threshold || deltaY > threshold) {
             if (!this.isDragging) {
@@ -786,7 +835,7 @@ class MatchThreePro {
             e.preventDefault();
         }
         
-        // Для touch событий обрабатываем здесь
+        // Для touch событий всегда предотвращаем стандартное поведение
         if (e.type === 'touchmove') {
             e.preventDefault();
         }
@@ -846,12 +895,16 @@ class MatchThreePro {
     
     resetDrag() {
         // Убираем класс dragging со всех ячеек на всякий случай
-        document.querySelectorAll('.cell.dragging').forEach(cell => {
-            cell.classList.remove('dragging');
-        });
+        const draggingCells = document.querySelectorAll('.cell.dragging');
+        if (draggingCells.length > 0) {
+            draggingCells.forEach(cell => {
+                cell.classList.remove('dragging');
+            });
+        }
         this.dragStartCell = null;
         this.isDragging = false;
         this.dragStartPos = null;
+        this.lastTouchMoveTime = 0;
     }
     
     handleCellClick(row, col) {
