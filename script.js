@@ -1547,17 +1547,28 @@ class MatchThreePro {
         const cell = document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
         if (!cell) return;
         
+        // Определяем, является ли устройство мобильным
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+        
+        // На мобильных отключаем частицы для лучшей производительности
+        if (isMobile) {
+            return;
+        }
+        
         const rect = cell.getBoundingClientRect();
         const centerX = rect.left + rect.width / 2;
         const centerY = rect.top + rect.height / 2;
         
-        for (let i = 0; i < 12; i++) {
+        // На десктопе используем меньше частиц
+        const particleCount = 8;
+        
+        for (let i = 0; i < particleCount; i++) {
             const particle = document.createElement('div');
             particle.className = 'particle explosion';
             particle.style.left = centerX + 'px';
             particle.style.top = centerY + 'px';
             
-            const angle = (Math.PI * 2 * i) / 12;
+            const angle = (Math.PI * 2 * i) / particleCount;
             const distance = 40 + Math.random() * 40;
             const x = Math.cos(angle) * distance;
             const y = Math.sin(angle) * distance;
@@ -1577,7 +1588,12 @@ class MatchThreePro {
     
     createParticles() {
         const container = document.getElementById('particlesContainer');
-        for (let i = 0; i < 20; i++) {
+        // Определяем, является ли устройство мобильным
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth <= 768;
+        // На мобильных создаем меньше частиц для лучшей производительности
+        const particleCount = isMobile ? 5 : 20;
+        
+        for (let i = 0; i < particleCount; i++) {
             const particle = document.createElement('div');
             particle.className = 'particle';
             particle.style.left = Math.random() * 100 + '%';

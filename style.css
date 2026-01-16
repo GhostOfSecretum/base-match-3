@@ -150,6 +150,7 @@ body::before {
 .game-container {
     background: rgba(255, 255, 255, 0.05);
     backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 15px;
     padding: 6px;
@@ -159,6 +160,9 @@ body::before {
     position: relative;
     overflow: hidden;
     margin: 0 auto;
+    /* GPU ускорение */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
 .game-container::before {
@@ -473,7 +477,7 @@ body::before {
     aspect-ratio: 1;
     border-radius: 16px;
     cursor: grab;
-    transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    transition: transform 0.15s ease, border-color 0.15s ease;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -490,6 +494,9 @@ body::before {
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+    /* GPU ускорение для лучшей производительности */
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
 }
 
 .cell::after {
@@ -1180,17 +1187,48 @@ body::before {
     text-shadow: 0 0 10px rgba(0, 82, 255, 0.6);
 }
 
-@media (max-width: 600px) {
+/* Оптимизации для мобильных устройств */
+@media (max-width: 768px) {
+    /* Отключаем тяжелые эффекты для лучшей производительности */
     .game-container {
+        backdrop-filter: blur(5px);
         padding: 20px;
+    }
+    
+    .game-container::before {
+        display: none; /* Отключаем вращающийся градиент на мобильных */
+    }
+    
+    /* Упрощаем тени для лучшей производительности */
+    .cell {
+        font-size: 1.5em;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+    
+    .cell:hover {
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+    }
+    
+    .cell.selected {
+        box-shadow: 0 0 15px rgba(0, 82, 255, 0.6);
+    }
+    
+    /* Упрощаем анимации */
+    .cell.selected {
+        animation: none; /* Отключаем пульсацию на мобильных */
+    }
+    
+    .cell.type-bomb {
+        animation: none; /* Отключаем пульсацию бомбы */
+    }
+    
+    /* Уменьшаем количество фоновых частиц */
+    .particles-container {
+        display: none; /* Полностью скрываем частицы на мобильных */
     }
     
     .logo h1 {
         font-size: 2em;
-    }
-    
-    .cell {
-        font-size: 1.5em;
     }
     
     .stats-panel {
@@ -1225,5 +1263,16 @@ body::before {
     
     .game-controls {
         flex-wrap: wrap;
+    }
+    
+    /* Упрощаем фон body */
+    body::before {
+        opacity: 0.5; /* Уменьшаем интенсивность фонового градиента */
+    }
+}
+
+@media (max-width: 600px) {
+    .game-container {
+        padding: 15px;
     }
 }
