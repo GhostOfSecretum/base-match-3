@@ -51,6 +51,24 @@
             display: none;
         }
     </style>
+    <!-- Загружаем ethers.js с fallback на альтернативный CDN -->
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" 
+            onerror="loadEthersFallback()"></script>
+    <script>
+        // Fallback загрузка ethers.js с альтернативного CDN
+        function loadEthersFallback() {
+            console.log('Primary ethers.js CDN failed, trying fallback...');
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js';
+            script.onerror = function() {
+                console.warn('Both ethers.js CDNs failed. Wallet connection will be unavailable.');
+            };
+            script.onload = function() {
+                console.log('ethers.js loaded from fallback CDN');
+            };
+            document.head.appendChild(script);
+        }
+    </script>
 </head>
 <body>
     <div id="loadingIndicator">Loading game...</div>
@@ -228,36 +246,7 @@
         });
     </script>
     
-    <!-- Сначала загружаем тестовый скрипт для проверки -->
-    <script src="test-script.js"></script>
-    
-    <!-- Пробуем загрузить основной скрипт с обработкой ошибок -->
-    <script>
-        // Пытаемся загрузить script.js с обработкой ошибок
-        const script = document.createElement('script');
-        script.src = 'script.js';
-        script.onerror = function() {
-            console.error('Failed to load script.js');
-            const gameBoard = document.getElementById('gameBoard');
-            if (gameBoard) {
-                gameBoard.innerHTML = '<div style="color: red; padding: 20px; text-align: center;"><h3>Error: script.js failed to load</h3><p>Check browser console and network tab</p></div>';
-            }
-        };
-        script.onload = function() {
-            console.log('script.js loaded successfully');
-        };
-        document.head.appendChild(script);
-        
-        // Проверяем, загрузилась ли игра
-        setTimeout(() => {
-            if (!window.game) {
-                console.error('Game not initialized after 5 seconds');
-                const gameBoard = document.getElementById('gameBoard');
-                if (gameBoard && !gameBoard.innerHTML.includes('Test Script Works')) {
-                    gameBoard.innerHTML = '<div style="color: orange; padding: 20px; text-align: center;"><h3>Game failed to initialize</h3><p>Check console for errors</p><p>Game object exists: ' + (window.game ? 'Yes' : 'No') + '</p></div>';
-                }
-            }
-        }, 5000);
-    </script>
+    <!-- Загружаем основной скрипт игры -->
+    <script src="script.js"></script>
 </body>
 </html>

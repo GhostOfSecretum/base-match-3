@@ -56,6 +56,67 @@ class WalletManager {
         }
     }
     
+    async loadEthersLibrary() {
+        return new Promise((resolve, reject) => {
+            if (typeof ethers !== 'undefined') {
+                resolve();
+                return;
+            }
+            
+            // Пробуем загрузить с основного CDN
+            const script = document.createElement('script');
+            script.src = 'https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js';
+            script.async = true;
+            
+            script.onload = () => {
+                console.log('ethers.js loaded successfully');
+                if (typeof ethers !== 'undefined') {
+                    resolve();
+                } else {
+                    this.tryFallbackCDN(resolve, reject);
+                }
+            };
+            
+            script.onerror = () => {
+                console.warn('Primary ethers.js CDN failed, trying fallback...');
+                this.tryFallbackCDN(resolve, reject);
+            };
+            
+            // Устанавливаем таймаут
+            setTimeout(() => {
+                if (typeof ethers === 'undefined') {
+                    console.warn('ethers.js loading timeout');
+                    this.tryFallbackCDN(resolve, reject);
+                }
+            }, 3000);
+            
+            document.head.appendChild(script);
+        });
+    }
+    
+    tryFallbackCDN(resolve, reject) {
+        // Пробуем альтернативный CDN
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js';
+        script.async = true;
+        
+        script.onload = () => {
+            console.log('ethers.js loaded from fallback CDN');
+            if (typeof ethers !== 'undefined') {
+                resolve();
+            } else {
+                reject(new Error('ethers.js failed to load from all CDNs'));
+            }
+        };
+        
+        script.onerror = () => {
+            console.error('All ethers.js CDNs failed');
+            reject(new Error('ethers.js could not be loaded from any CDN'));
+        };
+        
+        document.head.appendChild(script);
+    }
+    
     checkSavedConnection() {
         const saved = localStorage.getItem('walletConnected');
         if (saved === 'true' && window.ethereum) {
@@ -65,6 +126,18 @@ class WalletManager {
     
     async connect() {
         try {
+            // Проверяем наличие ethers.js
+            if (typeof ethers === 'undefined') {
+                // Пытаемся загрузить ethers.js динамически
+                console.log('ethers.js not found, attempting to load...');
+                await this.loadEthersLibrary();
+                
+                // Проверяем еще раз после попытки загрузки
+                if (typeof ethers === 'undefined') {
+                    throw new Error('Ethers.js library could not be loaded. Please check your internet connection and refresh the page.\n\nIf the problem persists, the CDN may be blocked. Wallet connection requires ethers.js library.');
+                }
+            }
+            
             if (!window.ethereum) {
                 throw new Error('Ethereum wallet not found. Please install MetaMask, Coinbase Wallet, or another compatible wallet.');
             }
@@ -1276,6 +1349,18 @@ function hideLoadingIndicator() {
 async function initializeGame() {
     console.log('initializeGame() called');
     
+    // Проверяем наличие ethers.js (но не блокируем игру, если его нет)
+    if (typeof ethers === 'undefined') {
+        console.warn('ethers.js not loaded - wallet connection will be unavailable');
+        // Пытаемся подождать еще немного для загрузки ethers.js
+        await new Promise(resolve => setTimeout(resolve, 500));
+        if (typeof ethers === 'undefined') {
+            console.warn('ethers.js still not loaded - wallet features disabled');
+        }
+    } else {
+        console.log('ethers.js loaded successfully');
+    }
+    
     // Проверяем, что DOM готов
     if (document.readyState === 'loading') {
         console.log('Waiting for DOM to load...');
@@ -1289,6 +1374,7 @@ async function initializeGame() {
     }
     
     console.log('DOM is ready, initializing game...');
+    console.log('ethers available:', typeof ethers !== 'undefined');
     
     try {
         // Проверяем наличие необходимых элементов
