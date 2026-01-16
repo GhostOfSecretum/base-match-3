@@ -324,6 +324,7 @@ body::before {
     padding: 3px 5px;
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 3px;
     transition: all 0.3s ease;
     position: relative;
@@ -358,6 +359,10 @@ body::before {
 
 .stat-content {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
 }
 
 .stat-label {
@@ -366,6 +371,7 @@ body::before {
     text-transform: uppercase;
     letter-spacing: 0.3px;
     margin-bottom: 0;
+    text-align: center;
 }
 
 .stat-value {
@@ -374,6 +380,7 @@ body::before {
     font-weight: 700;
     color: white;
     text-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+    text-align: center;
 }
 
 .objectives-panel {
