@@ -243,7 +243,7 @@ class WalletManager {
         const walletNetwork = document.getElementById('walletNetwork');
         
         if (this.account) {
-            connectBtn.innerHTML = '<span class="btn-icon">🔌</span><span>Disconnect</span>';
+            connectBtn.innerHTML = '<span>Disconnect</span>';
             connectBtn.classList.add('connected');
             
             walletInfo.style.display = 'flex';
