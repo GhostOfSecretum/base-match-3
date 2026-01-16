@@ -452,6 +452,16 @@ class MatchThreePro {
             ROCKET_V: 'rocket-v'
         };
         
+        // Пути к изображениям логотипов криптовалют
+        this.cryptoImages = [
+            'assets/crypto/aave.png',
+            'assets/crypto/aero.jpg',
+            'assets/crypto/avnt.webp',
+            'assets/crypto/base.png',
+            'assets/crypto/degen.png',
+            'assets/crypto/usdc.png'
+        ];
+        
         // Переменные для свайпов
         this.dragStartCell = null;
         this.isDragging = false;
@@ -649,6 +659,18 @@ class MatchThreePro {
                 cell.className = className;
                 cell.dataset.row = row;
                 cell.dataset.col = col;
+                
+                // Добавляем изображение логотипа, если это обычная ячейка (не специальная)
+                if (cellData.type >= 0 && cellData.type < this.numTypes && !cellData.special) {
+                    const logoContainer = document.createElement('div');
+                    logoContainer.className = 'cell-logo-container';
+                    const img = document.createElement('img');
+                    img.src = this.cryptoImages[cellData.type];
+                    img.className = 'cell-logo';
+                    img.alt = '';
+                    logoContainer.appendChild(img);
+                    cell.appendChild(logoContainer);
+                }
                 
                 // Добавляем обработчики для свайпов (touch и mouse)
                 this.setupDragHandlers(cell, row, col);
