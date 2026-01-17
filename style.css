@@ -777,11 +777,11 @@ body::before {
     font-family: 'Coinbase Text', sans-serif;
     font-size: 4em;
     font-weight: 700;
-    color: white;
+    color: var(--base-blue);
     text-shadow: 
-        0 0 20px rgba(255, 255, 255, 0.8),
-        0 0 40px rgba(255, 255, 255, 1),
-        0 0 60px rgba(255, 255, 255, 0.8);
+        0 0 20px rgba(0, 82, 255, 0.8),
+        0 0 40px rgba(0, 82, 255, 1),
+        0 0 60px rgba(0, 82, 255, 0.8);
     pointer-events: none;
     z-index: 1000;
     transition: transform 0.3s;
@@ -804,8 +804,8 @@ body::before {
     font-family: 'Coinbase Text', sans-serif;
     font-size: 1.5em;
     font-weight: 700;
-    color: #ffe66d;
-    text-shadow: 0 0 10px rgba(255, 230, 109, 0.8);
+    color: var(--base-blue);
+    text-shadow: 0 0 10px rgba(0, 82, 255, 0.8);
     z-index: 999;
     opacity: 0;
     transition: opacity 0.3s;
