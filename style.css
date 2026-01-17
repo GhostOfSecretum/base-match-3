@@ -58,6 +58,7 @@
 body {
     font-family: 'Coinbase Text', sans-serif;
     background: #000000;
+    min-height: 100vh;
     height: 100vh;
     display: flex;
     justify-content: center;
@@ -65,6 +66,10 @@ body {
     padding: 5px;
     overflow: hidden;
     position: relative;
+    margin: 0;
+    /* Убеждаемся, что body виден */
+    visibility: visible;
+    opacity: 1;
 }
 
 body::before {
@@ -89,6 +94,10 @@ body::before {
     max-height: 100vh;
     overflow-y: auto;
     overflow-x: hidden;
+    /* Убеждаемся, что контент виден */
+    visibility: visible;
+    opacity: 1;
+    min-height: 100vh;
 }
 
 .particles-container {

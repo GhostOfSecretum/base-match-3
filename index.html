@@ -2,9 +2,14 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>Base Match-3</title>
     <meta name="base:app_id" content="6969764d8aabd019b25f51a0" />
+    
+    <!-- Мета-теги для работы в iframe -->
+    <meta name="referrer" content="no-referrer">
+    <meta name="format-detection" content="telephone=no">
     
     <!-- Open Graph meta tags for preview in posts -->
     <meta property="og:title" content="Base Match-3 - Match Crypto Tokens Puzzle Game on Base" />
@@ -35,6 +40,28 @@
       }
     }' />
     <link rel="stylesheet" href="style.css">
+    <!-- Fallback стили на случай, если CSS не загрузится -->
+    <style>
+        /* Минимальные стили для видимости контента */
+        html, body {
+            margin: 0;
+            padding: 0;
+            background: #000000;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .game-wrapper {
+            display: block;
+            width: 100%;
+            min-height: 100vh;
+        }
+        .game-container {
+            display: block;
+            width: 100%;
+            min-height: 100vh;
+            background: rgba(255, 255, 255, 0.05);
+        }
+    </style>
     <style>
         /* Индикатор загрузки */
         #loadingIndicator {
@@ -46,9 +73,25 @@
             font-family: 'Coinbase Text', sans-serif;
             text-align: center;
             z-index: 10000;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 20px 40px;
+            border-radius: 10px;
+            border: 1px solid rgba(0, 82, 255, 0.5);
         }
         #loadingIndicator.hidden {
             display: none;
+        }
+        
+        /* Убеждаемся, что body виден даже при загрузке */
+        body {
+            min-height: 100vh;
+            background: #000000 !important;
+        }
+        
+        /* Показываем контент даже если JS еще не загрузился */
+        .game-wrapper {
+            min-height: 100vh;
+            opacity: 1;
         }
     </style>
     <!-- Загружаем ethers.js с fallback на альтернативный CDN -->
@@ -233,12 +276,62 @@
     <!-- Простой тест для проверки выполнения JavaScript -->
     <script>
         console.log('HTML script tag executed');
+        console.log('Window location:', window.location.href);
+        
+        // Безопасная проверка iframe
+        try {
+            const isInIframe = window.self !== window.top;
+            console.log('Is in iframe:', isInIframe);
+        } catch (e) {
+            console.log('Cannot check iframe status (may be cross-origin):', e.message);
+        }
+        
+        // Проверка доступности Farcaster SDK
+        setTimeout(() => {
+            console.log('Checking for Farcaster SDK...');
+            try {
+                if (window.farcaster) {
+                    console.log('window.farcaster found:', typeof window.farcaster);
+                    if (window.farcaster.miniapp) {
+                        console.log('window.farcaster.miniapp found');
+                    }
+                } else {
+                    console.log('window.farcaster not found');
+                }
+            } catch (e) {
+                console.log('Error checking window.farcaster:', e.message);
+            }
+        }, 500);
+        
         window.addEventListener('DOMContentLoaded', () => {
             console.log('DOMContentLoaded fired');
+        });
+        
+        // Обработка ошибок для отладки
+        window.addEventListener('error', (event) => {
+            console.error('Global error:', event.error);
+            console.error('Error message:', event.message);
+            console.error('Error filename:', event.filename);
+            console.error('Error lineno:', event.lineno);
+        });
+        
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('Unhandled promise rejection:', event.reason);
         });
     </script>
     
     <!-- Загружаем основной скрипт игры -->
     <script src="script.js"></script>
+    
+    <!-- Fallback: если скрипт не загрузился, показываем сообщение -->
+    <script>
+        setTimeout(() => {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            if (loadingIndicator && !loadingIndicator.classList.contains('hidden')) {
+                // Если индикатор все еще виден через 5 секунд, значит что-то пошло не так
+                loadingIndicator.innerHTML = 'Loading game...<br><small style="font-size: 0.8em; opacity: 0.7;">If this persists, please refresh</small>';
+            }
+        }, 5000);
+    </script>
 </body>
 </html>

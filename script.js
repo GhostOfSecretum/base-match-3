@@ -494,6 +494,9 @@ class MatchThreePro {
     async init() {
         try {
             console.log('Initializing game...');
+            console.log('Window dimensions:', window.innerWidth, 'x', window.innerHeight);
+            console.log('Document dimensions:', document.documentElement.clientWidth, 'x', document.documentElement.clientHeight);
+            
             this.createBoard();
             console.log('Board created');
             this.render();
@@ -523,8 +526,42 @@ class MatchThreePro {
             this.initializeSDK();
             
             console.log('Game initialized successfully');
+            
+            // Проверяем видимость элементов
+            const gameBoard = document.getElementById('gameBoard');
+            if (gameBoard) {
+                const rect = gameBoard.getBoundingClientRect();
+                const styles = window.getComputedStyle(gameBoard);
+                console.log('Game board position:', rect);
+                console.log('Game board visible:', rect.width > 0 && rect.height > 0);
+                console.log('Game board display:', styles.display);
+                console.log('Game board visibility:', styles.visibility);
+                console.log('Game board opacity:', styles.opacity);
+                
+                // Если элемент не виден, пытаемся исправить
+                if (rect.width === 0 || rect.height === 0) {
+                    console.warn('Game board has zero dimensions, checking parent elements...');
+                    const wrapper = document.querySelector('.game-wrapper');
+                    if (wrapper) {
+                        const wrapperRect = wrapper.getBoundingClientRect();
+                        console.log('Game wrapper dimensions:', wrapperRect);
+                    }
+                }
+            } else {
+                console.error('Game board element not found after initialization!');
+            }
+            
+            // Проверяем видимость game-container
+            const gameContainer = document.querySelector('.game-container');
+            if (gameContainer) {
+                const containerRect = gameContainer.getBoundingClientRect();
+                const containerStyles = window.getComputedStyle(gameContainer);
+                console.log('Game container visible:', containerRect.width > 0 && containerRect.height > 0);
+                console.log('Game container display:', containerStyles.display);
+            }
         } catch (error) {
             console.error('Error in init():', error);
+            console.error('Error stack:', error.stack);
             throw error;
         }
     }
@@ -2171,24 +2208,66 @@ class MatchThreePro {
         // Пытаемся загрузить SDK асинхронно (не блокируем игру)
         (async () => {
             try {
+                // Ждем немного, чтобы SDK успел загрузиться
+                await new Promise(resolve => setTimeout(resolve, 200));
+                
                 // В Base app SDK должен быть доступен автоматически через глобальные объекты
                 // Проверяем различные способы доступа
                 let sdkInstance = null;
                 
-                // Способ 1: через window.farcaster (если доступен)
-                if (window.farcaster && window.farcaster.miniapp) {
-                    sdkInstance = window.farcaster.miniapp;
-                }
-                // Способ 2: через window.miniappSdk
-                else if (window.miniappSdk) {
-                    sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
-                }
-                // Способ 3: через window.farcaster.miniapp (альтернативный путь)
-                else if (window.farcaster && window.farcaster.miniapp) {
-                    sdkInstance = window.farcaster.miniapp;
+                // Способ 1: через window.farcaster.miniapp (основной путь для Farcaster)
+                try {
+                    if (window.farcaster && window.farcaster.miniapp) {
+                        sdkInstance = window.farcaster.miniapp;
+                        console.log('SDK found via window.farcaster.miniapp');
+                    }
+                } catch (e) {
+                    console.log('Cannot access window.farcaster:', e.message);
                 }
                 
-                if (sdkInstance && sdkInstance.actions && sdkInstance.actions.ready) {
+                // Способ 2: через window.miniappSdk
+                if (!sdkInstance) {
+                    try {
+                        if (window.miniappSdk) {
+                            sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
+                            console.log('SDK found via window.miniappSdk');
+                        }
+                    } catch (e) {
+                        console.log('Cannot access window.miniappSdk:', e.message);
+                    }
+                }
+                
+                // Способ 3: через window.parent.farcaster (для iframe) - с безопасной проверкой
+                if (!sdkInstance) {
+                    try {
+                        if (window.parent && window.parent !== window) {
+                            if (window.parent.farcaster && window.parent.farcaster.miniapp) {
+                                sdkInstance = window.parent.farcaster.miniapp;
+                                console.log('SDK found via window.parent.farcaster.miniapp');
+                            }
+                        }
+                    } catch (e) {
+                        // Это нормально, если доступ к parent заблокирован (cross-origin)
+                        console.log('Cannot access window.parent (may be cross-origin):', e.message);
+                    }
+                }
+                
+                // Способ 4: через window.top.farcaster (для вложенных iframe) - с безопасной проверкой
+                if (!sdkInstance) {
+                    try {
+                        if (window.top && window.top !== window) {
+                            if (window.top.farcaster && window.top.farcaster.miniapp) {
+                                sdkInstance = window.top.farcaster.miniapp;
+                                console.log('SDK found via window.top.farcaster.miniapp');
+                            }
+                        }
+                    } catch (e) {
+                        // Это нормально, если доступ к top заблокирован (cross-origin)
+                        console.log('Cannot access window.top (may be cross-origin):', e.message);
+                    }
+                }
+                
+                if (sdkInstance && sdkInstance.actions && typeof sdkInstance.actions.ready === 'function') {
                     sdk = sdkInstance;
                     await sdk.actions.ready();
                     console.log('MiniApp SDK ready');
@@ -2222,6 +2301,18 @@ function hideLoadingIndicator() {
     const indicator = document.getElementById('loadingIndicator');
     if (indicator) {
         indicator.classList.add('hidden');
+        console.log('Loading indicator hidden');
+    } else {
+        console.warn('Loading indicator element not found');
+    }
+}
+
+// Показываем индикатор загрузки
+function showLoadingIndicator(message = 'Loading game...') {
+    const indicator = document.getElementById('loadingIndicator');
+    if (indicator) {
+        indicator.textContent = message;
+        indicator.classList.remove('hidden');
     }
 }
 
@@ -2229,34 +2320,21 @@ function hideLoadingIndicator() {
 async function initializeGame() {
     console.log('initializeGame() called');
     
-    // Проверяем наличие ethers.js (но не блокируем игру, если его нет)
-    if (typeof ethers === 'undefined') {
-        console.warn('ethers.js not loaded - wallet connection will be unavailable');
-        // Пытаемся подождать еще немного для загрузки ethers.js
-        await new Promise(resolve => setTimeout(resolve, 500));
-        if (typeof ethers === 'undefined') {
-            console.warn('ethers.js still not loaded - wallet features disabled');
-        }
-    } else {
-        console.log('ethers.js loaded successfully');
-    }
-    
-    // Проверяем, что DOM готов
-    if (document.readyState === 'loading') {
-        console.log('Waiting for DOM to load...');
-        await new Promise(resolve => {
-            if (document.readyState === 'loading') {
-                document.addEventListener('DOMContentLoaded', resolve);
-            } else {
-                resolve();
-            }
-        });
-    }
-    
-    console.log('DOM is ready, initializing game...');
-    console.log('ethers available:', typeof ethers !== 'undefined');
-    
     try {
+        // Проверяем, что DOM готов
+        if (document.readyState === 'loading') {
+            console.log('Waiting for DOM to load...');
+            await new Promise(resolve => {
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', resolve);
+                } else {
+                    resolve();
+                }
+            });
+        }
+        
+        console.log('DOM is ready, initializing game...');
+        
         // Проверяем наличие необходимых элементов
         const gameBoard = document.getElementById('gameBoard');
         if (!gameBoard) {
@@ -2264,6 +2342,19 @@ async function initializeGame() {
         }
         console.log('gameBoard element found');
         
+        // Проверяем наличие ethers.js (но не блокируем игру, если его нет)
+        if (typeof ethers === 'undefined') {
+            console.warn('ethers.js not loaded - wallet connection will be unavailable');
+            // Пытаемся подождать еще немного для загрузки ethers.js
+            await new Promise(resolve => setTimeout(resolve, 500));
+            if (typeof ethers === 'undefined') {
+                console.warn('ethers.js still not loaded - wallet features disabled');
+            }
+        } else {
+            console.log('ethers.js loaded successfully');
+        }
+        
+        // Инициализируем игру
         game = new MatchThreePro();
         console.log('MatchThreePro instance created');
         
@@ -2273,9 +2364,60 @@ async function initializeGame() {
         
         // Скрываем индикатор загрузки
         hideLoadingIndicator();
+        
+        // Пытаемся вызвать ready() для SDK после инициализации игры
+        try {
+            // Ждем немного, чтобы SDK успел загрузиться
+            await new Promise(resolve => setTimeout(resolve, 300));
+            
+            let sdkInstance = null;
+            
+            // Безопасная проверка window.farcaster
+            try {
+                if (window.farcaster && window.farcaster.miniapp && window.farcaster.miniapp.actions) {
+                    sdkInstance = window.farcaster.miniapp;
+                }
+            } catch (e) {
+                console.log('Cannot access window.farcaster:', e.message);
+            }
+            
+            // Безопасная проверка window.miniappSdk
+            if (!sdkInstance) {
+                try {
+                    if (window.miniappSdk && window.miniappSdk.actions) {
+                        sdkInstance = window.miniappSdk;
+                    }
+                } catch (e) {
+                    console.log('Cannot access window.miniappSdk:', e.message);
+                }
+            }
+            
+            // Безопасная проверка window.parent
+            if (!sdkInstance) {
+                try {
+                    if (window.parent && window.parent !== window && window.parent.farcaster && window.parent.farcaster.miniapp && window.parent.farcaster.miniapp.actions) {
+                        sdkInstance = window.parent.farcaster.miniapp;
+                    }
+                } catch (e) {
+                    // Это нормально для cross-origin iframe
+                    console.log('Cannot access window.parent:', e.message);
+                }
+            }
+            
+            if (sdkInstance && typeof sdkInstance.actions.ready === 'function') {
+                await sdkInstance.actions.ready();
+                console.log('SDK ready() called successfully');
+            }
+        } catch (sdkError) {
+            console.log('SDK ready call failed (non-critical):', sdkError.message);
+        }
+        
     } catch (error) {
         console.error('Error initializing game:', error);
         console.error('Error stack:', error.stack);
+        
+        // Скрываем индикатор загрузки даже при ошибке
+        hideLoadingIndicator();
         
         // Показываем ошибку пользователю
         const gameBoard = document.getElementById('gameBoard');
@@ -2284,27 +2426,62 @@ async function initializeGame() {
                 <h3>Error loading game</h3>
                 <p>Please refresh the page.</p>
                 <p style="font-size: 0.8em; color: #999; margin-top: 10px;">${error.message}</p>
-                <pre style="font-size: 0.7em; color: #666; text-align: left; margin-top: 10px; overflow: auto;">${error.stack}</pre>
             </div>`;
-        }
-        
-        // Пытаемся вызвать ready() для SDK через глобальные объекты
-        try {
-            if (window.farcaster && window.farcaster.miniapp && window.farcaster.miniapp.actions) {
-                await window.farcaster.miniapp.actions.ready();
-            } else if (window.miniappSdk && window.miniappSdk.actions) {
-                await window.miniappSdk.actions.ready();
-            }
-        } catch (sdkError) {
-            console.log('SDK ready call failed:', sdkError);
         }
     }
 }
 
 // Запускаем игру при загрузке DOM
-if (document.readyState === 'loading') {
-    window.addEventListener('DOMContentLoaded', initializeGame);
-} else {
-    // DOM уже загружен
-    initializeGame();
-}
+// Используем несколько способов для максимальной совместимости
+(function() {
+    let initializationAttempted = false;
+    
+    function attemptInitialization() {
+        if (initializationAttempted) {
+            console.log('Initialization already attempted, skipping...');
+            return;
+        }
+        initializationAttempted = true;
+        console.log('Attempting game initialization...');
+        initializeGame().catch(error => {
+            console.error('Failed to initialize game:', error);
+            // Показываем сообщение об ошибке пользователю
+            const gameBoard = document.getElementById('gameBoard');
+            if (gameBoard) {
+                gameBoard.innerHTML = `
+                    <div style="color: white; padding: 20px; text-align: center; background: rgba(255,0,0,0.2); border-radius: 10px;">
+                        <h3>Error loading game</h3>
+                        <p>Please refresh the page.</p>
+                        <p style="font-size: 0.8em; color: #999; margin-top: 10px;">${error.message || 'Unknown error'}</p>
+                    </div>
+                `;
+            }
+            hideLoadingIndicator();
+        });
+    }
+    
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', attemptInitialization);
+        // Также слушаем load событие на всякий случай
+        window.addEventListener('load', () => {
+            if (!game && !initializationAttempted) {
+                console.log('Game not initialized on DOMContentLoaded, trying on load event');
+                attemptInitialization();
+            }
+        });
+    } else if (document.readyState === 'interactive' || document.readyState === 'complete') {
+        // DOM уже загружен
+        attemptInitialization();
+    } else {
+        // Если состояние неизвестно, ждем DOMContentLoaded
+        document.addEventListener('DOMContentLoaded', attemptInitialization);
+    }
+    
+    // Fallback: если через 2 секунды игра не инициализирована, пытаемся еще раз
+    setTimeout(() => {
+        if (!game && !initializationAttempted) {
+            console.warn('Game not initialized after 2 seconds, attempting initialization');
+            attemptInitialization();
+        }
+    }, 2000);
+})();
