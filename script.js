@@ -502,6 +502,246 @@ class LeaderboardManager {
     }
 }
 
+// Sound Manager для управления звуками игры
+class SoundManager {
+    constructor() {
+        this.audioContext = null;
+        this.enabled = true;
+        this.volume = 0.3;
+        
+        // Инициализируем AudioContext при первом взаимодействии пользователя
+        this.initAudioContext();
+    }
+    
+    initAudioContext() {
+        // Создаем AudioContext только после взаимодействия пользователя
+        try {
+            this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        } catch (e) {
+            console.warn('Web Audio API not supported:', e);
+            this.enabled = false;
+        }
+    }
+    
+    ensureAudioContext() {
+        if (!this.audioContext && this.enabled) {
+            this.initAudioContext();
+        }
+        // Если контекст приостановлен, возобновляем его
+        if (this.audioContext && this.audioContext.state === 'suspended') {
+            this.audioContext.resume();
+        }
+    }
+    
+    // Генерирует звук монетки (короткий высокий звук)
+    playCoinSound() {
+        if (!this.enabled || !this.audioContext) return;
+        
+        this.ensureAudioContext();
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        // Звук монетки: быстрый подъем частоты
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(800, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(1200, this.audioContext.currentTime + 0.1);
+        
+        gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(this.volume * 0.5, this.audioContext.currentTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.1);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.1);
+    }
+    
+    // Звук комбо (более длинный и эффектный)
+    playComboSound(comboLevel) {
+        if (!this.enabled || !this.audioContext) return;
+        
+        this.ensureAudioContext();
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        // Звук комбо: более низкий и мощный
+        oscillator.type = 'sine';
+        const baseFreq = 400 + (comboLevel * 50); // Частота зависит от уровня комбо
+        oscillator.frequency.setValueAtTime(baseFreq, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(baseFreq * 1.5, this.audioContext.currentTime + 0.2);
+        
+        gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(this.volume * 0.7, this.audioContext.currentTime + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.3);
+    }
+    
+    // Звук бомбы (низкий взрыв)
+    playBombSound() {
+        if (!this.enabled || !this.audioContext) return;
+        
+        this.ensureAudioContext();
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(150, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(50, this.audioContext.currentTime + 0.2);
+        
+        gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(this.volume * 0.8, this.audioContext.currentTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.2);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.2);
+    }
+    
+    // Звук ракеты (свистящий звук)
+    playRocketSound() {
+        if (!this.enabled || !this.audioContext) return;
+        
+        this.ensureAudioContext();
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(600, this.audioContext.currentTime);
+        oscillator.frequency.linearRampToValueAtTime(1000, this.audioContext.currentTime + 0.15);
+        
+        gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(this.volume * 0.6, this.audioContext.currentTime + 0.02);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.15);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.15);
+    }
+    
+    // Звук падения фигур
+    playDropSound() {
+        if (!this.enabled || !this.audioContext) return;
+        
+        this.ensureAudioContext();
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(300, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(200, this.audioContext.currentTime + 0.05);
+        
+        gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(this.volume * 0.3, this.audioContext.currentTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.05);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.05);
+    }
+    
+    // Звук свапа (короткий клик)
+    playSwapSound() {
+        if (!this.enabled || !this.audioContext) return;
+        
+        this.ensureAudioContext();
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.type = 'sine';
+        oscillator.frequency.setValueAtTime(500, this.audioContext.currentTime);
+        
+        gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(this.volume * 0.4, this.audioContext.currentTime + 0.01);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.05);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.05);
+    }
+    
+    // Звук победы
+    playWinSound() {
+        if (!this.enabled || !this.audioContext) return;
+        
+        this.ensureAudioContext();
+        
+        // Играем последовательность нот
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C, E, G, C (мажорное трезвучие)
+        notes.forEach((freq, index) => {
+            setTimeout(() => {
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(freq, this.audioContext.currentTime);
+                
+                gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(this.volume * 0.6, this.audioContext.currentTime + 0.05);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.3);
+                
+                oscillator.start(this.audioContext.currentTime);
+                oscillator.stop(this.audioContext.currentTime + 0.3);
+            }, index * 100);
+        });
+    }
+    
+    // Звук проигрыша
+    playLoseSound() {
+        if (!this.enabled || !this.audioContext) return;
+        
+        this.ensureAudioContext();
+        
+        const oscillator = this.audioContext.createOscillator();
+        const gainNode = this.audioContext.createGain();
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(this.audioContext.destination);
+        
+        oscillator.type = 'sawtooth';
+        oscillator.frequency.setValueAtTime(200, this.audioContext.currentTime);
+        oscillator.frequency.exponentialRampToValueAtTime(100, this.audioContext.currentTime + 0.5);
+        
+        gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(this.volume * 0.5, this.audioContext.currentTime + 0.05);
+        gainNode.gain.exponentialRampToValueAtTime(0.01, this.audioContext.currentTime + 0.5);
+        
+        oscillator.start(this.audioContext.currentTime);
+        oscillator.stop(this.audioContext.currentTime + 0.5);
+    }
+    
+    toggle() {
+        this.enabled = !this.enabled;
+        return this.enabled;
+    }
+    
+    setVolume(volume) {
+        this.volume = Math.max(0, Math.min(1, volume));
+    }
+}
+
 class MatchThreePro {
     constructor() {
         this.boardSize = 7;
@@ -517,6 +757,7 @@ class MatchThreePro {
         this.particles = [];
         this.walletManager = new WalletManager();
         this.leaderboard = new LeaderboardManager(this.walletManager);
+        this.soundManager = new SoundManager();
         
         // Мигрируем старые данные при инициализации
         this.leaderboard.migrateOldData();
@@ -1140,6 +1381,9 @@ class MatchThreePro {
     }
     
     async swapCells(row1, col1, row2, col2) {
+        // Воспроизводим звук свапа
+        this.soundManager.playSwapSound();
+        
         // Меняем местами сразу
         [this.board[row1][col1], this.board[row2][col2]] = 
         [this.board[row2][col2], this.board[row1][col1]];
@@ -1582,6 +1826,9 @@ class MatchThreePro {
         // Показываем очки
         this.showScorePopup(scoreGain);
         
+        // Воспроизводим звук монетки один раз при исчезновении ячеек
+        this.soundManager.playCoinSound();
+        
         // Анимация удаления
         matches.forEach(match => {
             match.forEach(({row, col}) => {
@@ -1614,6 +1861,7 @@ class MatchThreePro {
             
             if (special === this.SPECIAL_TYPES.BOMB) {
                 // Бомба взрывает область 3x3
+                this.soundManager.playBombSound();
                 for (let r = Math.max(0, row - 1); r <= Math.min(this.boardSize - 1, row + 1); r++) {
                     for (let c = Math.max(0, col - 1); c <= Math.min(this.boardSize - 1, col + 1); c++) {
                         cellsToRemove.add(`${r}-${c}`);
@@ -1624,6 +1872,7 @@ class MatchThreePro {
                 }
             } else if (special === this.SPECIAL_TYPES.ROCKET_H) {
                 // Горизонтальная ракета удаляет всю строку
+                this.soundManager.playRocketSound();
                 for (let c = 0; c < this.boardSize; c++) {
                     cellsToRemove.add(`${row}-${c}`);
                     if (c !== col) {
@@ -1632,6 +1881,7 @@ class MatchThreePro {
                 }
             } else if (special === this.SPECIAL_TYPES.ROCKET_V) {
                 // Вертикальная ракета удаляет весь столбец
+                this.soundManager.playRocketSound();
                 for (let r = 0; r < this.boardSize; r++) {
                     cellsToRemove.add(`${r}-${col}`);
                     if (r !== row) {
@@ -1689,6 +1939,11 @@ class MatchThreePro {
             }
         }
         
+        // Воспроизводим звук падения один раз, если есть падающие ячейки
+        if (cellsToUpdate.length > 0) {
+            this.soundManager.playDropSound();
+        }
+        
         // Анимация падения для измененных ячеек
         cellsToUpdate.forEach(({row, col}) => {
             const cell = this.getCellElement(row, col);
@@ -1721,6 +1976,9 @@ class MatchThreePro {
         const comboDisplay = document.getElementById('comboDisplay');
         comboDisplay.textContent = `COMBO x${combo}!`;
         comboDisplay.classList.add('show');
+        
+        // Воспроизводим звук комбо
+        this.soundManager.playComboSound(combo);
         
         setTimeout(() => {
             comboDisplay.classList.remove('show');
@@ -1980,6 +2238,13 @@ class MatchThreePro {
                 ? 'You won! Connect your wallet to save your score to the leaderboard. 🎮'
                 : `Game Over! Connect your wallet to save your score to the leaderboard.`;
             
+            // Воспроизводим звуки даже если кошелек не подключен
+            if (won) {
+                this.soundManager.playWinSound();
+            } else {
+                this.soundManager.playLoseSound();
+            }
+            
             modal.classList.add('show');
             return;
         }
@@ -2011,12 +2276,16 @@ class MatchThreePro {
             message.textContent = isTopResult 
                 ? 'You reached the level goal and set a new high score! 🏆' 
                 : 'You reached the level goal! Great game!';
+            // Воспроизводим звук победы
+            this.soundManager.playWinSound();
         } else {
             title.textContent = 'Game Over!';
             message.textContent = `You needed ${(this.targetScore - this.score).toLocaleString()} more points. Try again!`;
             if (isTopResult) {
                 message.textContent += ' Great score! 🎯';
             }
+            // Воспроизводим звук проигрыша
+            this.soundManager.playLoseSound();
         }
         
         modal.classList.add('show');
