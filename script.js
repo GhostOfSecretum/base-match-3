@@ -508,36 +508,86 @@ class SoundManager {
         this.audioContext = null;
         this.enabled = true;
         this.volume = 0.3;
+        this.initialized = false;
+        this.initAttempts = 0;
+        this.maxInitAttempts = 10;
         
-        // Инициализируем AudioContext при первом взаимодействии пользователя
-        this.initAudioContext();
+        // НЕ инициализируем AudioContext сразу - только при первом взаимодействии
     }
     
     initAudioContext() {
         // Создаем AudioContext только после взаимодействия пользователя
+        if (this.initialized || this.initAttempts >= this.maxInitAttempts) {
+            return;
+        }
+        
+        this.initAttempts++;
+        
         try {
             this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            this.initialized = true;
+            console.log('AudioContext initialized successfully');
         } catch (e) {
             console.warn('Web Audio API not supported:', e);
             this.enabled = false;
         }
     }
     
-    ensureAudioContext() {
-        if (!this.audioContext && this.enabled) {
+    async ensureAudioContext() {
+        if (!this.initialized && this.enabled) {
             this.initAudioContext();
         }
+        
         // Если контекст приостановлен, возобновляем его
-        if (this.audioContext && this.audioContext.state === 'suspended') {
-            this.audioContext.resume();
+        if (this.audioContext) {
+            if (this.audioContext.state === 'suspended') {
+                try {
+                    await this.audioContext.resume();
+                    console.log('AudioContext resumed');
+                } catch (e) {
+                    console.warn('Failed to resume AudioContext:', e);
+                }
+            }
+        }
+    }
+    
+    // Принудительная активация звуков (вызывается при первом взаимодействии)
+    async activate() {
+        if (!this.initialized) {
+            this.initAudioContext();
+        }
+        await this.ensureAudioContext();
+        
+        // Пробуем воспроизвести тестовый звук для активации
+        if (this.audioContext && this.enabled) {
+            try {
+                const oscillator = this.audioContext.createOscillator();
+                const gainNode = this.audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(this.audioContext.destination);
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(440, this.audioContext.currentTime);
+                
+                gainNode.gain.setValueAtTime(0, this.audioContext.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0.01, this.audioContext.currentTime + 0.01);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, this.audioContext.currentTime + 0.05);
+                
+                oscillator.start(this.audioContext.currentTime);
+                oscillator.stop(this.audioContext.currentTime + 0.05);
+            } catch (e) {
+                console.warn('Failed to activate audio:', e);
+            }
         }
     }
     
     // Генерирует звук монетки (короткий высокий звук)
-    playCoinSound() {
-        if (!this.enabled || !this.audioContext) return;
+    async playCoinSound() {
+        if (!this.enabled) return;
         
-        this.ensureAudioContext();
+        await this.ensureAudioContext();
+        if (!this.audioContext) return;
         
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
@@ -559,10 +609,11 @@ class SoundManager {
     }
     
     // Звук комбо (более длинный и эффектный)
-    playComboSound(comboLevel) {
-        if (!this.enabled || !this.audioContext) return;
+    async playComboSound(comboLevel) {
+        if (!this.enabled) return;
         
-        this.ensureAudioContext();
+        await this.ensureAudioContext();
+        if (!this.audioContext) return;
         
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
@@ -585,10 +636,11 @@ class SoundManager {
     }
     
     // Звук бомбы (низкий взрыв)
-    playBombSound() {
-        if (!this.enabled || !this.audioContext) return;
+    async playBombSound() {
+        if (!this.enabled) return;
         
-        this.ensureAudioContext();
+        await this.ensureAudioContext();
+        if (!this.audioContext) return;
         
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
@@ -609,10 +661,11 @@ class SoundManager {
     }
     
     // Звук ракеты (свистящий звук)
-    playRocketSound() {
-        if (!this.enabled || !this.audioContext) return;
+    async playRocketSound() {
+        if (!this.enabled) return;
         
-        this.ensureAudioContext();
+        await this.ensureAudioContext();
+        if (!this.audioContext) return;
         
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
@@ -633,10 +686,11 @@ class SoundManager {
     }
     
     // Звук падения фигур
-    playDropSound() {
-        if (!this.enabled || !this.audioContext) return;
+    async playDropSound() {
+        if (!this.enabled) return;
         
-        this.ensureAudioContext();
+        await this.ensureAudioContext();
+        if (!this.audioContext) return;
         
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
@@ -657,10 +711,11 @@ class SoundManager {
     }
     
     // Звук свапа (короткий клик)
-    playSwapSound() {
-        if (!this.enabled || !this.audioContext) return;
+    async playSwapSound() {
+        if (!this.enabled) return;
         
-        this.ensureAudioContext();
+        await this.ensureAudioContext();
+        if (!this.audioContext) return;
         
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
@@ -680,10 +735,11 @@ class SoundManager {
     }
     
     // Звук победы
-    playWinSound() {
-        if (!this.enabled || !this.audioContext) return;
+    async playWinSound() {
+        if (!this.enabled) return;
         
-        this.ensureAudioContext();
+        await this.ensureAudioContext();
+        if (!this.audioContext) return;
         
         // Играем последовательность нот
         const notes = [523.25, 659.25, 783.99, 1046.50]; // C, E, G, C (мажорное трезвучие)
@@ -709,10 +765,11 @@ class SoundManager {
     }
     
     // Звук проигрыша
-    playLoseSound() {
-        if (!this.enabled || !this.audioContext) return;
+    async playLoseSound() {
+        if (!this.enabled) return;
         
-        this.ensureAudioContext();
+        await this.ensureAudioContext();
+        if (!this.audioContext) return;
         
         const oscillator = this.audioContext.createOscillator();
         const gainNode = this.audioContext.createGain();
@@ -806,6 +863,8 @@ class MatchThreePro {
             console.log('Event listeners set up');
             this.setupGlobalDragHandlers();
             console.log('Global drag handlers set up');
+            this.setupSoundActivation();
+            console.log('Sound activation handlers set up');
             this.removeInitialMatches();
             console.log('Initial matches removed');
             this.createParticles();
@@ -1191,6 +1250,24 @@ class MatchThreePro {
         cell.addEventListener('contextmenu', (e) => e.preventDefault());
     }
     
+    setupSoundActivation() {
+        // Глобальная активация звуков при первом взаимодействии пользователя
+        const activateOnce = () => {
+            if (!this.soundManager.initialized) {
+                this.soundManager.activate();
+                // Удаляем обработчики после активации
+                document.removeEventListener('click', activateOnce, true);
+                document.removeEventListener('touchstart', activateOnce, true);
+                document.removeEventListener('mousedown', activateOnce, true);
+            }
+        };
+        
+        // Добавляем обработчики для различных типов взаимодействий
+        document.addEventListener('click', activateOnce, true);
+        document.addEventListener('touchstart', activateOnce, true);
+        document.addEventListener('mousedown', activateOnce, true);
+    }
+    
     setupGlobalDragHandlers() {
         // Глобальные обработчики для мыши (чтобы перетаскивание работало даже вне ячейки)
         document.addEventListener('mousemove', (e) => {
@@ -1238,6 +1315,11 @@ class MatchThreePro {
         if (this.isProcessing) {
             e.preventDefault();
             return;
+        }
+        
+        // Активируем звуки при первом взаимодействии
+        if (!this.soundManager.initialized) {
+            this.soundManager.activate();
         }
         
         // Сбрасываем предыдущее состояние
@@ -2389,19 +2471,35 @@ class MatchThreePro {
     }
     
     setupEventListeners() {
+        // Функция для активации звуков при первом взаимодействии
+        const activateSoundsOnce = () => {
+            if (!this.soundManager.initialized) {
+                this.soundManager.activate();
+            }
+        };
+        
         const newGameBtn = document.getElementById('newGameBtn');
         if (newGameBtn) {
-            newGameBtn.addEventListener('click', () => this.newGame());
+            newGameBtn.addEventListener('click', () => {
+                activateSoundsOnce();
+                this.newGame();
+            });
         }
         
         const restartBtn = document.getElementById('restartBtn');
         if (restartBtn) {
-            restartBtn.addEventListener('click', () => this.newGame());
+            restartBtn.addEventListener('click', () => {
+                activateSoundsOnce();
+                this.newGame();
+            });
         }
         
         const hintBtn = document.getElementById('hintBtn');
         if (hintBtn) {
-            hintBtn.addEventListener('click', () => this.findHint());
+            hintBtn.addEventListener('click', () => {
+                activateSoundsOnce();
+                this.findHint();
+            });
         }
         
         // Лидерборд (если элементы существуют)
@@ -2451,6 +2549,11 @@ class MatchThreePro {
             
             // Функция обработки нажатия на кнопку
             const handleWalletButton = async (e) => {
+                // Активируем звуки при первом взаимодействии
+                if (!this.soundManager.initialized) {
+                    this.soundManager.activate();
+                }
+                
                 // Предотвращаем всплытие, чтобы не конфликтовать с drag-обработчиками
                 e.preventDefault();
                 e.stopPropagation();
