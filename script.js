@@ -303,7 +303,11 @@ class LeaderboardManager {
     constructor(walletManager) {
         this.storageKey = 'match3Leaderboard';
         this.walletManager = walletManager;
-        this.loadLeaderboard();
+        this.leaderboard = []; // Кеш для локального использования
+        this.apiUrl = '/api/leaderboard'; // API endpoint
+        this.isLoading = false;
+        this.lastFetchTime = 0;
+        this.cacheTimeout = 5000; // Кеш на 5 секунд
     }
     
     getPlayerIdentifier() {
@@ -319,16 +323,48 @@ class LeaderboardManager {
         return `${address.slice(0, 6)}...${address.slice(-4)}`;
     }
     
-    loadLeaderboard() {
-        const saved = localStorage.getItem(this.storageKey);
-        this.leaderboard = saved ? JSON.parse(saved) : [];
+    // Получить лидерборд с сервера
+    async fetchLeaderboard(filter = 'all', limit = 20) {
+        // Используем кеш, если данные свежие
+        const now = Date.now();
+        if (this.lastFetchTime && (now - this.lastFetchTime) < this.cacheTimeout && this.leaderboard.length > 0) {
+            return this.getTopResults(limit, filter);
+        }
+        
+        if (this.isLoading) {
+            // Если уже загружаем, возвращаем кешированные данные
+            return this.getTopResults(limit, filter);
+        }
+        
+        this.isLoading = true;
+        
+        try {
+            const response = await fetch(`${this.apiUrl}?filter=${filter}&limit=${limit}`);
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            if (data.success && data.results) {
+                this.leaderboard = data.results;
+                this.lastFetchTime = now;
+                this.totalPlayers = data.totalPlayers || 0;
+                this.totalGames = data.totalGames || 0;
+                return data.results;
+            } else {
+                throw new Error('Invalid response format');
+            }
+        } catch (error) {
+            console.error('Error fetching leaderboard:', error);
+            // В случае ошибки возвращаем кешированные данные или пустой массив
+            return this.leaderboard.length > 0 ? this.getTopResults(limit, filter) : [];
+        } finally {
+            this.isLoading = false;
+        }
     }
     
-    saveLeaderboard() {
-        localStorage.setItem(this.storageKey, JSON.stringify(this.leaderboard));
-    }
-    
-    addResult(score, maxCombo, won) {
+    // Добавить результат на сервер
+    async addResult(score, maxCombo, won) {
         const walletAddress = this.getPlayerIdentifier();
         
         if (!walletAddress) {
@@ -336,24 +372,54 @@ class LeaderboardManager {
             return null;
         }
         
-        const result = {
-            id: Date.now() + Math.random(),
-            walletAddress: walletAddress, // Используем адрес кошелька
-            playerName: this.formatAddress(walletAddress), // Для обратной совместимости
-            score: score,
-            maxCombo: maxCombo,
-            won: won,
-            date: new Date().toISOString(),
-            timestamp: Date.now()
-        };
-        
-        this.leaderboard.push(result);
-        this.saveLeaderboard();
-        
-        return result;
+        try {
+            const response = await fetch(this.apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    walletAddress: walletAddress,
+                    score: score,
+                    maxCombo: maxCombo || 1,
+                    won: won || false
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            if (data.success && data.result) {
+                // Добавляем результат в локальный кеш
+                this.leaderboard.push(data.result);
+                // Сбрасываем время кеша, чтобы обновить данные при следующем запросе
+                this.lastFetchTime = 0;
+                return data.result;
+            } else {
+                throw new Error(data.error || 'Failed to save result');
+            }
+        } catch (error) {
+            console.error('Error adding result to leaderboard:', error);
+            // В случае ошибки создаем локальный результат для обратной совместимости
+            const result = {
+                id: Date.now() + Math.random(),
+                walletAddress: walletAddress,
+                playerName: this.formatAddress(walletAddress),
+                score: score,
+                maxCombo: maxCombo,
+                won: won,
+                date: new Date().toISOString(),
+                timestamp: Date.now()
+            };
+            this.leaderboard.push(result);
+            return result;
+        }
     }
     
     getTopResults(limit = 10, filter = 'all') {
+        // Если данные в кеше, используем их
         let filtered = [...this.leaderboard];
         const now = new Date();
         
@@ -412,11 +478,17 @@ class LeaderboardManager {
     }
     
     clearLeaderboard() {
+        // Очистка лидерборда теперь не поддерживается через API
+        // (для безопасности, чтобы игроки не могли удалять чужие результаты)
         this.leaderboard = [];
-        this.saveLeaderboard();
+        this.lastFetchTime = 0;
     }
     
     getTotalPlayers() {
+        // Используем сохраненное значение или вычисляем из кеша
+        if (this.totalPlayers !== undefined) {
+            return this.totalPlayers;
+        }
         // Уникальные адреса кошельков (поддерживаем оба формата)
         const uniqueAddresses = new Set(this.leaderboard.map(r => {
             return (r.walletAddress || r.playerName || '').toLowerCase();
@@ -424,21 +496,9 @@ class LeaderboardManager {
         return uniqueAddresses.size;
     }
     
-    // Миграция старых данных: конвертируем playerName в walletAddress, если это валидный адрес
+    // Миграция старых данных больше не нужна, так как используем API
     migrateOldData() {
-        let updated = false;
-        this.leaderboard.forEach(result => {
-            if (!result.walletAddress && result.playerName) {
-                // Проверяем, является ли playerName валидным адресом Ethereum
-                if (/^0x[a-fA-F0-9]{40}$/.test(result.playerName)) {
-                    result.walletAddress = result.playerName.toLowerCase();
-                    updated = true;
-                }
-            }
-        });
-        if (updated) {
-            this.saveLeaderboard();
-        }
+        // Метод оставлен для обратной совместимости, но ничего не делает
     }
 }
 
@@ -1884,7 +1944,7 @@ class MatchThreePro {
         }
     }
     
-    endGame(won) {
+    async endGame(won) {
         // Проверяем, подключен ли кошелек перед сохранением
         if (!this.walletManager.isConnected()) {
             const modal = document.getElementById('gameOverModal');
@@ -1905,8 +1965,8 @@ class MatchThreePro {
             return;
         }
         
-        // Сохраняем результат в лидерборд
-        const savedResult = this.leaderboard.addResult(this.score, this.maxCombo, won);
+        // Сохраняем результат в лидерборд (асинхронно)
+        const savedResult = await this.leaderboard.addResult(this.score, this.maxCombo, won);
         
         const modal = document.getElementById('gameOverModal');
         const title = document.getElementById('gameOverTitle');
@@ -1917,14 +1977,14 @@ class MatchThreePro {
         finalScore.textContent = this.score.toLocaleString();
         finalCombo.textContent = this.maxCombo;
         
-        // Проверяем, попал ли результат в топ
+        // Проверяем, попал ли результат в топ (обновляем данные с сервера)
         const currentAddress = this.walletManager.getAccount().toLowerCase();
-        const topResults = this.leaderboard.getTopResults(10);
+        const topResults = await this.leaderboard.fetchLeaderboard('all', 10);
         const isTopResult = savedResult && topResults.some(r => {
             const resultAddress = (r.walletAddress || r.playerName || '').toLowerCase();
             return r.score === this.score && 
                    resultAddress === currentAddress &&
-                   Math.abs(new Date(r.date) - new Date()) < 1000;
+                   Math.abs(new Date(r.date).getTime() - Date.now()) < 5000; // 5 секунд окно
         });
         
         if (won) {
@@ -1943,75 +2003,84 @@ class MatchThreePro {
         modal.classList.add('show');
     }
     
-    showLeaderboard(filter = 'all') {
+    async showLeaderboard(filter = 'all') {
         const modal = document.getElementById('leaderboardModal');
         const list = document.getElementById('leaderboardList');
         const totalPlayers = document.getElementById('totalPlayers');
         const totalGames = document.getElementById('totalGames');
+        
+        // Показываем модалку сразу
+        modal.classList.add('show');
+        
+        // Показываем индикатор загрузки
+        list.innerHTML = '<div class="leaderboard-empty">Loading leaderboard...</div>';
         
         // Обновляем активную вкладку
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === filter);
         });
         
-        // Получаем топ результаты
-        const topResults = this.leaderboard.getTopResults(20, filter);
-        
-        // Отображаем статистику
-        totalPlayers.textContent = this.leaderboard.getTotalPlayers();
-        totalGames.textContent = this.leaderboard.leaderboard.length;
-        
-        // Отображаем лидерборд
-        if (topResults.length === 0) {
-            list.innerHTML = '<div class="leaderboard-empty">No results yet. Be the first to play!</div>';
-            return;
-        }
-        
-        const currentAddress = this.walletManager.isConnected() 
-            ? this.walletManager.getAccount().toLowerCase() 
-            : null;
-        
-        list.innerHTML = topResults.map((result, index) => {
-            const date = new Date(result.date);
-            const dateStr = date.toLocaleDateString('en-US', { 
-                month: 'short', 
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
+        try {
+            // Получаем топ результаты с сервера
+            const topResults = await this.leaderboard.fetchLeaderboard(filter, 20);
             
-            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
+            // Отображаем статистику
+            totalPlayers.textContent = this.leaderboard.getTotalPlayers();
+            totalGames.textContent = this.leaderboard.totalGames || this.leaderboard.leaderboard.length;
             
-            // Используем walletAddress, если есть, иначе playerName для обратной совместимости
-            const resultAddress = (result.walletAddress || result.playerName || '').toLowerCase();
-            const displayAddress = result.walletAddress 
-                ? this.leaderboard.formatAddress(result.walletAddress)
-                : (result.playerName || 'Unknown');
+            // Отображаем лидерборд
+            if (topResults.length === 0) {
+                list.innerHTML = '<div class="leaderboard-empty">No results yet. Be the first to play!</div>';
+                return;
+            }
             
-            const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
+            const currentAddress = this.walletManager.isConnected() 
+                ? this.walletManager.getAccount().toLowerCase() 
+                : null;
             
-            return `
-                <div class="leaderboard-item ${isCurrentPlayer ? 'current-player' : ''}">
-                    <div class="leaderboard-rank">
-                        ${medal || `<span class="rank-number">${index + 1}</span>`}
-                    </div>
-                    <div class="leaderboard-player">
-                        <div class="player-name-row">
-                            <span class="player-name wallet-address">${this.escapeHtml(displayAddress)}</span>
-                            ${isCurrentPlayer ? '<span class="you-badge">You</span>' : ''}
-                            ${result.won ? '<span class="win-badge">✓</span>' : ''}
+            list.innerHTML = topResults.map((result, index) => {
+                const date = new Date(result.date);
+                const dateStr = date.toLocaleDateString('en-US', { 
+                    month: 'short', 
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
+                
+                // Используем walletAddress, если есть, иначе playerName для обратной совместимости
+                const resultAddress = (result.walletAddress || result.playerName || '').toLowerCase();
+                const displayAddress = result.walletAddress 
+                    ? this.leaderboard.formatAddress(result.walletAddress)
+                    : (result.playerName || 'Unknown');
+                
+                const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
+                
+                return `
+                    <div class="leaderboard-item ${isCurrentPlayer ? 'current-player' : ''}">
+                        <div class="leaderboard-rank">
+                            ${medal || `<span class="rank-number">${index + 1}</span>`}
                         </div>
-                        <div class="player-date">${dateStr}</div>
+                        <div class="leaderboard-player">
+                            <div class="player-name-row">
+                                <span class="player-name wallet-address">${this.escapeHtml(displayAddress)}</span>
+                                ${isCurrentPlayer ? '<span class="you-badge">You</span>' : ''}
+                                ${result.won ? '<span class="win-badge">✓</span>' : ''}
+                            </div>
+                            <div class="player-date">${dateStr}</div>
+                        </div>
+                        <div class="leaderboard-score">
+                            <div class="score-value">${result.score.toLocaleString()}</div>
+                            <div class="combo-value">Combo: ${result.maxCombo}x</div>
+                        </div>
                     </div>
-                    <div class="leaderboard-score">
-                        <div class="score-value">${result.score.toLocaleString()}</div>
-                        <div class="combo-value">Combo: ${result.maxCombo}x</div>
-                    </div>
-                </div>
-            `;
-        }).join('');
-        
-        modal.classList.add('show');
+                `;
+            }).join('');
+        } catch (error) {
+            console.error('Error loading leaderboard:', error);
+            list.innerHTML = '<div class="leaderboard-empty">Error loading leaderboard. Please try again later.</div>';
+        }
     }
     
     escapeHtml(text) {
@@ -2072,19 +2141,6 @@ class MatchThreePro {
                 }
             });
         });
-        
-        // Очистка лидерборда
-        const clearLeaderboardBtn = document.getElementById('clearLeaderboardBtn');
-        if (clearLeaderboardBtn) {
-            clearLeaderboardBtn.addEventListener('click', () => {
-                if (confirm('Are you sure you want to clear all leaderboard data? This cannot be undone.')) {
-                    if (this.leaderboard && typeof this.leaderboard.clearLeaderboard === 'function') {
-                        this.leaderboard.clearLeaderboard();
-                        this.showLeaderboard('all');
-                    }
-                }
-            });
-        }
         
         // Закрытие модалок по клику на backdrop
         document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
