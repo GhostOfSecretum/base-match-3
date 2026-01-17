@@ -36,6 +36,16 @@
     box-sizing: border-box;
 }
 
+/* Убираем все возможные красные подсветки браузера */
+*:focus-visible {
+    outline: none !important;
+}
+
+*:invalid,
+*:valid {
+    box-shadow: none !important;
+}
+
 :root {
     /* Base Brand Colors */
     --base-blue: #0052FF;
@@ -523,6 +533,9 @@ body::before {
     -webkit-backface-visibility: hidden;
     perspective: 1000px;
     -webkit-perspective: 1000px;
+    /* Убираем красный outline при фокусе */
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
 .cell::after {
@@ -581,6 +594,12 @@ body::before {
     cursor: grabbing;
 }
 
+.cell:focus,
+.cell:focus-visible {
+    outline: none !important;
+    -webkit-tap-highlight-color: transparent;
+}
+
 @keyframes selectedPulse {
     0%, 100% { 
         border-color: rgba(0, 82, 255, 0.6);
@@ -603,6 +622,23 @@ body::before {
 .cell.matched {
     animation: matchExplosion 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     z-index: 100;
+    outline: none !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    box-shadow: none !important;
+    pointer-events: none !important;
+}
+
+.cell.matched:focus,
+.cell.matched:active,
+.cell.matched:hover,
+.cell.matched.selected {
+    outline: none !important;
+    border-color: rgba(255, 255, 255, 0.2) !important;
+    background: rgba(255, 255, 255, 0.05) !important;
+    box-shadow: none !important;
+    transform: none !important;
+    animation: matchExplosion 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 @keyframes matchExplosion {

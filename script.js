@@ -1499,6 +1499,21 @@ class MatchThreePro {
     async processMatches(matches) {
         this.isProcessing = true;
         
+        // Сбрасываем выделение и убираем фокус с ячеек перед обработкой совпадений
+        if (this.selectedCell) {
+            this.highlightCell(this.selectedCell.row, this.selectedCell.col, false);
+            this.selectedCell = null;
+        }
+        // Убираем класс selected и фокус со всех ячеек
+        const allCells = document.querySelectorAll('.cell');
+        allCells.forEach(cell => {
+            cell.classList.remove('selected');
+            cell.blur();
+            if (document.activeElement === cell) {
+                cell.blur();
+            }
+        });
+        
         // Определяем специальные фигуры ПЕРЕД удалением
         const specialCells = [];
         matches.forEach(match => {
@@ -1572,6 +1587,10 @@ class MatchThreePro {
             match.forEach(({row, col}) => {
                 const cell = this.getCellElement(row, col);
                 if (cell) {
+                    // Убираем все возможные классы, которые могут вызывать красное подсвечивание
+                    cell.classList.remove('selected', 'dragging');
+                    cell.blur();
+                    // Добавляем класс matched
                     cell.classList.add('matched');
                     this.createExplosionParticles(row, col);
                 }
