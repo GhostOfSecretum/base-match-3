@@ -817,15 +817,19 @@ body::before {
 
 .game-controls {
     display: flex;
+    flex-direction: row;
     gap: 5px;
     justify-content: center;
-    flex-wrap: wrap;
+    align-items: center;
+    flex-wrap: nowrap;
+    width: 100%;
+    margin: 0 auto;
 }
 
 .btn {
-    padding: 12px 20px;
+    padding: 10px 16px;
     min-height: 44px;
-    min-width: 44px;
+    min-width: 0;
     border: none;
     border-radius: 14px;
     font-size: 0.75em;
@@ -839,6 +843,8 @@ body::before {
     position: relative;
     overflow: hidden;
     font-family: 'Coinbase Text', sans-serif;
+    flex: 1 1 0;
+    white-space: nowrap;
 }
 
 .btn::before {
@@ -1427,7 +1433,15 @@ body::before {
     }
     
     .game-controls {
-        flex-wrap: wrap;
+        flex-wrap: nowrap;
+        gap: 4px;
+    }
+    
+    .game-controls .btn {
+        padding: 8px 10px;
+        font-size: 0.65em;
+        min-width: 0;
+        flex: 1 1 0;
     }
     
     /* Упрощаем фон body */

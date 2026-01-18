@@ -147,9 +147,14 @@
         /* Убеждаемся что все основные элементы видны */
         .game-header,
         .stats-panel,
-        .wallet-panel,
-        .game-controls {
+        .wallet-panel {
             display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        
+        .game-controls {
+            display: flex !important;
             visibility: visible !important;
             opacity: 1 !important;
         }
