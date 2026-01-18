@@ -3807,7 +3807,7 @@ function resetDeployModal() {
     if (deployBtn) {
         deployBtn.disabled = false;
         deployBtn.classList.remove('loading');
-        deployBtn.innerHTML = '<span class="deploy-icon">🚀</span><span>Deploy to Base</span>';
+        deployBtn.innerHTML = '<span>Deploy to Base</span>';
     }
     
     // Show deployment history
@@ -3858,7 +3858,7 @@ function resetForNewDeploy() {
         deployBtn.style.display = 'flex';
         deployBtn.disabled = false;
         deployBtn.classList.remove('loading');
-        deployBtn.innerHTML = '<span class="deploy-icon">🚀</span><span>Deploy to Base</span>';
+        deployBtn.innerHTML = '<span>Deploy to Base</span>';
     }
 }
 
@@ -3896,7 +3896,7 @@ async function deployContract() {
     // Set loading state
     deployBtn.disabled = true;
     deployBtn.classList.add('loading');
-    deployBtn.innerHTML = '<span class="deploy-icon">🚀</span><span>Deploying...</span>';
+    deployBtn.innerHTML = '<span>Deploying...</span>';
     
     if (deployStatus) {
         deployStatus.textContent = 'Preparing deployment...';
@@ -4016,7 +4016,7 @@ async function deployContract() {
         // Reset button
         deployBtn.disabled = false;
         deployBtn.classList.remove('loading');
-        deployBtn.innerHTML = '<span class="deploy-icon">🚀</span><span>Deploy to Base</span>';
+        deployBtn.innerHTML = '<span>Deploy to Base</span>';
         
         if (deployStatus) {
             let errorMessage = error.message || 'Deployment failed';
