@@ -69,7 +69,7 @@ export default async function handler(req, res) {
     
     // POST - добавить результат
     if (req.method === 'POST') {
-      const { walletAddress, score, maxCombo, won } = req.body;
+      const { walletAddress, playerName, score, maxCombo, won } = req.body;
       
       if (!walletAddress) {
         return res.status(400).json({
@@ -85,10 +85,13 @@ export default async function handler(req, res) {
         });
       }
       
+      // Используем переданный playerName (username из Base App), если есть, иначе форматируем адрес
+      const displayName = playerName || formatAddress(walletAddress);
+      
       const result = {
         id: Date.now() + Math.random(),
         walletAddress: walletAddress.toLowerCase(),
-        playerName: formatAddress(walletAddress),
+        playerName: displayName, // Сохраняем username из Base App аккаунта
         score: score,
         maxCombo: maxCombo || 1,
         won: won || false,

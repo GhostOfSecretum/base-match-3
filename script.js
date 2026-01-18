@@ -521,6 +521,9 @@ class LeaderboardManager {
             return null;
         }
 
+        // Получаем username из Base App аккаунта
+        const username = this.walletManager ? this.walletManager.getUsername() : null;
+
         try {
             const response = await fetch(this.apiUrl, {
                 method: 'POST',
@@ -529,6 +532,7 @@ class LeaderboardManager {
                 },
                 body: JSON.stringify({
                     walletAddress: walletAddress,
+                    playerName: username, // Передаем username из Base App аккаунта
                     score: score,
                     maxCombo: maxCombo || 1,
                     won: won || false
@@ -552,10 +556,11 @@ class LeaderboardManager {
         } catch (error) {
             console.error('Error adding result to leaderboard:', error);
             // В случае ошибки создаем локальный результат для обратной совместимости
+            const username = this.walletManager ? this.walletManager.getUsername() : null;
             const result = {
                 id: Date.now() + Math.random(),
                 walletAddress: walletAddress,
-                playerName: this.formatAddress(walletAddress),
+                playerName: username || this.formatAddress(walletAddress), // Используем username, если доступен
                 score: score,
                 maxCombo: maxCombo,
                 won: won,
@@ -2599,9 +2604,8 @@ class MatchThreePro {
 
                 // Используем walletAddress, если есть, иначе playerName для обратной совместимости
                 const resultAddress = (result.walletAddress || result.playerName || '').toLowerCase();
-                const displayAddress = result.walletAddress
-                    ? this.leaderboard.formatAddress(result.walletAddress)
-                    : (result.playerName || 'Unknown');
+                // Используем playerName (username из Base App), если есть, иначе форматируем адрес
+                const displayName = result.playerName || (result.walletAddress ? this.leaderboard.formatAddress(result.walletAddress) : 'Unknown');
 
                 const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
 
@@ -2612,7 +2616,7 @@ class MatchThreePro {
                         </div>
                         <div class="leaderboard-player">
                             <div class="player-name-row">
-                                <span class="player-name wallet-address">${this.escapeHtml(displayAddress)}</span>
+                                <span class="player-name ${result.playerName ? '' : 'wallet-address'}">${this.escapeHtml(displayName)}</span>
                                 ${isCurrentPlayer ? '<span class="you-badge">You</span>' : ''}
                                 ${result.won ? '<span class="win-badge">✓</span>' : ''}
                             </div>
