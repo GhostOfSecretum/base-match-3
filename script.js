@@ -2926,13 +2926,16 @@ function initStartMenu() {
     const startMenu = document.getElementById('startMenu');
     const gameContainer = document.getElementById('gameContainer');
     const menuNewGameBtn = document.getElementById('menuNewGameBtn');
+    const menuRulesBtn = document.getElementById('menuRulesBtn');
     const menuSettingsBtn = document.getElementById('menuSettingsBtn');
     const menuLeaderboardBtn = document.getElementById('menuLeaderboardBtn');
     const menuDayStreakBtn = document.getElementById('menuDayStreakBtn');
     const settingsModal = document.getElementById('settingsModal');
     const dayStreakModal = document.getElementById('dayStreakModal');
+    const rulesModal = document.getElementById('rulesModal');
     const closeSettingsBtn = document.getElementById('closeSettingsBtn');
     const closeDayStreakBtn = document.getElementById('closeDayStreakBtn');
+    const closeRulesBtn = document.getElementById('closeRulesBtn');
     
     // Проверяем наличие необходимых элементов
     if (!startMenu || !gameContainer) {
@@ -2976,6 +2979,25 @@ function initStartMenu() {
             if (window.game && typeof window.game.newGame === 'function') {
                 window.game.newGame();
             }
+        });
+    }
+
+    // Rules - открываем правила игры
+    if (menuRulesBtn && rulesModal) {
+        menuRulesBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Rules button clicked');
+            rulesModal.classList.add('show');
+        });
+        console.log('Rules button handler attached');
+    } else {
+        console.warn('Rules button or modal not found', { menuRulesBtn, rulesModal });
+    }
+
+    if (closeRulesBtn && rulesModal) {
+        closeRulesBtn.addEventListener('click', () => {
+            rulesModal.classList.remove('show');
         });
     }
 
@@ -3023,18 +3045,18 @@ function initStartMenu() {
         console.warn('Leaderboard button not found');
     }
 
-    // Day Streak - открываем информацию о серии дней
+    // GM Streak - открываем информацию о серии дней
     if (menuDayStreakBtn && dayStreakModal) {
         menuDayStreakBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Day Streak button clicked');
+            console.log('GM Streak button clicked');
             updateDayStreakDisplay();
             dayStreakModal.classList.add('show');
         });
-        console.log('Day Streak button handler attached');
+        console.log('GM Streak button handler attached');
     } else {
-        console.warn('Day Streak button or modal not found', { menuDayStreakBtn, dayStreakModal });
+        console.warn('GM Streak button or modal not found', { menuDayStreakBtn, dayStreakModal });
     }
 
     if (closeDayStreakBtn && dayStreakModal) {
@@ -3062,7 +3084,16 @@ function initStartMenu() {
         }
     }
 
-    // Обновляем отображение Day Streak на главном экране
+    if (rulesModal) {
+        const backdrop = rulesModal.querySelector('.modal-backdrop');
+        if (backdrop) {
+            backdrop.addEventListener('click', () => {
+                rulesModal.classList.remove('show');
+            });
+        }
+    }
+
+    // Обновляем отображение GM Streak на главном экране
     updateDayStreakDisplay();
 
     // Сохраняем функции для использования из других мест
@@ -3070,7 +3101,7 @@ function initStartMenu() {
     window.hideGameMenu = showGame;
 }
 
-// Функция для обновления отображения Day Streak
+// Функция для обновления отображения GM Streak
 function updateDayStreakDisplay() {
     // Получаем streak из localStorage
     const streakData = localStorage.getItem('dayStreak');

@@ -229,6 +229,9 @@
                     <button id="menuNewGameBtn" class="btn btn-menu btn-primary">
                         <span>New Game</span>
                     </button>
+                    <button id="menuRulesBtn" class="btn btn-menu btn-secondary">
+                        <span>How to Play</span>
+                    </button>
                     <button id="menuSettingsBtn" class="btn btn-menu btn-secondary">
                         <span>Settings</span>
                     </button>
@@ -236,12 +239,12 @@
                         <span>Leaderboard</span>
                     </button>
                     <button id="menuDayStreakBtn" class="btn btn-menu btn-secondary">
-                        <span>Day Streak</span>
+                        <span>GM Streak</span>
                     </button>
                 </div>
                 <div class="day-streak-display" id="dayStreakDisplay" style="display: none;">
                     <div class="day-streak-value" id="dayStreakValue">0</div>
-                    <div class="day-streak-label">Days</div>
+                    <div class="day-streak-label">GM Streak</div>
                 </div>
             </div>
         </div>
@@ -468,19 +471,64 @@
             <div class="modal-backdrop"></div>
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2>Day Streak</h2>
+                    <h2>GM Streak</h2>
                 </div>
                 <div class="modal-body">
                     <div class="streak-content">
                         <div class="streak-display-large">
                             <div class="streak-value-large" id="streakValueLarge">0</div>
-                            <div class="streak-label-large">Days in a row</div>
+                            <div class="streak-label-large">GM Streak</div>
                         </div>
                         <p class="streak-description">Play at least one game each day to maintain your streak!</p>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button id="closeDayStreakBtn" class="btn btn-primary">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="rulesModal" class="modal">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content rules-modal">
+                <div class="modal-header">
+                    <h2>How to Play</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="rules-content">
+                        <div class="rule-section">
+                            <h3>Goal</h3>
+                            <p>Match 3 or more crypto tokens by swapping adjacent tiles to reach the target score before running out of moves!</p>
+                        </div>
+
+                        <div class="rule-section">
+                            <h3>How to Match</h3>
+                            <p>Click and drag (or tap and swipe) adjacent tiles to swap them. When 3 or more matching tokens line up horizontally or vertically, they will be removed and new tokens will fall into place.</p>
+                        </div>
+
+                        <div class="rule-section">
+                            <h3>Combos & Multipliers</h3>
+                            <p>Create multiple matches in quick succession to build up your combo multiplier! Each combo increases your score multiplier, making it easier to reach the target.</p>
+                        </div>
+
+                        <div class="rule-section">
+                            <h3>Special Tokens</h3>
+                            <p>Match 4 or 5 tokens to create special tokens with powerful effects. These can clear entire rows, columns, or large areas of the board!</p>
+                        </div>
+
+                        <div class="rule-section">
+                            <h3>Leaderboard</h3>
+                            <p>Connect your wallet to save your high scores and compete with other players on the global leaderboard!</p>
+                        </div>
+
+                        <div class="rule-section">
+                            <h3>GM Streak</h3>
+                            <p>Play at least one game every day to maintain your streak! The longer your streak, the more rewards you can unlock.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="closeRulesBtn" class="btn btn-primary">Got it!</button>
                 </div>
             </div>
         </div>

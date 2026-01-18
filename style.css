@@ -1695,3 +1695,55 @@ input:checked + .slider:before {
     line-height: 1.6;
     margin: 0;
 }
+
+/* Rules Modal Styles */
+.rules-modal {
+    max-width: 600px;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.rules-content {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    text-align: left;
+}
+
+.rule-section {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.rule-section:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(0, 82, 255, 0.3);
+    transform: translateX(5px);
+}
+
+.rule-icon {
+    font-size: 2.5em;
+    margin-bottom: 12px;
+    text-align: center;
+}
+
+.rule-section h3 {
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 1.3em;
+    font-weight: 600;
+    color: var(--base-blue);
+    text-shadow: 0 0 10px rgba(0, 82, 255, 0.5);
+    margin-bottom: 10px;
+    text-align: center;
+}
+
+.rule-section p {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1em;
+    line-height: 1.6;
+    margin: 0;
+    text-align: center;
+}
