@@ -3406,7 +3406,7 @@ async function sendGMTransaction() {
         
         if (farcasterSDK && farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
             // Use Farcaster SDK's ethProvider
-            console.log('Sending GM via Farcaster SDK');
+            console.log('Sending GM via Farcaster SDK ethProvider');
             if (gmStatus) gmStatus.textContent = 'Confirm in your wallet...';
             
             const provider = farcasterSDK.wallet.ethProvider;
@@ -3419,19 +3419,55 @@ async function sendGMTransaction() {
             
             const userAddress = accounts[0];
             
-            // Send transaction (0 ETH to self with GM data)
+            // Send simple transaction (minimal ETH to self)
+            // Using minimal value to avoid "insufficient funds" errors with 0 value
             const txParams = {
                 from: userAddress,
                 to: userAddress, // Send to self
-                value: '0x0', // 0 ETH
-                data: GM_MESSAGE, // "GM" in hex
-                chainId: '0x2105' // Base mainnet
+                value: '0x1', // 1 wei (minimal amount)
             };
             
             txHash = await provider.request({
                 method: 'eth_sendTransaction',
                 params: [txParams]
             });
+            
+        } else if (farcasterSDK && farcasterSDK.actions && farcasterSDK.actions.sendTransaction) {
+            // Try using Farcaster SDK actions.sendTransaction
+            console.log('Sending GM via Farcaster SDK actions');
+            if (gmStatus) gmStatus.textContent = 'Confirm in your wallet...';
+            
+            // Get user address from context
+            let userAddress = null;
+            if (farcasterSDK.context) {
+                try {
+                    const ctx = await farcasterSDK.context;
+                    userAddress = ctx?.user?.custodyAddress || ctx?.connectedAddress;
+                } catch (e) {
+                    console.log('Could not get context:', e);
+                }
+            }
+            
+            if (!userAddress && window.ethereum) {
+                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+                userAddress = accounts[0];
+            }
+            
+            if (!userAddress) {
+                throw new Error('Could not get wallet address');
+            }
+            
+            // Use sendTransaction action
+            const result = await farcasterSDK.actions.sendTransaction({
+                chainId: 'eip155:8453', // Base mainnet
+                method: 'eth_sendTransaction',
+                params: {
+                    to: userAddress,
+                    value: '0x1', // 1 wei
+                }
+            });
+            
+            txHash = result?.transactionHash || result?.hash || result;
             
         } else if (window.ethereum) {
             // Fallback to window.ethereum
@@ -3474,12 +3510,11 @@ async function sendGMTransaction() {
                 }
             }
             
-            // Send transaction (0 ETH to self with GM data)
+            // Send simple transaction (1 wei to self)
             const txParams = {
                 from: userAddress,
                 to: userAddress, // Send to self
-                value: '0x0', // 0 ETH
-                data: GM_MESSAGE // "GM" in hex
+                value: '0x1', // 1 wei
             };
             
             txHash = await window.ethereum.request({
