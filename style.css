@@ -2093,6 +2093,66 @@ input:checked + .slider:before {
     display: inline-flex;
 }
 
+.result-actions {
+    display: flex;
+    gap: 10px;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.deploy-history {
+    margin-top: 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    padding: 15px;
+    max-height: 150px;
+    overflow-y: auto;
+}
+
+.history-header {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.9em;
+    margin-bottom: 10px;
+    font-weight: 600;
+}
+
+.history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.history-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    font-size: 0.8em;
+}
+
+.history-item a {
+    color: #00D4AA;
+    text-decoration: none;
+    font-family: 'Courier New', Monaco, monospace;
+    word-break: break-all;
+    flex: 1;
+}
+
+.history-item a:hover {
+    color: #33FFCC;
+    text-decoration: underline;
+}
+
+.history-item .history-date {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+
 @media (max-width: 768px) {
     .deploy-modal {
         max-width: 95%;

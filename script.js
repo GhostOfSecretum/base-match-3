@@ -3743,6 +3743,52 @@ const SIMPLE_STORAGE_ABI = [
 // Store deployed contract address
 let deployedContractAddress = null;
 
+// Get deployment history from localStorage
+function getDeploymentHistory() {
+    try {
+        const history = localStorage.getItem('deploymentHistory');
+        return history ? JSON.parse(history) : [];
+    } catch (e) {
+        return [];
+    }
+}
+
+// Save deployment to history
+function saveDeploymentToHistory(address) {
+    const history = getDeploymentHistory();
+    history.unshift({
+        address: address,
+        date: new Date().toISOString()
+    });
+    // Keep only last 10 deployments
+    if (history.length > 10) {
+        history.pop();
+    }
+    localStorage.setItem('deploymentHistory', JSON.stringify(history));
+}
+
+// Show deployment history
+function showDeploymentHistory() {
+    const historyContainer = document.getElementById('deployHistory');
+    const historyList = document.getElementById('historyList');
+    const history = getDeploymentHistory();
+    
+    if (historyContainer && historyList && history.length > 0) {
+        historyList.innerHTML = history.map(item => {
+            const date = new Date(item.date);
+            const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            const shortAddress = item.address.slice(0, 8) + '...' + item.address.slice(-6);
+            return `
+                <div class="history-item">
+                    <a href="https://basescan.org/address/${item.address}" target="_blank">${shortAddress}</a>
+                    <span class="history-date">${dateStr}</span>
+                </div>
+            `;
+        }).join('');
+        historyContainer.style.display = 'block';
+    }
+}
+
 // Reset deploy modal state
 function resetDeployModal() {
     const deployStatus = document.getElementById('deployStatus');
@@ -3764,12 +3810,8 @@ function resetDeployModal() {
         deployBtn.innerHTML = '<span class="deploy-icon">🚀</span><span>Deploy to Base</span>';
     }
     
-    // Check if there's a previously deployed contract
-    const savedAddress = localStorage.getItem('deployedContractAddress');
-    if (savedAddress) {
-        deployedContractAddress = savedAddress;
-        showDeployResult(savedAddress);
-    }
+    // Show deployment history
+    showDeploymentHistory();
 }
 
 // Show deploy result
@@ -3790,14 +3832,40 @@ function showDeployResult(contractAddress) {
     }
     
     if (deployBtn) {
-        deployBtn.innerHTML = '<span class="deploy-icon">✅</span><span>Contract Deployed!</span>';
-        deployBtn.disabled = true;
+        deployBtn.style.display = 'none';
+    }
+    
+    // Update history display
+    showDeploymentHistory();
+}
+
+// Reset for new deployment
+function resetForNewDeploy() {
+    const deployStatus = document.getElementById('deployStatus');
+    const deployResult = document.getElementById('deployResult');
+    const deployBtn = document.getElementById('deployContractBtn');
+    
+    if (deployStatus) {
+        deployStatus.textContent = '';
+        deployStatus.className = 'deploy-status';
+    }
+    
+    if (deployResult) {
+        deployResult.style.display = 'none';
+    }
+    
+    if (deployBtn) {
+        deployBtn.style.display = 'flex';
+        deployBtn.disabled = false;
+        deployBtn.classList.remove('loading');
+        deployBtn.innerHTML = '<span class="deploy-icon">🚀</span><span>Deploy to Base</span>';
     }
 }
 
 // Initialize deploy contract functionality
 function initDeployContract() {
     const deployBtn = document.getElementById('deployContractBtn');
+    const deployAnotherBtn = document.getElementById('deployAnotherBtn');
     
     if (deployBtn) {
         deployBtn.addEventListener('click', async (e) => {
@@ -3806,6 +3874,15 @@ function initDeployContract() {
             await deployContract();
         });
         console.log('Deploy contract button initialized');
+    }
+    
+    if (deployAnotherBtn) {
+        deployAnotherBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            resetForNewDeploy();
+        });
+        console.log('Deploy another button initialized');
     }
 }
 
@@ -3922,8 +3999,8 @@ async function deployContract() {
         console.log('Contract deployed at:', contract.address);
         deployedContractAddress = contract.address;
         
-        // Save to localStorage
-        localStorage.setItem('deployedContractAddress', contract.address);
+        // Save to deployment history
+        saveDeploymentToHistory(contract.address);
         
         // Show success
         if (deployStatus) {
