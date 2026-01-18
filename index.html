@@ -98,7 +98,6 @@
         /* Убеждаемся, что body виден даже при загрузке */
         body {
             min-height: 100vh;
-            background: #000000 !important;
         }
         
         /* Показываем контент даже если JS еще не загрузился */
@@ -206,7 +205,8 @@
             
             <div class="player-info">
                 <div class="player-name-display">
-                    <span class="player-label">Wallet:</span>
+                    <img id="currentPlayerAvatar" class="player-avatar" src="" alt="" style="display: none;" />
+                    <span class="player-label">Player:</span>
                     <span id="currentPlayerName" class="player-name">Connect Wallet</span>
                 </div>
             </div>
@@ -283,6 +283,37 @@
                 </div>
                 <div class="modal-footer">
                     <button id="closeLeaderboardBtn" class="btn btn-primary">Close</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="onboardingModal" class="modal">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content onboarding-modal">
+                <div class="modal-header">
+                    <h2>Welcome to Base Match-3!</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="onboarding-content">
+                        <div class="onboarding-step">
+                            <div class="onboarding-icon">🎮</div>
+                            <h3>How to Play</h3>
+                            <p>Match 3 or more crypto tokens by swapping adjacent tiles. Create combos for bonus points!</p>
+                        </div>
+                        <div class="onboarding-step">
+                            <div class="onboarding-icon">🎯</div>
+                            <h3>Goals</h3>
+                            <p>Reach the target score before running out of moves. Chain matches together for multipliers!</p>
+                        </div>
+                        <div class="onboarding-step">
+                            <div class="onboarding-icon">🏆</div>
+                            <h3>Leaderboard</h3>
+                            <p>Compete with other players and climb the global leaderboard. Connect your wallet to save your progress!</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="closeOnboardingBtn" class="btn btn-primary">Let's Play!</button>
                 </div>
             </div>
         </div>

@@ -63,11 +63,80 @@
     --board-bg: rgba(0, 0, 0, 0.8);
     --cell-size: 60px;
     --glow-color: rgba(0, 82, 255, 0.5);
+    
+    /* Dark mode colors (default) */
+    --bg-color: #000000;
+    --bg-secondary: rgba(255, 255, 255, 0.05);
+    --text-color: #FFFFFF;
+    --text-secondary: rgba(255, 255, 255, 0.6);
+    --border-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Light mode support */
+@media (prefers-color-scheme: light) {
+    :root {
+        --bg-color: #FFFFFF;
+        --bg-secondary: rgba(0, 0, 0, 0.05);
+        --text-color: #000000;
+        --text-secondary: rgba(0, 0, 0, 0.6);
+        --border-color: rgba(0, 0, 0, 0.1);
+        --board-bg: rgba(255, 255, 255, 0.8);
+    }
+    
+    body {
+        background: var(--bg-color);
+        color: var(--text-color);
+    }
+    
+    .game-container {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+    }
+    
+    .stat-card,
+    .wallet-info,
+    .objectives-panel,
+    .player-name-display {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+    }
+    
+    .stat-label,
+    .objective-title,
+    .player-label {
+        color: var(--text-secondary);
+    }
+    
+    .stat-value,
+    .player-name {
+        color: var(--text-color);
+    }
+    
+    .cell {
+        background: var(--bg-secondary);
+        border: 1.5px solid var(--border-color);
+    }
+    
+    .modal-content {
+        background: rgba(255, 255, 255, 0.95);
+        border: 1px solid var(--border-color);
+    }
+    
+    .modal-header h2,
+    .modal-body {
+        color: var(--text-color);
+    }
+    
+    .final-stat {
+        background: var(--bg-secondary);
+        border: 1px solid var(--border-color);
+    }
 }
 
 body {
     font-family: 'Coinbase Text', sans-serif;
-    background: #000000;
+    background: var(--bg-color);
+    color: var(--text-color);
     min-height: 100vh;
     height: 100vh;
     display: flex;
@@ -80,6 +149,7 @@ body {
     /* Убеждаемся, что body виден */
     visibility: visible;
     opacity: 1;
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 body::before {
@@ -167,10 +237,10 @@ body::before {
 }
 
 .game-container {
-    background: rgba(255, 255, 255, 0.05);
+    background: var(--bg-secondary);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border: 1px solid rgba(255, 255, 255, 0.1);
+    border: 1px solid var(--border-color);
     border-radius: 15px;
     padding: 6px;
     box-shadow: 
@@ -182,6 +252,7 @@ body::before {
     /* GPU ускорение */
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
+    transition: background-color 0.3s ease, border-color 0.3s ease;
 }
 
 .game-container::before {
@@ -744,7 +815,9 @@ body::before {
 }
 
 .btn {
-    padding: 5px 10px;
+    padding: 12px 20px;
+    min-height: 44px;
+    min-width: 44px;
     border: none;
     border-radius: 14px;
     font-size: 0.75em;
@@ -753,6 +826,7 @@ body::before {
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 3px;
     position: relative;
     overflow: hidden;
@@ -989,6 +1063,14 @@ body::before {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+}
+
+.player-avatar {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .btn-change-name {
@@ -1350,4 +1432,39 @@ body::before {
     .game-container {
         padding: 15px;
     }
+}
+
+/* Onboarding modal styles */
+.onboarding-modal {
+    max-width: 500px;
+}
+
+.onboarding-content {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+}
+
+.onboarding-step {
+    text-align: center;
+}
+
+.onboarding-icon {
+    font-size: 3em;
+    margin-bottom: 12px;
+}
+
+.onboarding-step h3 {
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 1.3em;
+    font-weight: 600;
+    color: var(--base-blue);
+    margin-bottom: 8px;
+}
+
+.onboarding-step p {
+    color: var(--text-secondary);
+    font-size: 1em;
+    line-height: 1.6;
+    margin: 0;
 }

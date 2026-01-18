@@ -24,6 +24,12 @@ class WalletManager {
         this.signer = null;
         this.account = null;
         this.chainId = null;
+        this.username = null;
+        this.avatar = null;
+        this.userContext = null;
+        
+        // Пытаемся автоматически подключиться через Base Account SDK
+        this.initializeBaseAccount();
         
         // Проверяем, есть ли сохраненное подключение
         this.checkSavedConnection();
@@ -54,6 +60,108 @@ class WalletManager {
                 }
             });
         }
+    }
+    
+    async initializeBaseAccount() {
+        // Пытаемся получить данные пользователя из Base Account SDK
+        try {
+            let sdkInstance = null;
+            
+            // Ищем SDK в различных местах
+            try {
+                if (window.farcaster && window.farcaster.miniapp) {
+                    sdkInstance = window.farcaster.miniapp;
+                }
+            } catch (e) {
+                console.log('Cannot access window.farcaster:', e.message);
+            }
+            
+            if (!sdkInstance) {
+                try {
+                    if (window.miniappSdk) {
+                        sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
+                    }
+                } catch (e) {
+                    console.log('Cannot access window.miniappSdk:', e.message);
+                }
+            }
+            
+            if (!sdkInstance && window.parent && window.parent !== window) {
+                try {
+                    if (window.parent.farcaster && window.parent.farcaster.miniapp) {
+                        sdkInstance = window.parent.farcaster.miniapp;
+                    }
+                } catch (e) {
+                    // Cross-origin
+                }
+            }
+            
+            if (sdkInstance && sdkInstance.context) {
+                // Ждем немного для загрузки контекста
+                await new Promise(resolve => setTimeout(resolve, 500));
+                
+                try {
+                    const context = await sdkInstance.context.get();
+                    this.userContext = context;
+                    
+                    // Получаем username и avatar из контекста
+                    if (context.user) {
+                        this.username = context.user.username || context.user.displayName || null;
+                        this.avatar = context.user.pfpUrl || context.user.avatarUrl || null;
+                        
+                        // Если есть account в контексте, используем его для автоматического подключения
+                        if (context.user.custodyAddress || context.user.account) {
+                            const address = context.user.custodyAddress || context.user.account;
+                            if (address && !this.account) {
+                                // Автоматически подключаемся через Base Account
+                                await this.connectViaBaseAccount(address);
+                            }
+                        }
+                        
+                        // Обновляем UI с username и avatar
+                        if (window.game) {
+                            window.game.updateWalletDisplay();
+                        }
+                    }
+                } catch (e) {
+                    console.log('Could not get context from SDK:', e.message);
+                }
+            }
+        } catch (error) {
+            console.log('Base Account initialization failed (non-critical):', error.message);
+        }
+    }
+    
+    async connectViaBaseAccount(address) {
+        try {
+            // Используем ethers provider для Base Account
+            if (typeof ethers !== 'undefined') {
+                // В Base app wallet подключен автоматически
+                this.account = address.toLowerCase();
+                
+                // Получаем provider через window.ethereum или Base Account
+                if (window.ethereum) {
+                    this.provider = new ethers.providers.Web3Provider(window.ethereum);
+                    this.signer = this.provider.getSigner();
+                    
+                    // Проверяем сеть
+                    await this.checkNetwork();
+                    
+                    // Обновляем UI
+                    this.updateWalletUI();
+                }
+            }
+        } catch (error) {
+            console.log('Base Account connection failed:', error.message);
+        }
+    }
+    
+    getUsername() {
+        return this.username;
+    }
+    
+    getAvatar() {
+        return this.avatar;
     }
     
     async loadEthersLibrary() {
@@ -928,14 +1036,38 @@ class MatchThreePro {
     
     updateWalletDisplay() {
         const playerNameDisplay = document.getElementById('currentPlayerName');
+        const playerAvatarDisplay = document.getElementById('currentPlayerAvatar');
+        
         if (playerNameDisplay) {
             if (this.walletManager.isConnected()) {
-                const address = this.walletManager.getAccount();
-                playerNameDisplay.textContent = this.leaderboard.formatAddress(address);
-                playerNameDisplay.classList.add('wallet-address');
+                // Получаем username из Base Account SDK, если доступен
+                const username = this.walletManager.getUsername();
+                const avatar = this.walletManager.getAvatar();
+                
+                // Используем username вместо адреса кошелька (рекомендация Base)
+                if (username) {
+                    playerNameDisplay.textContent = username;
+                    playerNameDisplay.classList.remove('wallet-address');
+                } else {
+                    // Fallback на адрес, если username недоступен
+                    const address = this.walletManager.getAccount();
+                    playerNameDisplay.textContent = this.leaderboard.formatAddress(address);
+                    playerNameDisplay.classList.add('wallet-address');
+                }
+                
+                // Показываем avatar, если доступен
+                if (playerAvatarDisplay && avatar) {
+                    playerAvatarDisplay.src = avatar;
+                    playerAvatarDisplay.style.display = 'block';
+                } else if (playerAvatarDisplay) {
+                    playerAvatarDisplay.style.display = 'none';
+                }
             } else {
                 playerNameDisplay.textContent = 'Connect Wallet';
                 playerNameDisplay.classList.remove('wallet-address');
+                if (playerAvatarDisplay) {
+                    playerAvatarDisplay.style.display = 'none';
+                }
             }
         }
     }
@@ -2518,6 +2650,20 @@ class MatchThreePro {
             });
         }
         
+        // Onboarding modal (показываем только при первом посещении)
+        const closeOnboardingBtn = document.getElementById('closeOnboardingBtn');
+        if (closeOnboardingBtn) {
+            closeOnboardingBtn.addEventListener('click', () => {
+                const modal = document.getElementById('onboardingModal');
+                if (modal) modal.classList.remove('show');
+                // Сохраняем, что пользователь видел onboarding
+                localStorage.setItem('onboardingSeen', 'true');
+            });
+        }
+        
+        // Проверяем, нужно ли показать onboarding
+        this.checkOnboarding();
+        
         // Вкладки лидерборда
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.addEventListener('click', () => {
@@ -2728,6 +2874,20 @@ class MatchThreePro {
                 // Игра должна работать и без SDK
             }
         })();
+    }
+    
+    checkOnboarding() {
+        // Показываем onboarding только при первом посещении
+        const onboardingSeen = localStorage.getItem('onboardingSeen');
+        if (!onboardingSeen) {
+            // Ждем немного для загрузки игры, затем показываем onboarding
+            setTimeout(() => {
+                const modal = document.getElementById('onboardingModal');
+                if (modal) {
+                    modal.classList.add('show');
+                }
+            }, 1000);
+        }
     }
     
     sleep(ms) {
