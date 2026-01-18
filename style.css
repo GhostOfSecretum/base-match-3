@@ -375,7 +375,7 @@ body::before {
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 8px;
     padding: 8px 12px;
-    display: flex;
+    display: none !important;
     flex-direction: column;
     gap: 4px;
     font-size: 0.75em;

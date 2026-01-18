@@ -440,33 +440,15 @@ class WalletManager {
 
     updateWalletUI() {
         const connectBtn = document.getElementById('connectWalletBtn');
-        const walletInfo = document.getElementById('walletInfo');
-        const walletAddress = document.getElementById('walletAddress');
-        const walletNetwork = document.getElementById('walletNetwork');
 
         if (!connectBtn) return; // Защита от отсутствия элемента
 
         if (this.account) {
             connectBtn.innerHTML = '<span>Disconnect</span>';
             connectBtn.classList.add('connected');
-
-            if (walletInfo) {
-                walletInfo.style.display = 'flex';
-            }
-            if (walletAddress) {
-                walletAddress.textContent = `${this.account.slice(0, 6)}...${this.account.slice(-4)}`;
-            }
-            if (walletNetwork) {
-                const networkName = this.chainId === BASE_NETWORK.chainId ? 'Base' : 'Unknown';
-                walletNetwork.textContent = `Network: ${networkName}`;
-                walletNetwork.className = 'wallet-network ' + (this.chainId === BASE_NETWORK.chainId ? 'base-network' : 'wrong-network');
-            }
         } else {
             connectBtn.innerHTML = '<span>Connect Wallet</span>';
             connectBtn.classList.remove('connected');
-            if (walletInfo) {
-                walletInfo.style.display = 'none';
-            }
         }
     }
 
