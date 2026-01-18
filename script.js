@@ -14,24 +14,29 @@ console.log('Timestamp:', new Date().toISOString());
     await new Promise(resolve => setTimeout(resolve, 100));
 
     try {
-        let sdkInstance = null;
-
-        // Проверяем все возможные источники SDK
-        if (window.__farcasterSDK) {
-            sdkInstance = window.__farcasterSDK;
-        } else if (typeof window.farcasterFrame !== 'undefined' && window.farcasterFrame.sdk) {
-            sdkInstance = window.farcasterFrame.sdk;
-        } else if (window.farcaster && window.farcaster.miniapp) {
-            sdkInstance = window.farcaster.miniapp;
-        } else if (window.miniappSdk) {
-            sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
+        // Способ 1: Официальный CDN - frame.sdk (документация Farcaster)
+        if (typeof frame !== 'undefined' && frame.sdk && frame.sdk.actions) {
+            await frame.sdk.actions.ready();
+            window.__farcasterSDKReady = true;
+            window.__farcasterSDK = frame.sdk;
+            console.log('Farcaster SDK ready() called via frame.sdk (retry)');
+            return;
         }
 
-        if (sdkInstance && sdkInstance.actions && typeof sdkInstance.actions.ready === 'function') {
-            await sdkInstance.actions.ready();
+        // Способ 2: window.farcaster.miniapp (Farcaster native)
+        if (window.farcaster && window.farcaster.miniapp && window.farcaster.miniapp.actions) {
+            await window.farcaster.miniapp.actions.ready();
             window.__farcasterSDKReady = true;
-            window.__farcasterSDK = sdkInstance;
-            console.log('Farcaster SDK ready() called from script.js (retry)');
+            window.__farcasterSDK = window.farcaster.miniapp;
+            console.log('Farcaster SDK ready() called via window.farcaster (retry)');
+            return;
+        }
+
+        // Способ 3: Уже сохраненный SDK
+        if (window.__farcasterSDK && window.__farcasterSDK.actions) {
+            await window.__farcasterSDK.actions.ready();
+            window.__farcasterSDKReady = true;
+            console.log('Farcaster SDK ready() called via cached SDK (retry)');
         }
     } catch (e) {
         console.log('Farcaster SDK retry (non-critical):', e.message);
@@ -2856,28 +2861,21 @@ class MatchThreePro {
                 }
 
                 // Если SDK так и не найден, пробуем найти вручную
-                let sdkInstance = null;
-
-                // Способ 1: @farcaster/frame-sdk
-                if (typeof window.farcasterFrame !== 'undefined' && window.farcasterFrame.sdk) {
-                    sdkInstance = window.farcasterFrame.sdk;
+                // Способ 1: Официальный CDN - frame.sdk
+                if (typeof frame !== 'undefined' && frame.sdk) {
+                    sdk = frame.sdk;
+                    console.log('SDK found via frame.sdk');
+                    return;
                 }
+
                 // Способ 2: window.farcaster.miniapp
-                else if (window.farcaster && window.farcaster.miniapp) {
-                    sdkInstance = window.farcaster.miniapp;
-                }
-                // Способ 3: window.miniappSdk
-                else if (window.miniappSdk) {
-                    sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
+                if (window.farcaster && window.farcaster.miniapp) {
+                    sdk = window.farcaster.miniapp;
+                    console.log('SDK found via window.farcaster.miniapp');
+                    return;
                 }
 
-                if (sdkInstance) {
-                    sdk = sdkInstance;
-                    // Не вызываем ready() повторно - это уже сделано ранее
-                    console.log('SDK found in initializeSDK (ready already called)');
-                } else {
-                    console.log('MiniApp SDK not found - game works without it');
-                }
+                console.log('MiniApp SDK not found - game works without it');
             } catch (error) {
                 console.log('initializeSDK error (non-critical):', error.message);
             }

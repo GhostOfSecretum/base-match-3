@@ -1,25 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <title>Base Match-3</title>
     <meta name="base:app_id" content="6969764d8aabd019b25f51a0" />
-    
+
     <!-- Мета-теги для работы в iframe -->
     <meta name="referrer" content="no-referrer">
     <meta name="format-detection" content="telephone=no">
-    
+
     <!-- Open Graph meta tags for preview in posts -->
     <meta property="og:title" content="Base Match-3 - Match Crypto Tokens Puzzle Game on Base" />
-    <meta property="og:description" content="Match crypto tokens in this fast-paced puzzle game. Create combos, unlock special tokens, and climb the leaderboard!" />
+    <meta property="og:description"
+        content="Match crypto tokens in this fast-paced puzzle game. Create combos, unlock special tokens, and climb the leaderboard!" />
     <meta property="og:image" content="https://base-match-3.vercel.app/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://base-match-3.vercel.app" />
-    
+
     <!-- Twitter Card meta tags -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Base Match-3" />
@@ -43,7 +45,8 @@
     <!-- Fallback стили на случай, если CSS не загрузится -->
     <style>
         /* Минимальные стили для видимости контента - совместимость с Farcaster Opus 4.5 */
-        html, body {
+        html,
+        body {
             margin: 0;
             padding: 0;
             background: #000000;
@@ -54,6 +57,7 @@
             display: block;
             overflow-x: hidden;
         }
+
         .game-wrapper {
             display: block;
             width: 100%;
@@ -62,6 +66,7 @@
             opacity: 1;
             visibility: visible;
         }
+
         .game-container {
             display: block;
             width: 100%;
@@ -90,6 +95,7 @@
             justify-content: center;
             gap: 15px;
         }
+
         #loadingIndicator img {
             max-width: 200px;
             max-height: 200px;
@@ -98,13 +104,14 @@
             object-fit: contain;
             display: block;
         }
+
         #loadingIndicator.hidden {
             display: none !important;
             visibility: hidden !important;
             opacity: 0 !important;
             pointer-events: none !important;
         }
-        
+
         /* Убеждаемся, что body виден даже при загрузке - совместимость с Farcaster Opus 4.5 */
         body {
             min-height: 100vh;
@@ -113,7 +120,7 @@
             opacity: 1 !important;
             display: block !important;
         }
-        
+
         /* Показываем контент даже если JS еще не загрузился */
         .game-wrapper {
             min-height: 100vh;
@@ -121,14 +128,14 @@
             visibility: visible !important;
             display: block !important;
         }
-        
+
         /* Убеждаемся, что game-container виден */
         .game-container {
             display: block !important;
             visibility: visible !important;
             opacity: 1 !important;
         }
-        
+
         /* Критично: убеждаемся что игровая доска видна даже до инициализации */
         #gameBoard {
             display: grid !important;
@@ -136,7 +143,7 @@
             opacity: 1 !important;
             min-height: 300px;
         }
-        
+
         /* Убеждаемся что все основные элементы видны */
         .game-header,
         .stats-panel,
@@ -148,60 +155,57 @@
         }
     </style>
     <!-- Farcaster Frame SDK - загружаем первым для немедленного вызова ready() -->
-    <script src="https://cdn.jsdelivr.net/npm/@farcaster/frame-sdk@0.0.26/dist/index.min.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/@farcaster/frame-sdk/dist/index.min.js"></script>
+
     <!-- КРИТИЧНО: Немедленно вызываем ready() для Farcaster -->
     <script>
+        // Согласно официальной документации: frame.sdk.actions.ready()
         (async function initFarcasterSDKEarly() {
             try {
-                let sdkInstance = null;
-                
-                // Способ 1: @farcaster/frame-sdk (устанавливает window.farcasterFrame)
-                if (typeof window.farcasterFrame !== 'undefined' && window.farcasterFrame.sdk) {
-                    sdkInstance = window.farcasterFrame.sdk;
-                }
-                // Способ 2: window.farcaster.miniapp (Farcaster native)
-                else if (window.farcaster && window.farcaster.miniapp) {
-                    sdkInstance = window.farcaster.miniapp;
-                }
-                // Способ 3: window.miniappSdk
-                else if (window.miniappSdk) {
-                    sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
-                }
-                
-                if (sdkInstance && sdkInstance.actions && typeof sdkInstance.actions.ready === 'function') {
-                    await sdkInstance.actions.ready();
+                // Способ 1: Официальный CDN path - frame.sdk (документация Farcaster)
+                if (typeof frame !== 'undefined' && frame.sdk && frame.sdk.actions) {
+                    await frame.sdk.actions.ready();
                     window.__farcasterSDKReady = true;
-                    window.__farcasterSDK = sdkInstance;
-                    console.log('Farcaster SDK ready() called IMMEDIATELY');
-                } else {
-                    console.log('Farcaster SDK not found on initial check, will retry later');
+                    window.__farcasterSDK = frame.sdk;
+                    console.log('Farcaster SDK ready() called via frame.sdk');
+                    return;
                 }
+
+                // Способ 2: window.farcaster.miniapp (Farcaster native в приложении)
+                if (window.farcaster && window.farcaster.miniapp && window.farcaster.miniapp.actions) {
+                    await window.farcaster.miniapp.actions.ready();
+                    window.__farcasterSDKReady = true;
+                    window.__farcasterSDK = window.farcaster.miniapp;
+                    console.log('Farcaster SDK ready() called via window.farcaster.miniapp');
+                    return;
+                }
+
+                console.log('Farcaster SDK not found on initial check');
             } catch (e) {
-                console.log('Early Farcaster SDK init (non-critical):', e.message);
+                console.log('Early Farcaster SDK init:', e.message);
             }
         })();
     </script>
-    
+
     <!-- Загружаем ethers.js с fallback на альтернативный CDN -->
-    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" 
-            onerror="loadEthersFallback()"></script>
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" onerror="loadEthersFallback()"></script>
     <script>
         // Fallback загрузка ethers.js с альтернативного CDN
         function loadEthersFallback() {
             console.log('Primary ethers.js CDN failed, trying fallback...');
             const script = document.createElement('script');
             script.src = 'https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js';
-            script.onerror = function() {
+            script.onerror = function () {
                 console.warn('Both ethers.js CDNs failed. Wallet connection will be unavailable.');
             };
-            script.onload = function() {
+            script.onload = function () {
                 console.log('ethers.js loaded from fallback CDN');
             };
             document.head.appendChild(script);
         }
     </script>
 </head>
+
 <body>
     <div id="loadingIndicator">
         <img src="hero.png" alt="Loading..." id="loadingImage">
@@ -209,14 +213,14 @@
     </div>
     <div class="game-wrapper">
         <div class="particles-container" id="particlesContainer"></div>
-        
+
         <div class="game-container">
             <div class="game-header">
                 <div class="logo">
                     <img src="assets/Logotype/Base_lockup_white.svg" alt="Base" class="base-logo" />
                     <h1>MATCH-3</h1>
                 </div>
-                
+
                 <div class="stats-panel">
                     <div class="stat-card">
                         <div class="stat-content">
@@ -235,7 +239,7 @@
                         </div>
                     </div>
                 </div>
-                
+
                 <div class="wallet-panel">
                     <button id="connectWalletBtn" class="btn btn-wallet">
                         <span>Connect Wallet</span>
@@ -246,7 +250,7 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="objectives-panel">
                 <div class="objective-title">Level Goals:</div>
                 <div class="objectives-list" id="objectivesList">
@@ -259,12 +263,12 @@
                     </div>
                 </div>
             </div>
-            
+
             <div class="board-wrapper">
                 <div class="game-board" id="gameBoard"></div>
                 <div class="board-glow"></div>
             </div>
-            
+
             <div class="game-controls">
                 <button id="newGameBtn" class="btn btn-primary">
                     <span class="btn-icon"></span>
@@ -279,7 +283,7 @@
                     <span>Leaderboard</span>
                 </button>
             </div>
-            
+
             <div class="player-info">
                 <div class="player-name-display">
                     <img id="currentPlayerAvatar" class="player-avatar" src="" alt="" style="display: none;" />
@@ -287,7 +291,7 @@
                     <span id="currentPlayerName" class="player-name">Connect Wallet</span>
                 </div>
             </div>
-            
+
             <div id="walletModal" class="modal">
                 <div class="modal-backdrop"></div>
                 <div class="modal-content">
@@ -303,10 +307,10 @@
                 </div>
             </div>
         </div>
-        
+
         <div id="comboDisplay" class="combo-display"></div>
         <div id="scorePopup" class="score-popup"></div>
-        
+
         <div id="gameOverModal" class="modal">
             <div class="modal-backdrop"></div>
             <div class="modal-content">
@@ -331,7 +335,7 @@
                 </div>
             </div>
         </div>
-        
+
         <div id="leaderboardModal" class="modal">
             <div class="modal-backdrop"></div>
             <div class="modal-content leaderboard-modal">
@@ -363,7 +367,7 @@
                 </div>
             </div>
         </div>
-        
+
         <div id="onboardingModal" class="modal">
             <div class="modal-backdrop"></div>
             <div class="modal-content onboarding-modal">
@@ -375,17 +379,20 @@
                         <div class="onboarding-step">
                             <div class="onboarding-icon">🎮</div>
                             <h3>How to Play</h3>
-                            <p>Match 3 or more crypto tokens by swapping adjacent tiles. Create combos for bonus points!</p>
+                            <p>Match 3 or more crypto tokens by swapping adjacent tiles. Create combos for bonus points!
+                            </p>
                         </div>
                         <div class="onboarding-step">
                             <div class="onboarding-icon">🎯</div>
                             <h3>Goals</h3>
-                            <p>Reach the target score before running out of moves. Chain matches together for multipliers!</p>
+                            <p>Reach the target score before running out of moves. Chain matches together for
+                                multipliers!</p>
                         </div>
                         <div class="onboarding-step">
                             <div class="onboarding-icon">🏆</div>
                             <h3>Leaderboard</h3>
-                            <p>Compete with other players and climb the global leaderboard. Connect your wallet to save your progress!</p>
+                            <p>Compete with other players and climb the global leaderboard. Connect your wallet to save
+                                your progress!</p>
                         </div>
                     </div>
                 </div>
@@ -395,12 +402,12 @@
             </div>
         </div>
     </div>
-    
+
     <!-- Простой тест для проверки выполнения JavaScript -->
     <script>
         console.log('HTML script tag executed');
         console.log('Window location:', window.location.href);
-        
+
         // Безопасная проверка iframe
         try {
             const isInIframe = window.self !== window.top;
@@ -408,7 +415,7 @@
         } catch (e) {
             console.log('Cannot check iframe status (may be cross-origin):', e.message);
         }
-        
+
         // Проверка доступности Farcaster SDK
         setTimeout(() => {
             console.log('Checking for Farcaster SDK...');
@@ -425,11 +432,11 @@
                 console.log('Error checking window.farcaster:', e.message);
             }
         }, 500);
-        
+
         window.addEventListener('DOMContentLoaded', () => {
             console.log('DOMContentLoaded fired');
         });
-        
+
         // Обработка ошибок для отладки
         window.addEventListener('error', (event) => {
             console.error('Global error:', event.error);
@@ -437,15 +444,15 @@
             console.error('Error filename:', event.filename);
             console.error('Error lineno:', event.lineno);
         });
-        
+
         window.addEventListener('unhandledrejection', (event) => {
             console.error('Unhandled promise rejection:', event.reason);
         });
     </script>
-    
+
     <!-- Загружаем основной скрипт игры -->
     <script src="script.js"></script>
-    
+
     <!-- Fallback: если скрипт не загрузился, скрываем индикатор и показываем контент -->
     <script>
         // Автоматически скрываем индикатор загрузки через 3 секунды максимум
@@ -458,7 +465,7 @@
                 loadingIndicator.style.visibility = 'hidden';
                 loadingIndicator.style.opacity = '0';
                 loadingIndicator.style.pointerEvents = 'none';
-                
+
                 // Убеждаемся что контент виден
                 const gameWrapper = document.querySelector('.game-wrapper');
                 if (gameWrapper) {
@@ -466,7 +473,7 @@
                     gameWrapper.style.visibility = 'visible';
                     gameWrapper.style.opacity = '1';
                 }
-                
+
                 const gameContainer = document.querySelector('.game-container');
                 if (gameContainer) {
                     gameContainer.style.display = 'block';
@@ -475,7 +482,7 @@
                 }
             }
         }, 3000);
-        
+
         // Дополнительный fallback через 5 секунд
         setTimeout(() => {
             const loadingIndicator = document.getElementById('loadingIndicator');
@@ -490,4 +497,5 @@
         }, 5000);
     </script>
 </body>
+
 </html>
