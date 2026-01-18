@@ -42,18 +42,25 @@
     <link rel="stylesheet" href="style.css">
     <!-- Fallback стили на случай, если CSS не загрузится -->
     <style>
-        /* Минимальные стили для видимости контента */
+        /* Минимальные стили для видимости контента - совместимость с Farcaster Opus 4.5 */
         html, body {
             margin: 0;
             padding: 0;
             background: #000000;
             color: #ffffff;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            /* Важно: не используем height: 100vh для iframe совместимости */
+            min-height: 100vh;
+            display: block;
+            overflow-x: hidden;
         }
         .game-wrapper {
             display: block;
             width: 100%;
             min-height: 100vh;
+            margin: 0 auto;
+            opacity: 1;
+            visibility: visible;
         }
         .game-container {
             display: block;
@@ -92,20 +99,90 @@
             display: block;
         }
         #loadingIndicator.hidden {
-            display: none;
+            display: none !important;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
         }
         
-        /* Убеждаемся, что body виден даже при загрузке */
+        /* Убеждаемся, что body виден даже при загрузке - совместимость с Farcaster Opus 4.5 */
         body {
             min-height: 100vh;
+            /* Явно показываем body для Farcaster */
+            visibility: visible !important;
+            opacity: 1 !important;
+            display: block !important;
         }
         
         /* Показываем контент даже если JS еще не загрузился */
         .game-wrapper {
             min-height: 100vh;
-            opacity: 1;
+            opacity: 1 !important;
+            visibility: visible !important;
+            display: block !important;
+        }
+        
+        /* Убеждаемся, что game-container виден */
+        .game-container {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+        }
+        
+        /* Критично: убеждаемся что игровая доска видна даже до инициализации */
+        #gameBoard {
+            display: grid !important;
+            visibility: visible !important;
+            opacity: 1 !important;
+            min-height: 300px;
+        }
+        
+        /* Убеждаемся что все основные элементы видны */
+        .game-header,
+        .stats-panel,
+        .wallet-panel,
+        .game-controls {
+            display: block !important;
+            visibility: visible !important;
+            opacity: 1 !important;
         }
     </style>
+    <!-- Farcaster Frame SDK - загружаем первым для немедленного вызова ready() -->
+    <script src="https://cdn.jsdelivr.net/npm/@farcaster/frame-sdk@0.0.26/dist/index.min.js"></script>
+    
+    <!-- КРИТИЧНО: Немедленно вызываем ready() для Farcaster -->
+    <script>
+        (async function initFarcasterSDKEarly() {
+            try {
+                let sdkInstance = null;
+                
+                // Способ 1: @farcaster/frame-sdk (устанавливает window.farcasterFrame)
+                if (typeof window.farcasterFrame !== 'undefined' && window.farcasterFrame.sdk) {
+                    sdkInstance = window.farcasterFrame.sdk;
+                }
+                // Способ 2: window.farcaster.miniapp (Farcaster native)
+                else if (window.farcaster && window.farcaster.miniapp) {
+                    sdkInstance = window.farcaster.miniapp;
+                }
+                // Способ 3: window.miniappSdk
+                else if (window.miniappSdk) {
+                    sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
+                }
+                
+                if (sdkInstance && sdkInstance.actions && typeof sdkInstance.actions.ready === 'function') {
+                    await sdkInstance.actions.ready();
+                    window.__farcasterSDKReady = true;
+                    window.__farcasterSDK = sdkInstance;
+                    console.log('Farcaster SDK ready() called IMMEDIATELY');
+                } else {
+                    console.log('Farcaster SDK not found on initial check, will retry later');
+                }
+            } catch (e) {
+                console.log('Early Farcaster SDK init (non-critical):', e.message);
+            }
+        })();
+    </script>
+    
     <!-- Загружаем ethers.js с fallback на альтернативный CDN -->
     <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" 
             onerror="loadEthersFallback()"></script>
@@ -369,13 +446,46 @@
     <!-- Загружаем основной скрипт игры -->
     <script src="script.js"></script>
     
-    <!-- Fallback: если скрипт не загрузился, показываем сообщение -->
+    <!-- Fallback: если скрипт не загрузился, скрываем индикатор и показываем контент -->
     <script>
+        // Автоматически скрываем индикатор загрузки через 3 секунды максимум
         setTimeout(() => {
             const loadingIndicator = document.getElementById('loadingIndicator');
             if (loadingIndicator && !loadingIndicator.classList.contains('hidden')) {
-                // Если индикатор все еще виден через 5 секунд, значит что-то пошло не так
-                loadingIndicator.innerHTML = 'Loading game...<br><small style="font-size: 0.8em; opacity: 0.7;">If this persists, please refresh</small>';
+                console.log('Auto-hiding loading indicator after timeout');
+                loadingIndicator.classList.add('hidden');
+                loadingIndicator.style.display = 'none';
+                loadingIndicator.style.visibility = 'hidden';
+                loadingIndicator.style.opacity = '0';
+                loadingIndicator.style.pointerEvents = 'none';
+                
+                // Убеждаемся что контент виден
+                const gameWrapper = document.querySelector('.game-wrapper');
+                if (gameWrapper) {
+                    gameWrapper.style.display = 'block';
+                    gameWrapper.style.visibility = 'visible';
+                    gameWrapper.style.opacity = '1';
+                }
+                
+                const gameContainer = document.querySelector('.game-container');
+                if (gameContainer) {
+                    gameContainer.style.display = 'block';
+                    gameContainer.style.visibility = 'visible';
+                    gameContainer.style.opacity = '1';
+                }
+            }
+        }, 3000);
+        
+        // Дополнительный fallback через 5 секунд
+        setTimeout(() => {
+            const loadingIndicator = document.getElementById('loadingIndicator');
+            if (loadingIndicator && !loadingIndicator.classList.contains('hidden')) {
+                console.warn('Force-hiding loading indicator after 5 seconds');
+                loadingIndicator.classList.add('hidden');
+                loadingIndicator.style.display = 'none';
+                loadingIndicator.style.visibility = 'hidden';
+                loadingIndicator.style.opacity = '0';
+                loadingIndicator.style.pointerEvents = 'none';
             }
         }, 5000);
     </script>

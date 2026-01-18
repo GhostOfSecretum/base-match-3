@@ -138,17 +138,18 @@ body {
     background: var(--bg-color);
     color: var(--text-color);
     min-height: 100vh;
-    height: 100vh;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    /* Убрали height: 100vh для совместимости с Farcaster iframe */
+    /* display: flex может вызывать проблемы в iframe, поэтому используем block */
+    display: block !important;
     padding: 5px;
-    overflow: hidden;
+    /* Убрали overflow: hidden - это может скрывать контент в Farcaster */
+    overflow-x: hidden;
+    overflow-y: auto;
     position: relative;
     margin: 0;
-    /* Убеждаемся, что body виден */
-    visibility: visible;
-    opacity: 1;
+    /* Убеждаемся, что body виден - критично для Farcaster */
+    visibility: visible !important;
+    opacity: 1 !important;
     transition: background-color 0.3s ease, color 0.3s ease;
 }
 
@@ -171,13 +172,16 @@ body::before {
     z-index: 1;
     width: 100%;
     max-width: 600px;
-    max-height: 100vh;
+    margin: 0 auto;
+    /* Убрали max-height: 100vh для совместимости с Farcaster */
     overflow-y: auto;
     overflow-x: hidden;
-    /* Убеждаемся, что контент виден */
-    visibility: visible;
-    opacity: 1;
+    /* Убеждаемся, что контент виден - критично для Farcaster */
+    visibility: visible !important;
+    opacity: 1 !important;
     min-height: 100vh;
+    /* Добавили display для явного отображения */
+    display: block !important;
 }
 
 .particles-container {
@@ -253,6 +257,10 @@ body::before {
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
     transition: background-color 0.3s ease, border-color 0.3s ease;
+    /* Критично для Farcaster - убеждаемся что контейнер виден */
+    display: block !important;
+    visibility: visible !important;
+    opacity: 1 !important;
 }
 
 .game-container::before {
