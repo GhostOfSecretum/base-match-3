@@ -506,17 +506,11 @@ class LeaderboardManager {
     }
 
     getPlayerIdentifier() {
-        // Используем имя игрока вместо адреса кошелька
-        // Для обратной совместимости можно использовать имя из game.playerName
-        if (window.game && window.game.playerName) {
-            return window.game.playerName.toLowerCase();
+        // Используем адрес кошелька, если подключен
+        if (this.walletManager && this.walletManager.isConnected()) {
+            return this.walletManager.getAccount().toLowerCase();
         }
-        // Fallback на сохраненное имя
-        const playerName = localStorage.getItem('match3PlayerName');
-        if (playerName) {
-            return playerName.toLowerCase();
-        }
-        return null; // Возвращаем null, если имя не установлено
+        return null; // Возвращаем null, если кошелек не подключен
     }
 
     formatAddress(address) {
@@ -566,20 +560,14 @@ class LeaderboardManager {
 
     // Добавить результат на сервер
     async addResult(score, maxCombo, won) {
-        // Получаем имя игрока вместо адреса кошелька
-        const playerName = window.game ? window.game.playerName : null;
-        const playerNameFromStorage = playerName || localStorage.getItem('match3PlayerName');
+        const walletAddress = this.getPlayerIdentifier();
 
-        if (!playerNameFromStorage) {
-            // Если имя игрока не установлено, не сохраняем результат
-            console.warn('Player name not set, cannot save result');
+        if (!walletAddress) {
+            // Если кошелек не подключен, не сохраняем результат
             return null;
         }
-
-        // Используем имя игрока как идентификатор (для обратной совместимости)
-        const playerIdentifier = playerNameFromStorage.toLowerCase();
         
-        console.log('Sending result to leaderboard:', { playerName: playerNameFromStorage, score, maxCombo, won });
+        console.log('Sending result to leaderboard:', { walletAddress, score, maxCombo, won });
 
         try {
             const response = await fetch(this.apiUrl, {
@@ -588,7 +576,8 @@ class LeaderboardManager {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    playerName: playerNameFromStorage, // Используем имя игрока
+                    walletAddress: walletAddress,
+                    playerName: this.formatAddress(walletAddress), // Форматированный адрес для отображения
                     score: score,
                     maxCombo: maxCombo || 1,
                     won: won || false
@@ -614,7 +603,8 @@ class LeaderboardManager {
             // В случае ошибки создаем локальный результат
             const result = {
                 id: Date.now() + Math.random(),
-                playerName: playerNameFromStorage,
+                walletAddress: walletAddress,
+                playerName: this.formatAddress(walletAddress),
                 score: score,
                 maxCombo: maxCombo,
                 won: won,
@@ -648,10 +638,10 @@ class LeaderboardManager {
             .slice(0, limit);
     }
 
-    getPlayerStats(playerName = null) {
-        // Используем имя игрока вместо адреса
-        const name = playerName || (window.game ? window.game.playerName : null) || localStorage.getItem('match3PlayerName');
-        if (!name) {
+    getPlayerStats(walletAddress = null) {
+        // Используем адрес кошелька для идентификации
+        const address = walletAddress || this.getPlayerIdentifier();
+        if (!address) {
             return {
                 totalGames: 0,
                 bestScore: 0,
@@ -661,9 +651,9 @@ class LeaderboardManager {
         }
 
         const playerResults = this.leaderboard.filter(r => {
-            // Используем playerName как основной идентификатор
-            const resultName = (r.playerName || '').toLowerCase();
-            return resultName === name.toLowerCase();
+            // Используем walletAddress для идентификации
+            const resultAddress = (r.walletAddress || '').toLowerCase();
+            return resultAddress === address.toLowerCase();
         });
 
         if (playerResults.length === 0) {
@@ -698,10 +688,10 @@ class LeaderboardManager {
         if (this.totalPlayers !== undefined) {
             return this.totalPlayers;
         }
-        // Считаем уникальных игроков по именам
+        // Считаем уникальных игроков по адресам кошельков
         const uniquePlayers = new Set(this.leaderboard.map(r => {
-            return (r.playerName || '').toLowerCase();
-        }).filter(name => name && name !== 'guest'));
+            return (r.walletAddress || r.playerName || '').toLowerCase();
+        }).filter(addr => addr && addr !== 'guest'));
         return uniquePlayers.size;
     }
 
@@ -1024,7 +1014,14 @@ class MatchThreePro {
         this.walletManager = new WalletManager();
         this.leaderboard = new LeaderboardManager(this.walletManager);
         this.soundManager = new SoundManager();
-        this.playerName = this.getPlayerName(); // Получаем имя игрока из localStorage
+        
+        // Генерируем или получаем имя игрока из localStorage
+        this.playerName = this.getPlayerName();
+        if (!this.playerName) {
+            // Генерируем случайное имя, если его нет
+            this.playerName = this.generateRandomPlayerName();
+            this.setPlayerName(this.playerName);
+        }
 
         // Мигрируем старые данные при инициализации
         this.leaderboard.migrateOldData();
@@ -1074,30 +1071,21 @@ class MatchThreePro {
         return false;
     }
 
-    checkAndShowPlayerNameModal() {
-        if (!this.playerName) {
-            const modal = document.getElementById('playerNameModal');
-            if (modal) {
-                const input = document.getElementById('playerNameInput');
-                if (input) {
-                    input.value = '';
-                    input.focus();
-                }
-                modal.classList.add('show');
-                return true;
-            }
-        }
-        return false;
+    generateRandomPlayerName() {
+        // Генерируем случайное имя вида "Player1234"
+        const randomNum = Math.floor(Math.random() * 10000);
+        return `Player${randomNum}`;
     }
 
     async init() {
         try {
-            // Проверяем наличие имени игрока перед инициализацией
+            // Убеждаемся, что у игрока есть имя
             if (!this.playerName) {
-                const shown = this.checkAndShowPlayerNameModal();
-                if (shown) {
-                    // Не инициализируем игру, пока игрок не введет имя
-                    return;
+                this.playerName = this.getPlayerName();
+                if (!this.playerName) {
+                    // Генерируем случайное имя, если его нет
+                    this.playerName = this.generateRandomPlayerName();
+                    this.setPlayerName(this.playerName);
                 }
             }
 
@@ -1181,19 +1169,31 @@ class MatchThreePro {
         const playerAvatarDisplay = document.getElementById('currentPlayerAvatar');
 
         if (playerNameDisplay) {
-            // Используем имя игрока из localStorage
-            const name = this.playerName || this.getPlayerName();
-            if (name) {
-                playerNameDisplay.textContent = name;
-                playerNameDisplay.classList.remove('wallet-address');
-            } else {
-                playerNameDisplay.textContent = 'Player';
-                playerNameDisplay.classList.remove('wallet-address');
-            }
+            if (this.walletManager.isConnected()) {
+                // Показываем адрес кошелька
+                const address = this.walletManager.getAccount();
+                if (address) {
+                    playerNameDisplay.textContent = this.leaderboard.formatAddress(address);
+                    playerNameDisplay.classList.add('wallet-address');
+                } else {
+                    playerNameDisplay.textContent = 'Connect Wallet';
+                    playerNameDisplay.classList.remove('wallet-address');
+                }
 
-            // Скрываем avatar (не используем аватары из кошелька)
-            if (playerAvatarDisplay) {
-                playerAvatarDisplay.style.display = 'none';
+                // Показываем avatar, если доступен
+                const avatar = this.walletManager.getAvatar();
+                if (playerAvatarDisplay && avatar) {
+                    playerAvatarDisplay.src = avatar;
+                    playerAvatarDisplay.style.display = 'block';
+                } else if (playerAvatarDisplay) {
+                    playerAvatarDisplay.style.display = 'none';
+                }
+            } else {
+                playerNameDisplay.textContent = 'Connect Wallet';
+                playerNameDisplay.classList.remove('wallet-address');
+                if (playerAvatarDisplay) {
+                    playerAvatarDisplay.style.display = 'none';
+                }
             }
         }
     }
@@ -2667,8 +2667,10 @@ class MatchThreePro {
                 return;
             }
 
-            // Используем имя текущего игрока для проверки
-            const currentPlayerName = (this.playerName || this.getPlayerName() || '').toLowerCase();
+            // Используем адрес кошелька текущего игрока для проверки
+            const currentAddress = this.walletManager.isConnected()
+                ? this.walletManager.getAccount().toLowerCase()
+                : null;
 
             list.innerHTML = topResults.map((result, index) => {
                 const date = new Date(result.date);
@@ -2681,12 +2683,12 @@ class MatchThreePro {
 
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
 
-                // Используем playerName как основной идентификатор
-                const displayName = result.playerName || 'Unknown';
-                const resultPlayerName = (result.playerName || '').toLowerCase();
+                // Используем playerName для отображения (форматированный адрес) или walletAddress
+                const displayName = result.playerName || (result.walletAddress ? this.leaderboard.formatAddress(result.walletAddress) : 'Unknown');
+                const resultAddress = (result.walletAddress || '').toLowerCase();
                 
-                // Проверяем, является ли это текущий игрок по имени
-                const isCurrentPlayer = currentPlayerName && resultPlayerName === currentPlayerName;
+                // Проверяем, является ли это текущий игрок по адресу кошелька
+                const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
 
                 return `
                     <div class="leaderboard-item ${isCurrentPlayer ? 'current-player' : ''}">
@@ -2695,7 +2697,7 @@ class MatchThreePro {
                         </div>
                         <div class="leaderboard-player">
                             <div class="player-name-row">
-                                <span class="player-name">${this.escapeHtml(displayName)}</span>
+                                <span class="player-name wallet-address">${this.escapeHtml(displayName)}</span>
                                 ${isCurrentPlayer ? '<span class="you-badge">You</span>' : ''}
                                 ${result.won ? '<span class="win-badge">✓</span>' : ''}
                             </div>
@@ -2908,38 +2910,6 @@ class MatchThreePro {
             });
         }
 
-        // Модалка выбора имени игрока
-        const savePlayerNameBtn = document.getElementById('savePlayerNameBtn');
-        if (savePlayerNameBtn) {
-            savePlayerNameBtn.addEventListener('click', () => {
-                const input = document.getElementById('playerNameInput');
-                const modal = document.getElementById('playerNameModal');
-                
-                if (input && input.value.trim() !== '') {
-                    const name = input.value.trim();
-                    if (this.setPlayerName(name)) {
-                        modal.classList.remove('show');
-                        this.updateWalletDisplay();
-                        // Если игра еще не инициализирована, инициализируем её
-                        if (!this.board || this.board.length === 0) {
-                            this.init();
-                        }
-                    }
-                } else {
-                    alert('Please enter your name');
-                }
-            });
-        }
-
-        // Поддержка Enter в поле ввода имени
-        const playerNameInput = document.getElementById('playerNameInput');
-        if (playerNameInput) {
-            playerNameInput.addEventListener('keypress', (e) => {
-                if (e.key === 'Enter') {
-                    savePlayerNameBtn.click();
-                }
-            });
-        }
 
         // Обновляем UI кошелька при инициализации (если методы существуют)
         if (this.walletManager && typeof this.walletManager.updateWalletUI === 'function') {

@@ -71,11 +71,11 @@ export default async function handler(req, res) {
     if (req.method === 'POST') {
       const { walletAddress, playerName, score, maxCombo, won } = req.body;
       
-      // Имя игрока обязательно (walletAddress теперь опциональный для обратной совместимости)
-      if (!playerName || playerName.trim() === '') {
+      // Адрес кошелька обязателен
+      if (!walletAddress) {
         return res.status(400).json({
           success: false,
-          error: 'Player name is required'
+          error: 'Wallet address is required'
         });
       }
       
@@ -86,15 +86,15 @@ export default async function handler(req, res) {
         });
       }
       
-      // Используем переданный playerName
-      const displayName = playerName.trim();
+      // Используем переданный playerName для отображения, или форматируем адрес
+      const displayName = playerName && playerName.trim() !== '' ? playerName.trim() : formatAddress(walletAddress);
       
-      console.log('Leaderboard API: Saving result', { playerName: displayName, score });
+      console.log('Leaderboard API: Saving result', { walletAddress, playerName: displayName, score });
       
       const result = {
         id: Date.now() + Math.random(),
-        playerName: displayName, // Используем имя игрока
-        walletAddress: walletAddress ? walletAddress.toLowerCase() : null, // Для обратной совместимости
+        walletAddress: walletAddress.toLowerCase(),
+        playerName: displayName, // Форматированный адрес для отображения
         score: score,
         maxCombo: maxCombo || 1,
         won: won || false,
