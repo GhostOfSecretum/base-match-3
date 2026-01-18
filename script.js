@@ -3747,7 +3747,6 @@ let deployedContractAddress = null;
 function resetDeployModal() {
     const deployStatus = document.getElementById('deployStatus');
     const deployResult = document.getElementById('deployResult');
-    const interactPanel = document.getElementById('interactPanel');
     const deployBtn = document.getElementById('deployContractBtn');
     
     if (deployStatus) {
@@ -3757,10 +3756,6 @@ function resetDeployModal() {
     
     if (deployResult) {
         deployResult.style.display = 'none';
-    }
-    
-    if (interactPanel) {
-        interactPanel.style.display = 'none';
     }
     
     if (deployBtn) {
@@ -3781,12 +3776,17 @@ function resetDeployModal() {
 function showDeployResult(contractAddress) {
     const deployResult = document.getElementById('deployResult');
     const addressLink = document.getElementById('contractAddressLink');
+    const viewOnBasescanBtn = document.getElementById('viewOnBasescanBtn');
     const deployBtn = document.getElementById('deployContractBtn');
     
     if (deployResult && addressLink) {
         addressLink.textContent = contractAddress;
         addressLink.href = `https://basescan.org/address/${contractAddress}`;
         deployResult.style.display = 'block';
+    }
+    
+    if (viewOnBasescanBtn) {
+        viewOnBasescanBtn.href = `https://basescan.org/address/${contractAddress}`;
     }
     
     if (deployBtn) {
@@ -3798,9 +3798,6 @@ function showDeployResult(contractAddress) {
 // Initialize deploy contract functionality
 function initDeployContract() {
     const deployBtn = document.getElementById('deployContractBtn');
-    const interactBtn = document.getElementById('interactContractBtn');
-    const refreshBtn = document.getElementById('refreshValueBtn');
-    const setValueBtn = document.getElementById('setValueBtn');
     
     if (deployBtn) {
         deployBtn.addEventListener('click', async (e) => {
@@ -3809,174 +3806,6 @@ function initDeployContract() {
             await deployContract();
         });
         console.log('Deploy contract button initialized');
-    }
-    
-    if (interactBtn) {
-        interactBtn.addEventListener('click', (e) => {
-            e.preventDefault();
-            showInteractPanel();
-        });
-    }
-    
-    if (refreshBtn) {
-        refreshBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            await refreshStoredValue();
-        });
-    }
-    
-    if (setValueBtn) {
-        setValueBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            await setContractValue();
-        });
-    }
-}
-
-// Show interact panel
-function showInteractPanel() {
-    const interactPanel = document.getElementById('interactPanel');
-    if (interactPanel) {
-        interactPanel.style.display = 'block';
-        refreshStoredValue();
-    }
-}
-
-// Refresh stored value from contract
-async function refreshStoredValue() {
-    const valueDisplay = document.getElementById('currentStoredValue');
-    const interactStatus = document.getElementById('interactStatus');
-    
-    if (!deployedContractAddress) {
-        if (interactStatus) {
-            interactStatus.textContent = 'No contract deployed';
-            interactStatus.className = 'deploy-status error';
-        }
-        return;
-    }
-    
-    try {
-        if (interactStatus) {
-            interactStatus.textContent = 'Reading value...';
-            interactStatus.className = 'deploy-status';
-        }
-        
-        // Get provider
-        let provider;
-        if (typeof ethers !== 'undefined' && window.ethereum) {
-            provider = new ethers.providers.Web3Provider(window.ethereum);
-        } else {
-            // Use public RPC
-            provider = new ethers.providers.JsonRpcProvider('https://mainnet.base.org');
-        }
-        
-        const contract = new ethers.Contract(deployedContractAddress, SIMPLE_STORAGE_ABI, provider);
-        const value = await contract.getValue();
-        
-        if (valueDisplay) {
-            valueDisplay.textContent = value.toString();
-        }
-        
-        if (interactStatus) {
-            interactStatus.textContent = '';
-            interactStatus.className = 'deploy-status';
-        }
-    } catch (error) {
-        console.error('Error reading contract:', error);
-        if (interactStatus) {
-            interactStatus.textContent = 'Error reading value: ' + error.message;
-            interactStatus.className = 'deploy-status error';
-        }
-    }
-}
-
-// Set value in contract
-async function setContractValue() {
-    const valueInput = document.getElementById('newValueInput');
-    const interactStatus = document.getElementById('interactStatus');
-    const setValueBtn = document.getElementById('setValueBtn');
-    
-    if (!deployedContractAddress) {
-        if (interactStatus) {
-            interactStatus.textContent = 'No contract deployed';
-            interactStatus.className = 'deploy-status error';
-        }
-        return;
-    }
-    
-    const newValue = valueInput ? valueInput.value : '';
-    if (!newValue || isNaN(parseInt(newValue))) {
-        if (interactStatus) {
-            interactStatus.textContent = 'Please enter a valid number';
-            interactStatus.className = 'deploy-status error';
-        }
-        return;
-    }
-    
-    try {
-        if (setValueBtn) {
-            setValueBtn.disabled = true;
-            setValueBtn.textContent = '...';
-        }
-        
-        if (interactStatus) {
-            interactStatus.textContent = 'Confirm transaction in wallet...';
-            interactStatus.className = 'deploy-status';
-        }
-        
-        // Get signer
-        if (typeof ethers === 'undefined' || !window.ethereum) {
-            throw new Error('Wallet not connected');
-        }
-        
-        const provider = new ethers.providers.Web3Provider(window.ethereum);
-        await provider.send('eth_requestAccounts', []);
-        const signer = provider.getSigner();
-        
-        // Check network
-        const network = await provider.getNetwork();
-        if (network.chainId !== 8453) {
-            throw new Error('Please switch to Base network');
-        }
-        
-        const contract = new ethers.Contract(deployedContractAddress, SIMPLE_STORAGE_ABI, signer);
-        
-        if (interactStatus) {
-            interactStatus.textContent = 'Sending transaction...';
-        }
-        
-        const tx = await contract.setValue(parseInt(newValue));
-        
-        if (interactStatus) {
-            interactStatus.textContent = 'Waiting for confirmation...';
-        }
-        
-        await tx.wait();
-        
-        if (interactStatus) {
-            interactStatus.textContent = 'Value updated successfully!';
-            interactStatus.className = 'deploy-status success';
-        }
-        
-        // Refresh displayed value
-        await refreshStoredValue();
-        
-        // Clear input
-        if (valueInput) {
-            valueInput.value = '';
-        }
-        
-    } catch (error) {
-        console.error('Error setting value:', error);
-        if (interactStatus) {
-            interactStatus.textContent = 'Error: ' + (error.message || 'Transaction failed');
-            interactStatus.className = 'deploy-status error';
-        }
-    } finally {
-        if (setValueBtn) {
-            setValueBtn.disabled = false;
-            setValueBtn.textContent = 'Set';
-        }
     }
 }
 

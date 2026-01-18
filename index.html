@@ -538,24 +538,10 @@ contract SimpleStorage {
                                 <a id="contractAddressLink" class="contract-address-link" href="" target="_blank"></a>
                             </div>
                             <div class="result-actions">
-                                <button id="interactContractBtn" class="btn btn-secondary btn-small">
-                                    <span>Interact with Contract</span>
-                                </button>
+                                <a id="viewOnBasescanBtn" class="btn btn-secondary btn-small" href="" target="_blank">
+                                    <span>🔍 View on BaseScan</span>
+                                </a>
                             </div>
-                        </div>
-                        <div id="interactPanel" class="interact-panel" style="display: none;">
-                            <h3>Interact with Contract</h3>
-                            <div class="interact-row">
-                                <label>Current Value:</label>
-                                <span id="currentStoredValue" class="stored-value">0</span>
-                                <button id="refreshValueBtn" class="btn btn-small btn-secondary">🔄</button>
-                            </div>
-                            <div class="interact-row">
-                                <label>Set New Value:</label>
-                                <input type="number" id="newValueInput" class="value-input" placeholder="Enter number" min="0" />
-                                <button id="setValueBtn" class="btn btn-small btn-primary">Set</button>
-                            </div>
-                            <div id="interactStatus" class="deploy-status"></div>
                         </div>
                     </div>
                 </div>
