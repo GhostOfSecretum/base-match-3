@@ -356,6 +356,9 @@ class WalletManager {
             // Проверяем и переключаем на Base, если нужно
             await this.checkNetwork();
 
+            // Пытаемся получить username из Base app SDK, если доступен
+            await this.getUsernameFromSDK();
+
             // Сохраняем состояние подключения
             localStorage.setItem('walletConnected', 'true');
 
@@ -549,7 +552,21 @@ class LeaderboardManager {
             return null;
         }
         
-        console.log('Sending result to leaderboard:', { walletAddress, score, maxCombo, won });
+        // Получаем username из Base app SDK, если доступен
+        let playerName = null;
+        if (this.walletManager) {
+            // Пытаемся получить username из SDK
+            playerName = await this.walletManager.getUsernameFromSDK();
+            // Если username не получен, используем метод getUsername
+            if (!playerName) {
+                playerName = this.walletManager.getUsername();
+            }
+        }
+        
+        // Если username не доступен, используем форматированный адрес как fallback
+        const displayName = playerName || this.formatAddress(walletAddress);
+        
+        console.log('Sending result to leaderboard:', { walletAddress, playerName: displayName, score, maxCombo, won });
 
         try {
             const response = await fetch(this.apiUrl, {
@@ -559,7 +576,7 @@ class LeaderboardManager {
                 },
                 body: JSON.stringify({
                     walletAddress: walletAddress,
-                    playerName: this.formatAddress(walletAddress), // Форматированный адрес для отображения
+                    playerName: displayName, // Имя аккаунта Base app вместо адреса
                     score: score,
                     maxCombo: maxCombo || 1,
                     won: won || false
@@ -586,7 +603,7 @@ class LeaderboardManager {
             const result = {
                 id: Date.now() + Math.random(),
                 walletAddress: walletAddress,
-                playerName: this.formatAddress(walletAddress),
+                playerName: displayName,
                 score: score,
                 maxCombo: maxCombo,
                 won: won,
@@ -1146,21 +1163,41 @@ class MatchThreePro {
         }
     }
 
-    updateWalletDisplay() {
+    async updateWalletDisplay() {
         const playerNameDisplay = document.getElementById('currentPlayerName');
         const playerAvatarDisplay = document.getElementById('currentPlayerAvatar');
 
         if (playerNameDisplay) {
             if (this.walletManager.isConnected()) {
-                // Показываем адрес кошелька
-                const address = this.walletManager.getAccount();
-                if (address) {
-                    playerNameDisplay.textContent = this.leaderboard.formatAddress(address);
-                    playerNameDisplay.classList.add('wallet-address');
+                // Пытаемся получить username из Base app SDK
+                let displayName = null;
+                
+                // Сначала пробуем получить username из SDK
+                if (this.walletManager.getUsername) {
+                    displayName = this.walletManager.getUsername();
+                }
+                
+                // Если username нет, пробуем получить из SDK напрямую
+                if (!displayName && this.walletManager.getUsernameFromSDK) {
+                    displayName = await this.walletManager.getUsernameFromSDK();
+                }
+                
+                // Если username всё ещё нет, используем форматированный адрес как fallback
+                if (!displayName) {
+                    const address = this.walletManager.getAccount();
+                    if (address) {
+                        displayName = this.leaderboard.formatAddress(address);
+                        playerNameDisplay.classList.add('wallet-address');
+                    } else {
+                        displayName = 'Connect Wallet';
+                        playerNameDisplay.classList.remove('wallet-address');
+                    }
                 } else {
-                    playerNameDisplay.textContent = 'Connect Wallet';
+                    // Если есть username, убираем класс wallet-address
                     playerNameDisplay.classList.remove('wallet-address');
                 }
+                
+                playerNameDisplay.textContent = displayName;
 
                 // Показываем avatar, если доступен
                 const avatar = this.walletManager.getAvatar();
@@ -2667,9 +2704,13 @@ class MatchThreePro {
 
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
 
-                // Используем playerName для отображения (форматированный адрес) или walletAddress
+                // Используем playerName для отображения (username Base app или форматированный адрес)
                 const displayName = result.playerName || (result.walletAddress ? this.leaderboard.formatAddress(result.walletAddress) : 'Unknown');
                 const resultAddress = (result.walletAddress || '').toLowerCase();
+                
+                // Проверяем, является ли displayName адресом кошелька (содержит ...)
+                // Если это username, то не применяем класс wallet-address
+                const isWalletAddress = displayName.includes('...') || displayName.match(/^0x[a-fA-F0-9]{4}\.\.\.[a-fA-F0-9]{4}$/);
                 
                 // Проверяем, является ли это текущий игрок по адресу кошелька
                 const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
@@ -2681,7 +2722,7 @@ class MatchThreePro {
                         </div>
                         <div class="leaderboard-player">
                             <div class="player-name-row">
-                                <span class="player-name wallet-address">${this.escapeHtml(displayName)}</span>
+                                <span class="player-name ${isWalletAddress ? 'wallet-address' : ''}">${this.escapeHtml(displayName)}</span>
                                 ${isCurrentPlayer ? '<span class="you-badge">You</span>' : ''}
                                 ${result.won ? '<span class="win-badge">✓</span>' : ''}
                             </div>
