@@ -1696,6 +1696,126 @@ input:checked + .slider:before {
     margin: 0;
 }
 
+/* GM Button Styles */
+.gm-button-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+    margin: 24px 0;
+}
+
+.btn-gm {
+    background: linear-gradient(135deg, #FFD700 0%, #FFA500 50%, #FF8C00 100%);
+    color: #000;
+    font-size: 1.3em;
+    font-weight: 700;
+    padding: 16px 40px;
+    border-radius: 20px;
+    box-shadow: 
+        0 4px 20px rgba(255, 215, 0, 0.5),
+        0 0 40px rgba(255, 165, 0, 0.3);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    border: 2px solid rgba(255, 255, 255, 0.3);
+}
+
+.btn-gm::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+    transition: left 0.5s;
+}
+
+.btn-gm:hover::before {
+    left: 100%;
+}
+
+.btn-gm:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 
+        0 6px 30px rgba(255, 215, 0, 0.7),
+        0 0 60px rgba(255, 165, 0, 0.5);
+}
+
+.btn-gm:active {
+    transform: translateY(-1px) scale(0.98);
+}
+
+.btn-gm:disabled {
+    background: linear-gradient(135deg, #666 0%, #444 100%);
+    color: rgba(255, 255, 255, 0.5);
+    box-shadow: none;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-gm:disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.btn-gm.loading {
+    pointer-events: none;
+}
+
+.btn-gm.loading .gm-icon {
+    animation: gmSpin 1s linear infinite;
+}
+
+@keyframes gmSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+.btn-gm.success {
+    background: linear-gradient(135deg, #4caf50 0%, #2e7d32 100%);
+    color: white;
+}
+
+.gm-icon {
+    font-size: 1.2em;
+    margin-right: 8px;
+}
+
+.gm-status {
+    font-size: 0.9em;
+    color: rgba(255, 255, 255, 0.8);
+    text-align: center;
+    min-height: 20px;
+}
+
+.gm-status.error {
+    color: #ff6b6b;
+}
+
+.gm-status.success {
+    color: #4caf50;
+}
+
+.gm-last-said {
+    font-size: 0.85em;
+    color: rgba(255, 255, 255, 0.5);
+    text-align: center;
+}
+
+.gm-tx-link {
+    color: var(--base-blue);
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.gm-tx-link:hover {
+    color: var(--base-blue-light);
+    text-decoration: underline;
+}
+
 /* Rules Modal Styles */
 .rules-modal {
     max-width: 600px;

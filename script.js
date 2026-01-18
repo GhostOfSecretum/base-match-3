@@ -3133,6 +3133,7 @@ function initStartMenu() {
             e.stopPropagation();
             console.log('GM Streak button clicked');
             updateDayStreakDisplay();
+            updateGMButtonState();
             dayStreakModal.classList.add('show');
         });
         console.log('GM Streak button handler attached');
@@ -3176,6 +3177,9 @@ function initStartMenu() {
 
     // Обновляем отображение GM Streak на главном экране
     updateDayStreakDisplay();
+    
+    // Инициализируем GM кнопку
+    initGMButton();
 
     // Сохраняем функции для использования из других мест
     window.showGameMenu = showMenu;
@@ -3184,42 +3188,48 @@ function initStartMenu() {
 
 // Функция для обновления отображения GM Streak
 function updateDayStreakDisplay() {
-    // Получаем streak из localStorage
-    const streakData = localStorage.getItem('dayStreak');
+    // Получаем streak из localStorage (приоритет GM данным)
+    const gmData = localStorage.getItem('gmData');
+    const dayStreakData = localStorage.getItem('dayStreak');
     let streak = 0;
-    let lastPlayDate = null;
+    let lastActivityDate = null;
 
-    if (streakData) {
+    // Сначала проверяем GM данные (если пользователь отправлял GM транзакции)
+    if (gmData) {
         try {
-            const data = JSON.parse(streakData);
+            const data = JSON.parse(gmData);
             streak = data.streak || 0;
-            lastPlayDate = data.lastPlayDate || null;
-
-            // Проверяем, играл ли пользователь сегодня
-            const today = new Date().toDateString();
-            if (lastPlayDate !== today) {
-                // Проверяем, был ли это вчера (для продолжения streak)
-                const yesterday = new Date();
-                yesterday.setDate(yesterday.getDate() - 1);
-                if (lastPlayDate === yesterday.toDateString()) {
-                    // Продолжаем streak
-                    streak += 1;
-                    localStorage.setItem('dayStreak', JSON.stringify({
-                        streak: streak,
-                        lastPlayDate: today
-                    }));
-                } else if (lastPlayDate !== today) {
-                    // Streak сброшен
-                    streak = 0;
-                    localStorage.setItem('dayStreak', JSON.stringify({
-                        streak: 0,
-                        lastPlayDate: null
-                    }));
-                }
+            lastActivityDate = data.lastGMDate || null;
+        } catch (e) {
+            console.error('Error parsing GM data:', e);
+        }
+    }
+    
+    // Также проверяем dayStreak данные и берем максимальный streak
+    if (dayStreakData) {
+        try {
+            const data = JSON.parse(dayStreakData);
+            const dayStreak = data.streak || 0;
+            const lastPlayDate = data.lastPlayDate || null;
+            
+            // Берем максимальный streak
+            if (dayStreak > streak) {
+                streak = dayStreak;
+                lastActivityDate = lastPlayDate;
             }
         } catch (e) {
             console.error('Error parsing day streak data:', e);
         }
+    }
+
+    // Проверяем, была ли активность сегодня или вчера
+    const today = new Date().toDateString();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (lastActivityDate && lastActivityDate !== today && lastActivityDate !== yesterday.toDateString()) {
+        // Streak сброшен (последняя активность была больше дня назад)
+        streak = 0;
     }
 
     // Обновляем отображение в меню
@@ -3229,6 +3239,8 @@ function updateDayStreakDisplay() {
 
     if (streak > 0 && dayStreakDisplay) {
         dayStreakDisplay.style.display = 'block';
+    } else if (dayStreakDisplay) {
+        dayStreakDisplay.style.display = 'none';
     }
 
     if (dayStreakValue) {
@@ -3280,6 +3292,293 @@ function updateDayStreakAfterGame() {
     }));
 
     updateDayStreakDisplay();
+}
+
+// GM Transaction functionality
+const GM_CONTRACT_ADDRESS = '0x0000000000000000000000000000000000000000'; // Null address for GM message
+const GM_MESSAGE = '0x474d'; // "GM" in hex
+
+// Check if GM was already said today
+function hasGMToday() {
+    const gmData = localStorage.getItem('gmData');
+    if (gmData) {
+        try {
+            const data = JSON.parse(gmData);
+            const today = new Date().toDateString();
+            return data.lastGMDate === today;
+        } catch (e) {
+            return false;
+        }
+    }
+    return false;
+}
+
+// Get GM data from localStorage
+function getGMData() {
+    const gmData = localStorage.getItem('gmData');
+    if (gmData) {
+        try {
+            return JSON.parse(gmData);
+        } catch (e) {
+            return { gmCount: 0, lastGMDate: null, lastTxHash: null };
+        }
+    }
+    return { gmCount: 0, lastGMDate: null, lastTxHash: null };
+}
+
+// Save GM data to localStorage
+function saveGMData(data) {
+    localStorage.setItem('gmData', JSON.stringify(data));
+}
+
+// Update GM button state
+function updateGMButtonState() {
+    const gmButton = document.getElementById('gmButton');
+    const gmStatus = document.getElementById('gmStatus');
+    const gmLastSaid = document.getElementById('gmLastSaid');
+    
+    if (!gmButton) return;
+    
+    const alreadySaidToday = hasGMToday();
+    const gmData = getGMData();
+    
+    if (alreadySaidToday) {
+        gmButton.disabled = true;
+        gmButton.innerHTML = '<span class="gm-icon">✓</span><span>GM Sent!</span>';
+        gmButton.classList.add('success');
+        if (gmStatus) {
+            gmStatus.textContent = 'You already said GM today!';
+            gmStatus.className = 'gm-status success';
+        }
+        if (gmLastSaid && gmData.lastTxHash) {
+            gmLastSaid.innerHTML = `<a href="https://basescan.org/tx/${gmData.lastTxHash}" target="_blank" class="gm-tx-link">View transaction ↗</a>`;
+        }
+    } else {
+        gmButton.disabled = false;
+        gmButton.innerHTML = '<span class="gm-icon">☀️</span><span>Say GM</span>';
+        gmButton.classList.remove('success', 'loading');
+        if (gmStatus) {
+            gmStatus.textContent = '';
+            gmStatus.className = 'gm-status';
+        }
+        if (gmLastSaid) {
+            if (gmData.gmCount > 0) {
+                gmLastSaid.textContent = `Total GMs: ${gmData.gmCount}`;
+            } else {
+                gmLastSaid.textContent = '';
+            }
+        }
+    }
+}
+
+// Send GM transaction
+async function sendGMTransaction() {
+    const gmButton = document.getElementById('gmButton');
+    const gmStatus = document.getElementById('gmStatus');
+    
+    if (!gmButton) return;
+    
+    // Check if already said GM today
+    if (hasGMToday()) {
+        if (gmStatus) {
+            gmStatus.textContent = 'You already said GM today!';
+            gmStatus.className = 'gm-status';
+        }
+        return;
+    }
+    
+    // Set loading state
+    gmButton.disabled = true;
+    gmButton.classList.add('loading');
+    gmButton.innerHTML = '<span class="gm-icon">⏳</span><span>Sending...</span>';
+    if (gmStatus) {
+        gmStatus.textContent = 'Preparing transaction...';
+        gmStatus.className = 'gm-status';
+    }
+    
+    try {
+        let txHash = null;
+        
+        // Try Farcaster SDK first (for miniapp)
+        const farcasterSDK = window.__farcasterSDK || 
+                            (typeof frame !== 'undefined' && frame.sdk) || 
+                            (window.farcaster && window.farcaster.miniapp);
+        
+        if (farcasterSDK && farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
+            // Use Farcaster SDK's ethProvider
+            console.log('Sending GM via Farcaster SDK');
+            if (gmStatus) gmStatus.textContent = 'Confirm in your wallet...';
+            
+            const provider = farcasterSDK.wallet.ethProvider;
+            
+            // Get user address
+            const accounts = await provider.request({ method: 'eth_requestAccounts' });
+            if (!accounts || accounts.length === 0) {
+                throw new Error('No accounts found');
+            }
+            
+            const userAddress = accounts[0];
+            
+            // Send transaction (0 ETH to self with GM data)
+            const txParams = {
+                from: userAddress,
+                to: userAddress, // Send to self
+                value: '0x0', // 0 ETH
+                data: GM_MESSAGE, // "GM" in hex
+                chainId: '0x2105' // Base mainnet
+            };
+            
+            txHash = await provider.request({
+                method: 'eth_sendTransaction',
+                params: [txParams]
+            });
+            
+        } else if (window.ethereum) {
+            // Fallback to window.ethereum
+            console.log('Sending GM via window.ethereum');
+            if (gmStatus) gmStatus.textContent = 'Confirm in your wallet...';
+            
+            // Request accounts
+            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            if (!accounts || accounts.length === 0) {
+                throw new Error('No wallet connected');
+            }
+            
+            const userAddress = accounts[0];
+            
+            // Check if on Base network
+            const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+            if (chainId !== '0x2105') {
+                // Try to switch to Base
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: '0x2105' }]
+                    });
+                } catch (switchError) {
+                    if (switchError.code === 4902) {
+                        // Add Base network
+                        await window.ethereum.request({
+                            method: 'wallet_addEthereumChain',
+                            params: [{
+                                chainId: '0x2105',
+                                chainName: 'Base',
+                                nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+                                rpcUrls: ['https://mainnet.base.org'],
+                                blockExplorerUrls: ['https://basescan.org']
+                            }]
+                        });
+                    } else {
+                        throw new Error('Please switch to Base network');
+                    }
+                }
+            }
+            
+            // Send transaction (0 ETH to self with GM data)
+            const txParams = {
+                from: userAddress,
+                to: userAddress, // Send to self
+                value: '0x0', // 0 ETH
+                data: GM_MESSAGE // "GM" in hex
+            };
+            
+            txHash = await window.ethereum.request({
+                method: 'eth_sendTransaction',
+                params: [txParams]
+            });
+            
+        } else {
+            throw new Error('No wallet found. Please use a Web3 browser or connect a wallet.');
+        }
+        
+        if (txHash) {
+            console.log('GM transaction sent:', txHash);
+            
+            // Update GM data
+            const gmData = getGMData();
+            const today = new Date().toDateString();
+            
+            // Update streak
+            const yesterday = new Date();
+            yesterday.setDate(yesterday.getDate() - 1);
+            
+            let newStreak = 1;
+            if (gmData.lastGMDate === yesterday.toDateString()) {
+                // Continue streak
+                newStreak = (gmData.streak || 0) + 1;
+            } else if (gmData.lastGMDate === today) {
+                // Already said GM today (shouldn't happen, but just in case)
+                newStreak = gmData.streak || 1;
+            }
+            
+            saveGMData({
+                gmCount: (gmData.gmCount || 0) + 1,
+                lastGMDate: today,
+                lastTxHash: txHash,
+                streak: newStreak
+            });
+            
+            // Also update the game's day streak
+            localStorage.setItem('dayStreak', JSON.stringify({
+                streak: newStreak,
+                lastPlayDate: today
+            }));
+            
+            // Update UI
+            gmButton.innerHTML = '<span class="gm-icon">✓</span><span>GM Sent!</span>';
+            gmButton.classList.remove('loading');
+            gmButton.classList.add('success');
+            
+            if (gmStatus) {
+                gmStatus.innerHTML = `GM sent successfully! <a href="https://basescan.org/tx/${txHash}" target="_blank" class="gm-tx-link">View ↗</a>`;
+                gmStatus.className = 'gm-status success';
+            }
+            
+            // Update streak displays
+            updateDayStreakDisplay();
+            updateGMButtonState();
+        }
+        
+    } catch (error) {
+        console.error('GM transaction error:', error);
+        
+        gmButton.disabled = false;
+        gmButton.classList.remove('loading');
+        gmButton.innerHTML = '<span class="gm-icon">☀️</span><span>Say GM</span>';
+        
+        if (gmStatus) {
+            let errorMsg = 'Transaction failed';
+            if (error.message) {
+                if (error.message.includes('rejected') || error.message.includes('denied')) {
+                    errorMsg = 'Transaction cancelled';
+                } else if (error.message.includes('network') || error.message.includes('Base')) {
+                    errorMsg = 'Please switch to Base network';
+                } else if (error.message.includes('wallet') || error.message.includes('connect')) {
+                    errorMsg = 'Please connect your wallet';
+                } else {
+                    errorMsg = error.message.slice(0, 50);
+                }
+            }
+            gmStatus.textContent = errorMsg;
+            gmStatus.className = 'gm-status error';
+        }
+    }
+}
+
+// Initialize GM button
+function initGMButton() {
+    const gmButton = document.getElementById('gmButton');
+    if (gmButton) {
+        gmButton.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            sendGMTransaction();
+        });
+        
+        // Update button state on init
+        updateGMButtonState();
+        console.log('GM button initialized');
+    }
 }
 
 // Скрываем индикатор загрузки после инициализации
