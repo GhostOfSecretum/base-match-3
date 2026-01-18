@@ -246,6 +246,9 @@
                     <button id="menuDayStreakBtn" class="btn btn-menu btn-secondary">
                         <span>GM Streak</span>
                     </button>
+                    <button id="menuDeployBtn" class="btn btn-menu btn-deploy">
+                        <span>🚀 Deploy Contract</span>
+                    </button>
                 </div>
                 <div class="day-streak-display" id="dayStreakDisplay" style="display: none;">
                     <div class="day-streak-value" id="dayStreakValue">0</div>
@@ -477,6 +480,87 @@
                 </div>
                 <div class="modal-footer">
                     <button id="closeDayStreakBtn" class="btn btn-primary">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="deployModal" class="modal">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content deploy-modal">
+                <div class="modal-header">
+                    <h2>🚀 Deploy Contract</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="deploy-content">
+                        <div class="deploy-info">
+                            <p class="deploy-description">Deploy a simple storage smart contract on Base network with one click!</p>
+                            <div class="contract-preview">
+                                <div class="contract-preview-header">
+                                    <span class="contract-icon">📄</span>
+                                    <span>SimpleStorage.sol</span>
+                                </div>
+                                <pre class="contract-code"><code>// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.0;
+
+contract SimpleStorage {
+    uint256 public storedValue;
+    address public owner;
+    
+    event ValueChanged(uint256 newValue);
+    
+    constructor() {
+        owner = msg.sender;
+        storedValue = 0;
+    }
+    
+    function setValue(uint256 _value) public {
+        storedValue = _value;
+        emit ValueChanged(_value);
+    }
+    
+    function getValue() public view returns (uint256) {
+        return storedValue;
+    }
+}</code></pre>
+                            </div>
+                        </div>
+                        <div class="deploy-button-container">
+                            <button id="deployContractBtn" class="btn btn-deploy-action">
+                                <span class="deploy-icon">🚀</span>
+                                <span>Deploy to Base</span>
+                            </button>
+                            <div id="deployStatus" class="deploy-status"></div>
+                        </div>
+                        <div id="deployResult" class="deploy-result" style="display: none;">
+                            <div class="result-header">✅ Contract Deployed!</div>
+                            <div class="result-address">
+                                <span class="result-label">Contract Address:</span>
+                                <a id="contractAddressLink" class="contract-address-link" href="" target="_blank"></a>
+                            </div>
+                            <div class="result-actions">
+                                <button id="interactContractBtn" class="btn btn-secondary btn-small">
+                                    <span>Interact with Contract</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div id="interactPanel" class="interact-panel" style="display: none;">
+                            <h3>Interact with Contract</h3>
+                            <div class="interact-row">
+                                <label>Current Value:</label>
+                                <span id="currentStoredValue" class="stored-value">0</span>
+                                <button id="refreshValueBtn" class="btn btn-small btn-secondary">🔄</button>
+                            </div>
+                            <div class="interact-row">
+                                <label>Set New Value:</label>
+                                <input type="number" id="newValueInput" class="value-input" placeholder="Enter number" min="0" />
+                                <button id="setValueBtn" class="btn btn-small btn-primary">Set</button>
+                            </div>
+                            <div id="interactStatus" class="deploy-status"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="closeDeployBtn" class="btn btn-primary">Close</button>
                 </div>
             </div>
         </div>

@@ -1867,3 +1867,315 @@ input:checked + .slider:before {
     margin: 0;
     text-align: center;
 }
+
+/* Deploy Contract Modal Styles */
+.btn-deploy {
+    background: linear-gradient(135deg, #00D4AA 0%, #00A080 50%, #008060 100%);
+    color: white;
+    border: 2px solid rgba(0, 212, 170, 0.4);
+    box-shadow: 
+        0 4px 20px rgba(0, 212, 170, 0.4),
+        0 0 40px rgba(0, 160, 128, 0.2);
+}
+
+.btn-deploy:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 
+        0 6px 30px rgba(0, 212, 170, 0.6),
+        0 0 60px rgba(0, 160, 128, 0.4);
+}
+
+.deploy-modal {
+    max-width: 650px;
+    max-height: 90vh;
+    overflow-y: auto;
+}
+
+.deploy-content {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.deploy-description {
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 1.1em;
+    line-height: 1.6;
+    text-align: center;
+    margin-bottom: 10px;
+}
+
+.contract-preview {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(0, 212, 170, 0.3);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.contract-preview-header {
+    background: rgba(0, 212, 170, 0.15);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: #00D4AA;
+    font-weight: 600;
+    font-size: 0.95em;
+    border-bottom: 1px solid rgba(0, 212, 170, 0.2);
+}
+
+.contract-icon {
+    font-size: 1.2em;
+}
+
+.contract-code {
+    margin: 0;
+    padding: 16px;
+    font-family: 'Courier New', Monaco, monospace;
+    font-size: 0.75em;
+    line-height: 1.5;
+    color: rgba(255, 255, 255, 0.85);
+    overflow-x: auto;
+    white-space: pre;
+    max-height: 250px;
+    overflow-y: auto;
+}
+
+.contract-code code {
+    color: inherit;
+}
+
+.deploy-button-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+}
+
+.btn-deploy-action {
+    background: linear-gradient(135deg, #00D4AA 0%, #00A080 50%, #008060 100%);
+    color: white;
+    font-size: 1.3em;
+    font-weight: 700;
+    padding: 18px 50px;
+    border-radius: 20px;
+    box-shadow: 
+        0 4px 25px rgba(0, 212, 170, 0.5),
+        0 0 50px rgba(0, 160, 128, 0.3);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+    border: 2px solid rgba(255, 255, 255, 0.2);
+}
+
+.btn-deploy-action::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+    transition: left 0.5s;
+}
+
+.btn-deploy-action:hover::before {
+    left: 100%;
+}
+
+.btn-deploy-action:hover {
+    transform: translateY(-3px) scale(1.02);
+    box-shadow: 
+        0 6px 35px rgba(0, 212, 170, 0.7),
+        0 0 70px rgba(0, 160, 128, 0.5);
+}
+
+.btn-deploy-action:active {
+    transform: translateY(-1px) scale(0.98);
+}
+
+.btn-deploy-action:disabled {
+    background: linear-gradient(135deg, #555 0%, #444 100%);
+    color: rgba(255, 255, 255, 0.5);
+    box-shadow: none;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-deploy-action.loading {
+    pointer-events: none;
+}
+
+.btn-deploy-action.loading .deploy-icon {
+    animation: rocketLaunch 0.8s ease-in-out infinite;
+}
+
+@keyframes rocketLaunch {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-5px); }
+}
+
+.deploy-icon {
+    font-size: 1.2em;
+    margin-right: 10px;
+}
+
+.deploy-status {
+    font-size: 0.95em;
+    color: rgba(255, 255, 255, 0.8);
+    text-align: center;
+    min-height: 20px;
+}
+
+.deploy-status.error {
+    color: #ff6b6b;
+}
+
+.deploy-status.success {
+    color: #00D4AA;
+}
+
+.deploy-result {
+    background: rgba(0, 212, 170, 0.1);
+    border: 1px solid rgba(0, 212, 170, 0.4);
+    border-radius: 15px;
+    padding: 20px;
+    text-align: center;
+}
+
+.result-header {
+    font-size: 1.4em;
+    font-weight: 700;
+    color: #00D4AA;
+    margin-bottom: 15px;
+    text-shadow: 0 0 15px rgba(0, 212, 170, 0.6);
+}
+
+.result-address {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 15px;
+}
+
+.result-label {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 0.9em;
+}
+
+.contract-address-link {
+    font-family: 'Courier New', Monaco, monospace;
+    font-size: 0.85em;
+    color: #00D4AA;
+    text-decoration: none;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 10px 16px;
+    border-radius: 8px;
+    word-break: break-all;
+    transition: all 0.3s ease;
+}
+
+.contract-address-link:hover {
+    color: #33FFCC;
+    background: rgba(0, 212, 170, 0.15);
+    text-decoration: underline;
+}
+
+.result-actions {
+    margin-top: 15px;
+}
+
+.btn-small {
+    padding: 8px 16px;
+    font-size: 0.9em;
+    min-height: auto;
+}
+
+.interact-panel {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 15px;
+    padding: 20px;
+}
+
+.interact-panel h3 {
+    color: var(--base-blue);
+    font-size: 1.2em;
+    margin-bottom: 16px;
+    text-align: center;
+}
+
+.interact-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.interact-row label {
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.95em;
+    min-width: 120px;
+}
+
+.stored-value {
+    font-family: 'Courier New', Monaco, monospace;
+    font-size: 1.3em;
+    font-weight: 700;
+    color: #00D4AA;
+    text-shadow: 0 0 10px rgba(0, 212, 170, 0.5);
+    min-width: 80px;
+    text-align: center;
+}
+
+.value-input {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 8px;
+    padding: 10px 14px;
+    color: white;
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 1em;
+    width: 150px;
+    text-align: center;
+    transition: all 0.3s ease;
+}
+
+.value-input:focus {
+    outline: none;
+    border-color: #00D4AA;
+    box-shadow: 0 0 15px rgba(0, 212, 170, 0.4);
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.value-input::placeholder {
+    color: rgba(255, 255, 255, 0.4);
+}
+
+@media (max-width: 768px) {
+    .deploy-modal {
+        max-width: 95%;
+        padding: 25px;
+    }
+    
+    .contract-code {
+        font-size: 0.65em;
+        max-height: 180px;
+    }
+    
+    .btn-deploy-action {
+        padding: 14px 30px;
+        font-size: 1.1em;
+    }
+    
+    .interact-row {
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .interact-row label {
+        min-width: auto;
+    }
+}

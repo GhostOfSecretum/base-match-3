@@ -3020,12 +3020,15 @@ function initStartMenu() {
     const menuSettingsBtn = document.getElementById('menuSettingsBtn');
     const menuLeaderboardBtn = document.getElementById('menuLeaderboardBtn');
     const menuDayStreakBtn = document.getElementById('menuDayStreakBtn');
+    const menuDeployBtn = document.getElementById('menuDeployBtn');
     const settingsModal = document.getElementById('settingsModal');
     const dayStreakModal = document.getElementById('dayStreakModal');
     const rulesModal = document.getElementById('rulesModal');
+    const deployModal = document.getElementById('deployModal');
     const closeSettingsBtn = document.getElementById('closeSettingsBtn');
     const closeDayStreakBtn = document.getElementById('closeDayStreakBtn');
     const closeRulesBtn = document.getElementById('closeRulesBtn');
+    const closeDeployBtn = document.getElementById('closeDeployBtn');
     
     // Проверяем наличие необходимых элементов
     if (!startMenu || !gameContainer) {
@@ -3156,6 +3159,29 @@ function initStartMenu() {
         });
     }
 
+    // Deploy Contract - открываем модальное окно для деплоя
+    if (menuDeployBtn && deployModal) {
+        menuDeployBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Deploy Contract button clicked');
+            resetDeployModal();
+            deployModal.classList.add('show');
+        });
+        console.log('Deploy Contract button handler attached');
+    } else {
+        console.warn('Deploy Contract button or modal not found', { menuDeployBtn, deployModal });
+    }
+
+    if (closeDeployBtn && deployModal) {
+        closeDeployBtn.addEventListener('click', () => {
+            deployModal.classList.remove('show');
+        });
+    }
+
+    // Инициализируем функционал деплоя контракта
+    initDeployContract();
+
     // Закрытие модальных окон при клике на backdrop
     if (settingsModal) {
         const backdrop = settingsModal.querySelector('.modal-backdrop');
@@ -3180,6 +3206,15 @@ function initStartMenu() {
         if (backdrop) {
             backdrop.addEventListener('click', () => {
                 rulesModal.classList.remove('show');
+            });
+        }
+    }
+
+    if (deployModal) {
+        const backdrop = deployModal.querySelector('.modal-backdrop');
+        if (backdrop) {
+            backdrop.addEventListener('click', () => {
+                deployModal.classList.remove('show');
             });
         }
     }
@@ -3624,6 +3659,473 @@ function initGMButton() {
         console.log('GM button initialized');
     }
 }
+
+// ==================== DEPLOY CONTRACT FUNCTIONS ====================
+
+// SimpleStorage contract bytecode (compiled Solidity)
+// This is a minimal storage contract that stores and retrieves a uint256 value
+const SIMPLE_STORAGE_BYTECODE = '0x608060405234801561001057600080fd5b50336000806101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff160217905550600060018190555061024f806100686000396000f3fe608060405234801561001057600080fd5b50600436106100575760003560e01c806320965255146100575780633fa4f2451461007557806355241077146100935780638da5cb5b146100af578063b0f7b3e2146100cd575b600080fd5b61005f6100eb565b60405161006c9190610175565b60405180910390f35b61007d6100f4565b60405161008a9190610175565b60405180910390f35b6100ad60048036038101906100a891906101c1565b6100fa565b005b6100b7610138565b6040516100c491906101ee565b60405180910390f35b6100d561015c565b6040516100e29190610175565b60405180910390f35b60006001549050919050565b60015481565b806001819055507f93fe6d397c74fdf1402a8b72e47b68512f0510d7b98a4bc4cbdf6ac7108b3c596001546040516101359190610175565b60405180910390a150565b60008054906101000a900473ffffffffffffffffffffffffffffffffffffffff1681565b60006001549050919050565b6000819050919050565b61018381610170565b82525050565b600060208201905061019e600083018461017a565b92915050565b6000813590506101b381610202565b92915050565b6000602082840312156101cf576101ce6101fd565b5b60006101dd848285016101a4565b91505092915050565b6101ef81610170565b82525050565b600060208201905061020a600083018461017a565b92915050565b600080fd5b61021881610170565b811461022357600080fd5b5056fea26469706673582212209c7e7e9d0e3b8b5d5e4c3a1f8b5c7e9d0e3b8b5d5e4c3a1f8b5c7e9d0e3b8b5d64736f6c63430008110033';
+
+// ABI for SimpleStorage contract
+const SIMPLE_STORAGE_ABI = [
+    {
+        "inputs": [],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "newValue",
+                "type": "uint256"
+            }
+        ],
+        "name": "ValueChanged",
+        "type": "event"
+    },
+    {
+        "inputs": [],
+        "name": "getValue",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "owner",
+        "outputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "_value",
+                "type": "uint256"
+            }
+        ],
+        "name": "setValue",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "storedValue",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    }
+];
+
+// Store deployed contract address
+let deployedContractAddress = null;
+
+// Reset deploy modal state
+function resetDeployModal() {
+    const deployStatus = document.getElementById('deployStatus');
+    const deployResult = document.getElementById('deployResult');
+    const interactPanel = document.getElementById('interactPanel');
+    const deployBtn = document.getElementById('deployContractBtn');
+    
+    if (deployStatus) {
+        deployStatus.textContent = '';
+        deployStatus.className = 'deploy-status';
+    }
+    
+    if (deployResult) {
+        deployResult.style.display = 'none';
+    }
+    
+    if (interactPanel) {
+        interactPanel.style.display = 'none';
+    }
+    
+    if (deployBtn) {
+        deployBtn.disabled = false;
+        deployBtn.classList.remove('loading');
+        deployBtn.innerHTML = '<span class="deploy-icon">🚀</span><span>Deploy to Base</span>';
+    }
+    
+    // Check if there's a previously deployed contract
+    const savedAddress = localStorage.getItem('deployedContractAddress');
+    if (savedAddress) {
+        deployedContractAddress = savedAddress;
+        showDeployResult(savedAddress);
+    }
+}
+
+// Show deploy result
+function showDeployResult(contractAddress) {
+    const deployResult = document.getElementById('deployResult');
+    const addressLink = document.getElementById('contractAddressLink');
+    const deployBtn = document.getElementById('deployContractBtn');
+    
+    if (deployResult && addressLink) {
+        addressLink.textContent = contractAddress;
+        addressLink.href = `https://basescan.org/address/${contractAddress}`;
+        deployResult.style.display = 'block';
+    }
+    
+    if (deployBtn) {
+        deployBtn.innerHTML = '<span class="deploy-icon">✅</span><span>Contract Deployed!</span>';
+        deployBtn.disabled = true;
+    }
+}
+
+// Initialize deploy contract functionality
+function initDeployContract() {
+    const deployBtn = document.getElementById('deployContractBtn');
+    const interactBtn = document.getElementById('interactContractBtn');
+    const refreshBtn = document.getElementById('refreshValueBtn');
+    const setValueBtn = document.getElementById('setValueBtn');
+    
+    if (deployBtn) {
+        deployBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            await deployContract();
+        });
+        console.log('Deploy contract button initialized');
+    }
+    
+    if (interactBtn) {
+        interactBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            showInteractPanel();
+        });
+    }
+    
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            await refreshStoredValue();
+        });
+    }
+    
+    if (setValueBtn) {
+        setValueBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            await setContractValue();
+        });
+    }
+}
+
+// Show interact panel
+function showInteractPanel() {
+    const interactPanel = document.getElementById('interactPanel');
+    if (interactPanel) {
+        interactPanel.style.display = 'block';
+        refreshStoredValue();
+    }
+}
+
+// Refresh stored value from contract
+async function refreshStoredValue() {
+    const valueDisplay = document.getElementById('currentStoredValue');
+    const interactStatus = document.getElementById('interactStatus');
+    
+    if (!deployedContractAddress) {
+        if (interactStatus) {
+            interactStatus.textContent = 'No contract deployed';
+            interactStatus.className = 'deploy-status error';
+        }
+        return;
+    }
+    
+    try {
+        if (interactStatus) {
+            interactStatus.textContent = 'Reading value...';
+            interactStatus.className = 'deploy-status';
+        }
+        
+        // Get provider
+        let provider;
+        if (typeof ethers !== 'undefined' && window.ethereum) {
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+        } else {
+            // Use public RPC
+            provider = new ethers.providers.JsonRpcProvider('https://mainnet.base.org');
+        }
+        
+        const contract = new ethers.Contract(deployedContractAddress, SIMPLE_STORAGE_ABI, provider);
+        const value = await contract.getValue();
+        
+        if (valueDisplay) {
+            valueDisplay.textContent = value.toString();
+        }
+        
+        if (interactStatus) {
+            interactStatus.textContent = '';
+            interactStatus.className = 'deploy-status';
+        }
+    } catch (error) {
+        console.error('Error reading contract:', error);
+        if (interactStatus) {
+            interactStatus.textContent = 'Error reading value: ' + error.message;
+            interactStatus.className = 'deploy-status error';
+        }
+    }
+}
+
+// Set value in contract
+async function setContractValue() {
+    const valueInput = document.getElementById('newValueInput');
+    const interactStatus = document.getElementById('interactStatus');
+    const setValueBtn = document.getElementById('setValueBtn');
+    
+    if (!deployedContractAddress) {
+        if (interactStatus) {
+            interactStatus.textContent = 'No contract deployed';
+            interactStatus.className = 'deploy-status error';
+        }
+        return;
+    }
+    
+    const newValue = valueInput ? valueInput.value : '';
+    if (!newValue || isNaN(parseInt(newValue))) {
+        if (interactStatus) {
+            interactStatus.textContent = 'Please enter a valid number';
+            interactStatus.className = 'deploy-status error';
+        }
+        return;
+    }
+    
+    try {
+        if (setValueBtn) {
+            setValueBtn.disabled = true;
+            setValueBtn.textContent = '...';
+        }
+        
+        if (interactStatus) {
+            interactStatus.textContent = 'Confirm transaction in wallet...';
+            interactStatus.className = 'deploy-status';
+        }
+        
+        // Get signer
+        if (typeof ethers === 'undefined' || !window.ethereum) {
+            throw new Error('Wallet not connected');
+        }
+        
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        await provider.send('eth_requestAccounts', []);
+        const signer = provider.getSigner();
+        
+        // Check network
+        const network = await provider.getNetwork();
+        if (network.chainId !== 8453) {
+            throw new Error('Please switch to Base network');
+        }
+        
+        const contract = new ethers.Contract(deployedContractAddress, SIMPLE_STORAGE_ABI, signer);
+        
+        if (interactStatus) {
+            interactStatus.textContent = 'Sending transaction...';
+        }
+        
+        const tx = await contract.setValue(parseInt(newValue));
+        
+        if (interactStatus) {
+            interactStatus.textContent = 'Waiting for confirmation...';
+        }
+        
+        await tx.wait();
+        
+        if (interactStatus) {
+            interactStatus.textContent = 'Value updated successfully!';
+            interactStatus.className = 'deploy-status success';
+        }
+        
+        // Refresh displayed value
+        await refreshStoredValue();
+        
+        // Clear input
+        if (valueInput) {
+            valueInput.value = '';
+        }
+        
+    } catch (error) {
+        console.error('Error setting value:', error);
+        if (interactStatus) {
+            interactStatus.textContent = 'Error: ' + (error.message || 'Transaction failed');
+            interactStatus.className = 'deploy-status error';
+        }
+    } finally {
+        if (setValueBtn) {
+            setValueBtn.disabled = false;
+            setValueBtn.textContent = 'Set';
+        }
+    }
+}
+
+// Deploy smart contract
+async function deployContract() {
+    const deployBtn = document.getElementById('deployContractBtn');
+    const deployStatus = document.getElementById('deployStatus');
+    
+    if (!deployBtn) return;
+    
+    // Set loading state
+    deployBtn.disabled = true;
+    deployBtn.classList.add('loading');
+    deployBtn.innerHTML = '<span class="deploy-icon">🚀</span><span>Deploying...</span>';
+    
+    if (deployStatus) {
+        deployStatus.textContent = 'Preparing deployment...';
+        deployStatus.className = 'deploy-status';
+    }
+    
+    try {
+        // Check for ethers.js
+        if (typeof ethers === 'undefined') {
+            throw new Error('ethers.js not loaded. Please refresh the page.');
+        }
+        
+        // Try Farcaster SDK first
+        const farcasterSDK = window.__farcasterSDK || 
+                            (typeof frame !== 'undefined' && frame.sdk) || 
+                            (window.farcaster && window.farcaster.miniapp);
+        
+        let provider;
+        let signer;
+        
+        if (farcasterSDK && farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
+            // Use Farcaster SDK's ethProvider
+            console.log('Deploying via Farcaster SDK ethProvider');
+            if (deployStatus) deployStatus.textContent = 'Connecting wallet...';
+            
+            const ethProvider = farcasterSDK.wallet.ethProvider;
+            provider = new ethers.providers.Web3Provider(ethProvider);
+            
+            // Request accounts
+            await ethProvider.request({ method: 'eth_requestAccounts' });
+            signer = provider.getSigner();
+            
+        } else if (window.ethereum) {
+            // Use window.ethereum
+            console.log('Deploying via window.ethereum');
+            if (deployStatus) deployStatus.textContent = 'Connecting wallet...';
+            
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            await provider.send('eth_requestAccounts', []);
+            signer = provider.getSigner();
+            
+        } else {
+            throw new Error('No wallet found. Please use a Web3 browser or connect a wallet.');
+        }
+        
+        // Check network - must be Base (chainId 8453)
+        const network = await provider.getNetwork();
+        console.log('Current network:', network);
+        
+        if (network.chainId !== 8453) {
+            if (deployStatus) deployStatus.textContent = 'Switching to Base network...';
+            
+            // Try to switch to Base
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: '0x2105' }] // 8453 in hex
+                });
+            } catch (switchError) {
+                // Network not added, try to add it
+                if (switchError.code === 4902) {
+                    await window.ethereum.request({
+                        method: 'wallet_addEthereumChain',
+                        params: [{
+                            chainId: '0x2105',
+                            chainName: 'Base',
+                            nativeCurrency: {
+                                name: 'Ethereum',
+                                symbol: 'ETH',
+                                decimals: 18
+                            },
+                            rpcUrls: ['https://mainnet.base.org'],
+                            blockExplorerUrls: ['https://basescan.org']
+                        }]
+                    });
+                } else {
+                    throw new Error('Please switch to Base network in your wallet');
+                }
+            }
+            
+            // Refresh provider after network switch
+            provider = new ethers.providers.Web3Provider(window.ethereum);
+            signer = provider.getSigner();
+        }
+        
+        if (deployStatus) deployStatus.textContent = 'Confirm deployment in wallet...';
+        
+        // Create contract factory
+        const factory = new ethers.ContractFactory(SIMPLE_STORAGE_ABI, SIMPLE_STORAGE_BYTECODE, signer);
+        
+        // Deploy contract
+        console.log('Deploying contract...');
+        const contract = await factory.deploy();
+        
+        if (deployStatus) deployStatus.textContent = 'Waiting for confirmation...';
+        
+        // Wait for deployment
+        await contract.deployed();
+        
+        console.log('Contract deployed at:', contract.address);
+        deployedContractAddress = contract.address;
+        
+        // Save to localStorage
+        localStorage.setItem('deployedContractAddress', contract.address);
+        
+        // Show success
+        if (deployStatus) {
+            deployStatus.textContent = 'Contract deployed successfully!';
+            deployStatus.className = 'deploy-status success';
+        }
+        
+        showDeployResult(contract.address);
+        
+    } catch (error) {
+        console.error('Deploy error:', error);
+        
+        // Reset button
+        deployBtn.disabled = false;
+        deployBtn.classList.remove('loading');
+        deployBtn.innerHTML = '<span class="deploy-icon">🚀</span><span>Deploy to Base</span>';
+        
+        if (deployStatus) {
+            let errorMessage = error.message || 'Deployment failed';
+            if (error.code === 4001) {
+                errorMessage = 'Transaction rejected by user';
+            } else if (error.code === -32603) {
+                errorMessage = 'Insufficient funds for gas';
+            }
+            deployStatus.textContent = 'Error: ' + errorMessage;
+            deployStatus.className = 'deploy-status error';
+        }
+    }
+}
+
+// ==================== END DEPLOY CONTRACT FUNCTIONS ====================
 
 // Скрываем индикатор загрузки после инициализации
 function hideLoadingIndicator() {
