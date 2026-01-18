@@ -2843,6 +2843,15 @@ class MatchThreePro {
             });
         }
 
+        // Rules button in game controls
+        const rulesBtn = document.getElementById('rulesBtn');
+        const rulesModal = document.getElementById('rulesModal');
+        if (rulesBtn && rulesModal) {
+            rulesBtn.addEventListener('click', () => {
+                rulesModal.classList.add('show');
+            });
+        }
+
         // Settings button in game controls
         const settingsBtn = document.getElementById('settingsBtn');
         const settingsModal = document.getElementById('settingsModal');
