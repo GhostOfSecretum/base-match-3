@@ -1738,6 +1738,8 @@ class MatchThreePro {
             this.moves--;
             this.selectedCell = null;
             this.combo = 1;
+            // Обновляем отображение комбо через updateUI для синхронизации
+            this.updateUI();
             await this.processMatches(matches);
         } else {
             // Возвращаем обратно
@@ -2243,19 +2245,24 @@ class MatchThreePro {
         // Заполнение пустых мест
         this.fillEmptySpaces();
 
-        // Используем requestAnimationFrame для более плавного рендеринга
-        requestAnimationFrame(() => {
-            this.render();
-        });
-
         // Проверяем новые совпадения (каскад)
         const newMatches = this.findAllMatches();
         if (newMatches.length > 0) {
             this.combo++;
             this.maxCombo = Math.max(this.maxCombo, this.combo);
+            // Используем requestAnimationFrame для более плавного рендеринга
+            // Обновляем комбо ДО вызова render(), чтобы updateUI() использовал правильное значение
+            requestAnimationFrame(() => {
+                this.render();
+            });
             await this.processMatches(newMatches);
         } else {
             this.combo = 1;
+            // Используем requestAnimationFrame для более плавного рендеринга
+            // Обновляем комбо ДО вызова render(), чтобы updateUI() использовал правильное значение
+            requestAnimationFrame(() => {
+                this.render();
+            });
             this.isProcessing = false;
             this.checkGameOver();
         }
