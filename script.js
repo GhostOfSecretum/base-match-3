@@ -2245,24 +2245,19 @@ class MatchThreePro {
         // Заполнение пустых мест
         this.fillEmptySpaces();
 
+        // Используем requestAnimationFrame для более плавного рендеринга
+        requestAnimationFrame(() => {
+            this.render();
+        });
+
         // Проверяем новые совпадения (каскад)
         const newMatches = this.findAllMatches();
         if (newMatches.length > 0) {
             this.combo++;
             this.maxCombo = Math.max(this.maxCombo, this.combo);
-            // Используем requestAnimationFrame для более плавного рендеринга
-            // Обновляем комбо ДО вызова render(), чтобы updateUI() использовал правильное значение
-            requestAnimationFrame(() => {
-                this.render();
-            });
             await this.processMatches(newMatches);
         } else {
             this.combo = 1;
-            // Используем requestAnimationFrame для более плавного рендеринга
-            // Обновляем комбо ДО вызова render(), чтобы updateUI() использовал правильное значение
-            requestAnimationFrame(() => {
-                this.render();
-            });
             this.isProcessing = false;
             this.checkGameOver();
         }
@@ -2552,7 +2547,7 @@ class MatchThreePro {
     updateUI() {
         document.getElementById('score').textContent = this.score.toLocaleString();
         document.getElementById('moves').textContent = this.moves;
-        document.getElementById('combo').textContent = `x${this.combo}`;
+        // Элемент комбо удален из UI, поэтому не обновляем его
 
         // Обновляем прогресс цели
         const progress = Math.min((this.score / this.targetScore) * 100, 100);
