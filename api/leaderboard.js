@@ -1,15 +1,10 @@
 // API endpoint для общего лидерборда
-// Использует простой in-memory хранилище (для production лучше использовать базу данных)
+// Использует Vercel KV для персистентного хранения данных
 
-// В production лучше использовать Vercel KV, PostgreSQL или другую БД
-// Для простоты используем глобальную переменную (данные будут теряться при перезапуске)
-// В реальном проекте нужно использовать персистентное хранилище
+import { kv } from '@vercel/kv';
 
-// Используем глобальный объект для хранения данных между запросами
-// В production это должно быть заменено на базу данных
-if (typeof global.leaderboardData === 'undefined') {
-  global.leaderboardData = [];
-}
+const LEADERBOARD_KEY = 'leaderboard:results';
+const MAX_RESULTS = 1000;
 
 function formatAddress(address) {
   if (!address) return 'Guest';
@@ -28,11 +23,12 @@ export default async function handler(req, res) {
   }
 
   try {
-    const leaderboardData = global.leaderboardData || [];
-    
     // GET - получить лидерборд
     if (req.method === 'GET') {
       const { filter = 'all', limit = 20 } = req.query;
+      
+      // Получаем данные из KV
+      let leaderboardData = await kv.get(LEADERBOARD_KEY) || [];
       
       let filtered = [...leaderboardData];
       const now = new Date();
@@ -94,7 +90,7 @@ export default async function handler(req, res) {
       const result = {
         id: Date.now() + Math.random(),
         walletAddress: walletAddress.toLowerCase(),
-        playerName: displayName, // Форматированный адрес для отображения
+        playerName: displayName,
         score: score,
         maxCombo: maxCombo || 1,
         won: won || false,
@@ -102,15 +98,19 @@ export default async function handler(req, res) {
         timestamp: Date.now()
       };
       
+      // Получаем текущие данные из KV
+      let leaderboardData = await kv.get(LEADERBOARD_KEY) || [];
+      
       leaderboardData.push(result);
       
-      // Ограничиваем размер массива (храним последние 1000 результатов)
-      if (leaderboardData.length > 1000) {
+      // Ограничиваем размер массива (храним последние MAX_RESULTS результатов)
+      if (leaderboardData.length > MAX_RESULTS) {
         leaderboardData.sort((a, b) => b.timestamp - a.timestamp);
-        global.leaderboardData = leaderboardData.slice(0, 1000);
-      } else {
-        global.leaderboardData = leaderboardData;
+        leaderboardData = leaderboardData.slice(0, MAX_RESULTS);
       }
+      
+      // Сохраняем обратно в KV
+      await kv.set(LEADERBOARD_KEY, leaderboardData);
       
       return res.status(200).json({
         success: true,
