@@ -75,7 +75,7 @@
         }
     </style>
     <style>
-        /* Индикатор загрузки */
+        /* Индикатор загрузки - скрыт по умолчанию */
         #loadingIndicator {
             position: fixed;
             top: 50%;
@@ -89,11 +89,14 @@
             padding: 20px 40px;
             border-radius: 10px;
             border: 1px solid rgba(0, 82, 255, 0.5);
-            display: flex;
+            display: none !important;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 15px;
+            visibility: hidden !important;
+            opacity: 0 !important;
+            pointer-events: none !important;
         }
 
         #loadingIndicator img {
@@ -212,7 +215,7 @@
 </head>
 
 <body>
-    <div id="loadingIndicator">
+    <div id="loadingIndicator" style="display: none !important; visibility: hidden !important; opacity: 0 !important;">
         <img src="hero.png" alt="Loading..." id="loadingImage">
         <span>Loading game...</span>
     </div>
@@ -584,48 +587,26 @@
     <!-- Загружаем основной скрипт игры -->
     <script src="script.js"></script>
 
-    <!-- Fallback: если скрипт не загрузился, скрываем индикатор и показываем контент -->
+    <!-- Индикатор загрузки скрыт по умолчанию -->
     <script>
-        // Автоматически скрываем индикатор загрузки через 3 секунды максимум
-        setTimeout(() => {
-            const loadingIndicator = document.getElementById('loadingIndicator');
-            if (loadingIndicator && !loadingIndicator.classList.contains('hidden')) {
-                console.log('Auto-hiding loading indicator after timeout');
-                loadingIndicator.classList.add('hidden');
-                loadingIndicator.style.display = 'none';
-                loadingIndicator.style.visibility = 'hidden';
-                loadingIndicator.style.opacity = '0';
-                loadingIndicator.style.pointerEvents = 'none';
-
-                // Убеждаемся что контент виден
-                const gameWrapper = document.querySelector('.game-wrapper');
-                if (gameWrapper) {
-                    gameWrapper.style.display = 'block';
-                    gameWrapper.style.visibility = 'visible';
-                    gameWrapper.style.opacity = '1';
-                }
-
-                const gameContainer = document.querySelector('.game-container');
-                if (gameContainer) {
-                    gameContainer.style.display = 'block';
-                    gameContainer.style.visibility = 'visible';
-                    gameContainer.style.opacity = '1';
-                }
+        // Индикатор загрузки сразу скрыт в HTML, чтобы не перекрывать меню
+        // Убеждаемся что контент виден при загрузке
+        (function() {
+            const gameWrapper = document.querySelector('.game-wrapper');
+            if (gameWrapper) {
+                gameWrapper.style.display = 'block';
+                gameWrapper.style.visibility = 'visible';
+                gameWrapper.style.opacity = '1';
             }
-        }, 3000);
 
-        // Дополнительный fallback через 5 секунд
-        setTimeout(() => {
             const loadingIndicator = document.getElementById('loadingIndicator');
-            if (loadingIndicator && !loadingIndicator.classList.contains('hidden')) {
-                console.warn('Force-hiding loading indicator after 5 seconds');
-                loadingIndicator.classList.add('hidden');
+            if (loadingIndicator) {
                 loadingIndicator.style.display = 'none';
                 loadingIndicator.style.visibility = 'hidden';
                 loadingIndicator.style.opacity = '0';
                 loadingIndicator.style.pointerEvents = 'none';
             }
-        }, 5000);
+        })();
     </script>
 </body>
 
