@@ -219,7 +219,34 @@
     <div class="game-wrapper">
         <div class="particles-container" id="particlesContainer"></div>
 
-        <div class="game-container">
+        <div id="startMenu" class="start-menu">
+            <div class="start-menu-content">
+                <div class="start-menu-logo">
+                    <img src="assets/Logotype/Base_lockup_white.svg" alt="Base" class="base-logo" />
+                    <h1>MATCH-3</h1>
+                </div>
+                <div class="start-menu-buttons">
+                    <button id="menuNewGameBtn" class="btn btn-menu btn-primary">
+                        <span>New Game</span>
+                    </button>
+                    <button id="menuSettingsBtn" class="btn btn-menu btn-secondary">
+                        <span>Settings</span>
+                    </button>
+                    <button id="menuLeaderboardBtn" class="btn btn-menu btn-secondary">
+                        <span>Leaderboard</span>
+                    </button>
+                    <button id="menuDayStreakBtn" class="btn btn-menu btn-secondary">
+                        <span>Day Streak</span>
+                    </button>
+                </div>
+                <div class="day-streak-display" id="dayStreakDisplay" style="display: none;">
+                    <div class="day-streak-value" id="dayStreakValue">0</div>
+                    <div class="day-streak-label">Days</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="game-container" id="gameContainer" style="display: none;">
             <div class="game-header">
                 <div class="logo">
                     <img src="assets/Logotype/Base_lockup_white.svg" alt="Base" class="base-logo" />
@@ -403,6 +430,57 @@
                 </div>
                 <div class="modal-footer">
                     <button id="closeOnboardingBtn" class="btn btn-primary">Let's Play!</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="settingsModal" class="modal">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Settings</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="settings-content">
+                        <div class="setting-item">
+                            <label class="setting-label">Sound Effects</label>
+                            <label class="switch">
+                                <input type="checkbox" id="soundToggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                        <div class="setting-item">
+                            <label class="setting-label">Music</label>
+                            <label class="switch">
+                                <input type="checkbox" id="musicToggle" checked>
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="closeSettingsBtn" class="btn btn-primary">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="dayStreakModal" class="modal">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2>Day Streak</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="streak-content">
+                        <div class="streak-display-large">
+                            <div class="streak-value-large" id="streakValueLarge">0</div>
+                            <div class="streak-label-large">Days in a row</div>
+                        </div>
+                        <p class="streak-description">Play at least one game each day to maintain your streak!</p>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="closeDayStreakBtn" class="btn btn-primary">Close</button>
                 </div>
             </div>
         </div>

@@ -2477,6 +2477,11 @@ class MatchThreePro {
     }
 
     async endGame(won) {
+        // Обновляем day streak после игры
+        if (typeof updateDayStreakAfterGame === 'function') {
+            updateDayStreakAfterGame();
+        }
+
         // Проверяем, подключен ли кошелек перед сохранением
         if (!this.walletManager.isConnected()) {
             const modal = document.getElementById('gameOverModal');
@@ -2909,6 +2914,262 @@ console.log('Script.js loaded');
 console.log('Script.js module type:', typeof window !== 'undefined' ? 'browser' : 'node');
 console.log('Document ready state:', typeof document !== 'undefined' ? document.readyState : 'N/A');
 
+// Управление стартовым меню
+let startMenuInitialized = false;
+function initStartMenu() {
+    // Защита от повторной инициализации
+    if (startMenuInitialized) {
+        console.log('Start menu already initialized, skipping...');
+        return;
+    }
+    
+    const startMenu = document.getElementById('startMenu');
+    const gameContainer = document.getElementById('gameContainer');
+    const menuNewGameBtn = document.getElementById('menuNewGameBtn');
+    const menuSettingsBtn = document.getElementById('menuSettingsBtn');
+    const menuLeaderboardBtn = document.getElementById('menuLeaderboardBtn');
+    const menuDayStreakBtn = document.getElementById('menuDayStreakBtn');
+    const settingsModal = document.getElementById('settingsModal');
+    const dayStreakModal = document.getElementById('dayStreakModal');
+    const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+    const closeDayStreakBtn = document.getElementById('closeDayStreakBtn');
+    
+    // Проверяем наличие необходимых элементов
+    if (!startMenu || !gameContainer) {
+        console.warn('Start menu elements not found, retrying...');
+        setTimeout(initStartMenu, 100);
+        return;
+    }
+    
+    startMenuInitialized = true;
+
+    // Показываем меню по умолчанию
+    if (startMenu) {
+        startMenu.style.display = 'flex';
+    }
+
+    // Функция для скрытия меню и показа игры
+    function showGame() {
+        if (startMenu) {
+            startMenu.classList.add('hidden');
+        }
+        if (gameContainer) {
+            gameContainer.style.display = 'block';
+        }
+    }
+
+    // Функция для показа меню и скрытия игры
+    function showMenu() {
+        if (startMenu) {
+            startMenu.classList.remove('hidden');
+            startMenu.style.display = 'flex';
+        }
+        if (gameContainer) {
+            gameContainer.style.display = 'none';
+        }
+    }
+
+    // New Game - начинаем новую игру
+    if (menuNewGameBtn) {
+        menuNewGameBtn.addEventListener('click', () => {
+            showGame();
+            if (window.game && typeof window.game.newGame === 'function') {
+                window.game.newGame();
+            }
+        });
+    }
+
+    // Settings - открываем настройки
+    if (menuSettingsBtn && settingsModal) {
+        menuSettingsBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Settings button clicked');
+            settingsModal.classList.add('show');
+        });
+        console.log('Settings button handler attached');
+    } else {
+        console.warn('Settings button or modal not found', { menuSettingsBtn, settingsModal });
+    }
+
+    if (closeSettingsBtn && settingsModal) {
+        closeSettingsBtn.addEventListener('click', () => {
+            settingsModal.classList.remove('show');
+        });
+    }
+
+    // Leaderboard - открываем лидерборд
+    if (menuLeaderboardBtn) {
+        menuLeaderboardBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Leaderboard button clicked');
+            if (window.game && typeof window.game.showLeaderboard === 'function') {
+                window.game.showLeaderboard();
+            } else {
+                // Альтернативный способ открытия лидерборда
+                const leaderboardModal = document.getElementById('leaderboardModal');
+                const leaderboardBtn = document.getElementById('leaderboardBtn');
+                if (leaderboardModal && leaderboardBtn) {
+                    leaderboardBtn.click();
+                } else if (leaderboardModal) {
+                    // Если модальное окно есть, но кнопки нет, открываем напрямую
+                    leaderboardModal.classList.add('show');
+                }
+            }
+        });
+        console.log('Leaderboard button handler attached');
+    } else {
+        console.warn('Leaderboard button not found');
+    }
+
+    // Day Streak - открываем информацию о серии дней
+    if (menuDayStreakBtn && dayStreakModal) {
+        menuDayStreakBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Day Streak button clicked');
+            updateDayStreakDisplay();
+            dayStreakModal.classList.add('show');
+        });
+        console.log('Day Streak button handler attached');
+    } else {
+        console.warn('Day Streak button or modal not found', { menuDayStreakBtn, dayStreakModal });
+    }
+
+    if (closeDayStreakBtn && dayStreakModal) {
+        closeDayStreakBtn.addEventListener('click', () => {
+            dayStreakModal.classList.remove('show');
+        });
+    }
+
+    // Закрытие модальных окон при клике на backdrop
+    if (settingsModal) {
+        const backdrop = settingsModal.querySelector('.modal-backdrop');
+        if (backdrop) {
+            backdrop.addEventListener('click', () => {
+                settingsModal.classList.remove('show');
+            });
+        }
+    }
+
+    if (dayStreakModal) {
+        const backdrop = dayStreakModal.querySelector('.modal-backdrop');
+        if (backdrop) {
+            backdrop.addEventListener('click', () => {
+                dayStreakModal.classList.remove('show');
+            });
+        }
+    }
+
+    // Обновляем отображение Day Streak на главном экране
+    updateDayStreakDisplay();
+
+    // Сохраняем функции для использования из других мест
+    window.showGameMenu = showMenu;
+    window.hideGameMenu = showGame;
+}
+
+// Функция для обновления отображения Day Streak
+function updateDayStreakDisplay() {
+    // Получаем streak из localStorage
+    const streakData = localStorage.getItem('dayStreak');
+    let streak = 0;
+    let lastPlayDate = null;
+
+    if (streakData) {
+        try {
+            const data = JSON.parse(streakData);
+            streak = data.streak || 0;
+            lastPlayDate = data.lastPlayDate || null;
+
+            // Проверяем, играл ли пользователь сегодня
+            const today = new Date().toDateString();
+            if (lastPlayDate !== today) {
+                // Проверяем, был ли это вчера (для продолжения streak)
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                if (lastPlayDate === yesterday.toDateString()) {
+                    // Продолжаем streak
+                    streak += 1;
+                    localStorage.setItem('dayStreak', JSON.stringify({
+                        streak: streak,
+                        lastPlayDate: today
+                    }));
+                } else if (lastPlayDate !== today) {
+                    // Streak сброшен
+                    streak = 0;
+                    localStorage.setItem('dayStreak', JSON.stringify({
+                        streak: 0,
+                        lastPlayDate: null
+                    }));
+                }
+            }
+        } catch (e) {
+            console.error('Error parsing day streak data:', e);
+        }
+    }
+
+    // Обновляем отображение в меню
+    const dayStreakDisplay = document.getElementById('dayStreakDisplay');
+    const dayStreakValue = document.getElementById('dayStreakValue');
+    const streakValueLarge = document.getElementById('streakValueLarge');
+
+    if (streak > 0 && dayStreakDisplay) {
+        dayStreakDisplay.style.display = 'block';
+    }
+
+    if (dayStreakValue) {
+        dayStreakValue.textContent = streak;
+    }
+
+    if (streakValueLarge) {
+        streakValueLarge.textContent = streak;
+    }
+}
+
+// Функция для обновления streak после игры
+function updateDayStreakAfterGame() {
+    const today = new Date().toDateString();
+    const streakData = localStorage.getItem('dayStreak');
+    let streak = 0;
+
+    if (streakData) {
+        try {
+            const data = JSON.parse(streakData);
+            streak = data.streak || 0;
+            const lastPlayDate = data.lastPlayDate || null;
+
+            if (lastPlayDate === today) {
+                // Уже играли сегодня, ничего не меняем
+                return;
+            } else {
+                // Проверяем, был ли это вчера (для продолжения streak)
+                const yesterday = new Date();
+                yesterday.setDate(yesterday.getDate() - 1);
+                if (lastPlayDate === yesterday.toDateString()) {
+                    // Продолжаем streak
+                    streak += 1;
+                } else {
+                    // Начинаем новый streak
+                    streak = 1;
+                }
+            }
+        } catch (e) {
+            streak = 1;
+        }
+    } else {
+        streak = 1;
+    }
+
+    localStorage.setItem('dayStreak', JSON.stringify({
+        streak: streak,
+        lastPlayDate: today
+    }));
+
+    updateDayStreakDisplay();
+}
+
 // Скрываем индикатор загрузки после инициализации
 function hideLoadingIndicator() {
     const indicator = document.getElementById('loadingIndicator');
@@ -2991,11 +3252,10 @@ async function initializeGame() {
             gameWrapper.style.opacity = '1';
         }
 
-        const gameContainer = document.querySelector('.game-container');
+        // По умолчанию скрываем игровой контейнер, показываем меню
+        const gameContainer = document.getElementById('gameContainer');
         if (gameContainer) {
-            gameContainer.style.display = 'block';
-            gameContainer.style.visibility = 'visible';
-            gameContainer.style.opacity = '1';
+            gameContainer.style.display = 'none';
         }
 
         // SDK ready() уже вызван в начале загрузки (index.html/script.js)
@@ -3017,11 +3277,16 @@ async function initializeGame() {
             gameWrapper.style.opacity = '1';
         }
 
-        const gameContainer = document.querySelector('.game-container');
+        // Скрываем игровой контейнер при ошибке, показываем меню
+        const gameContainer = document.getElementById('gameContainer');
         if (gameContainer) {
-            gameContainer.style.display = 'block';
-            gameContainer.style.visibility = 'visible';
-            gameContainer.style.opacity = '1';
+            gameContainer.style.display = 'none';
+        }
+        
+        // Показываем меню при ошибке
+        const startMenu = document.getElementById('startMenu');
+        if (startMenu) {
+            startMenu.style.display = 'flex';
         }
 
         // Показываем ошибку пользователю
@@ -3035,6 +3300,48 @@ async function initializeGame() {
         }
     }
 }
+
+// Инициализируем стартовое меню сразу при загрузке DOM
+(function initMenuEarly() {
+    let menuInitialized = false;
+    
+    function initMenuWhenReady() {
+        if (menuInitialized) {
+            return;
+        }
+        
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initMenuWhenReady);
+            return;
+        }
+        
+        // Проверяем наличие элементов меню
+        const startMenu = document.getElementById('startMenu');
+        if (!startMenu) {
+            // Элементы еще не загружены, ждем немного
+            setTimeout(initMenuWhenReady, 50);
+            return;
+        }
+        
+        // Инициализируем меню сразу, не дожидаясь инициализации игры
+        if (typeof initStartMenu === 'function') {
+            initStartMenu();
+            menuInitialized = true;
+            console.log('Start menu initialized early');
+        } else {
+            // Если функция еще не определена, ждем немного и пробуем снова
+            setTimeout(initMenuWhenReady, 100);
+        }
+    }
+    
+    // Пробуем инициализировать сразу, если DOM уже готов
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initMenuWhenReady);
+    } else {
+        // DOM уже готов, но даем небольшую задержку для гарантии
+        setTimeout(initMenuWhenReady, 10);
+    }
+})();
 
 // Запускаем игру при загрузке DOM
 // Используем несколько способов для максимальной совместимости
