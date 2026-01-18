@@ -1907,21 +1907,21 @@ input:checked + .slider:before {
 
 .contract-preview {
     background: rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(0, 212, 170, 0.3);
+    border: 1px solid rgba(0, 82, 255, 0.3);
     border-radius: 12px;
     overflow: hidden;
 }
 
 .contract-preview-header {
-    background: rgba(0, 212, 170, 0.15);
+    background: rgba(0, 82, 255, 0.15);
     padding: 10px 16px;
     display: flex;
     align-items: center;
     gap: 8px;
-    color: #00D4AA;
+    color: var(--base-blue);
     font-weight: 600;
     font-size: 0.95em;
-    border-bottom: 1px solid rgba(0, 212, 170, 0.2);
+    border-bottom: 1px solid rgba(0, 82, 255, 0.2);
 }
 
 .contract-icon {
@@ -1953,15 +1953,15 @@ input:checked + .slider:before {
 }
 
 .btn-deploy-action {
-    background: linear-gradient(135deg, #00D4AA 0%, #00A080 50%, #008060 100%);
+    background: var(--primary-gradient);
     color: white;
     font-size: 1.3em;
     font-weight: 700;
     padding: 18px 50px;
     border-radius: 20px;
     box-shadow: 
-        0 4px 25px rgba(0, 212, 170, 0.5),
-        0 0 50px rgba(0, 160, 128, 0.3);
+        0 4px 25px rgba(0, 82, 255, 0.5),
+        0 0 50px rgba(0, 57, 179, 0.3);
     transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     position: relative;
     overflow: hidden;
@@ -1986,8 +1986,8 @@ input:checked + .slider:before {
 .btn-deploy-action:hover {
     transform: translateY(-3px) scale(1.02);
     box-shadow: 
-        0 6px 35px rgba(0, 212, 170, 0.7),
-        0 0 70px rgba(0, 160, 128, 0.5);
+        0 6px 35px rgba(0, 82, 255, 0.7),
+        0 0 70px rgba(0, 57, 179, 0.5);
 }
 
 .btn-deploy-action:active {
@@ -2032,12 +2032,12 @@ input:checked + .slider:before {
 }
 
 .deploy-status.success {
-    color: #00D4AA;
+    color: var(--base-blue);
 }
 
 .deploy-result {
-    background: rgba(0, 212, 170, 0.1);
-    border: 1px solid rgba(0, 212, 170, 0.4);
+    background: rgba(0, 82, 255, 0.1);
+    border: 1px solid rgba(0, 82, 255, 0.4);
     border-radius: 15px;
     padding: 20px;
     text-align: center;
@@ -2046,9 +2046,9 @@ input:checked + .slider:before {
 .result-header {
     font-size: 1.4em;
     font-weight: 700;
-    color: #00D4AA;
+    color: var(--base-blue);
     margin-bottom: 15px;
-    text-shadow: 0 0 15px rgba(0, 212, 170, 0.6);
+    text-shadow: 0 0 15px rgba(0, 82, 255, 0.6);
 }
 
 .result-address {
@@ -2066,7 +2066,7 @@ input:checked + .slider:before {
 .contract-address-link {
     font-family: 'Courier New', Monaco, monospace;
     font-size: 0.85em;
-    color: #00D4AA;
+    color: var(--base-blue);
     text-decoration: none;
     background: rgba(0, 0, 0, 0.3);
     padding: 10px 16px;
@@ -2076,8 +2076,8 @@ input:checked + .slider:before {
 }
 
 .contract-address-link:hover {
-    color: #33FFCC;
-    background: rgba(0, 212, 170, 0.15);
+    color: var(--base-blue-light);
+    background: rgba(0, 82, 255, 0.15);
     text-decoration: underline;
 }
 
@@ -2135,7 +2135,7 @@ input:checked + .slider:before {
 }
 
 .history-item a {
-    color: #00D4AA;
+    color: var(--base-blue);
     text-decoration: none;
     font-family: 'Courier New', Monaco, monospace;
     word-break: break-all;
@@ -2143,7 +2143,7 @@ input:checked + .slider:before {
 }
 
 .history-item a:hover {
-    color: #33FFCC;
+    color: var(--base-blue-light);
     text-decoration: underline;
 }
 
