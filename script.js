@@ -149,6 +149,12 @@ class WalletManager {
                     if (context.user) {
                         this.username = context.user.username || context.user.displayName || null;
                         this.avatar = context.user.pfpUrl || context.user.avatarUrl || null;
+                        
+                        console.log('Base Account context received:', {
+                            username: this.username,
+                            hasAvatar: !!this.avatar,
+                            address: context.user.custodyAddress || context.user.account
+                        });
 
                         // Если есть account в контексте, используем его для автоматического подключения
                         if (context.user.custodyAddress || context.user.account) {
@@ -159,9 +165,14 @@ class WalletManager {
                             }
                         }
 
-                        // Обновляем UI с username и avatar
+                        // Обновляем UI с username и avatar после небольшой задержки
                         if (window.game) {
-                            window.game.updateWalletDisplay();
+                            // Небольшая задержка, чтобы убедиться, что все данные загружены
+                            setTimeout(async () => {
+                                if (window.game && typeof window.game.updateWalletDisplay === 'function') {
+                                    await window.game.updateWalletDisplay();
+                                }
+                            }, 100);
                         }
                     }
                 } catch (e) {
@@ -188,8 +199,16 @@ class WalletManager {
                     // Проверяем сеть
                     await this.checkNetwork();
 
+                    // Пытаемся получить username из SDK
+                    await this.getUsernameFromSDK();
+
                     // Обновляем UI
                     this.updateWalletUI();
+                    
+                    // Обновляем display в игре
+                    if (window.game && typeof window.game.updateWalletDisplay === 'function') {
+                        await window.game.updateWalletDisplay();
+                    }
                 }
             }
         } catch (error) {
@@ -363,6 +382,11 @@ class WalletManager {
             localStorage.setItem('walletConnected', 'true');
 
             this.updateWalletUI();
+            
+            // Обновляем display в игре
+            if (window.game && typeof window.game.updateWalletDisplay === 'function') {
+                await window.game.updateWalletDisplay();
+            }
 
             return {
                 success: true,
@@ -1164,23 +1188,49 @@ class MatchThreePro {
 
         if (playerNameDisplay) {
             if (this.walletManager.isConnected()) {
-                // Пытаемся получить username из Base app SDK
+                // Всегда пытаемся получить username из Base app SDK
                 let displayName = null;
                 
-                // Сначала пробуем получить username из SDK
+                // Сначала пробуем получить уже сохраненный username
                 if (this.walletManager.getUsername) {
                     displayName = this.walletManager.getUsername();
                 }
                 
-                // Если username нет, пробуем получить из SDK напрямую
+                // Если username нет, всегда пытаемся получить из SDK напрямую
                 if (!displayName && this.walletManager.getUsernameFromSDK) {
-                    displayName = await this.walletManager.getUsernameFromSDK();
+                    try {
+                        displayName = await this.walletManager.getUsernameFromSDK();
+                        console.log('Username from SDK:', displayName);
+                    } catch (e) {
+                        console.log('Could not get username from SDK:', e.message);
+                    }
                 }
                 
                 // Если username всё ещё нет, используем форматированный адрес как fallback
+                // НО только если это не Base app (где username должен быть доступен)
                 if (!displayName) {
                     const address = this.walletManager.getAccount();
                     if (address) {
+                        // Проверяем, запущено ли приложение в Base app
+                        const isBaseApp = window.farcaster && window.farcaster.miniapp || 
+                                         window.miniappSdk || 
+                                         (window.parent && window.parent !== window);
+                        
+                        // Если это Base app и username нет, пробуем ещё раз через небольшую задержку
+                        if (isBaseApp) {
+                            console.log('Base app detected but username not found, will retry...');
+                            // Пробуем еще раз через небольшую задержку
+                            setTimeout(async () => {
+                                if (this.walletManager.getUsernameFromSDK) {
+                                    const retryUsername = await this.walletManager.getUsernameFromSDK();
+                                    if (retryUsername && playerNameDisplay) {
+                                        playerNameDisplay.textContent = retryUsername;
+                                        playerNameDisplay.classList.remove('wallet-address');
+                                    }
+                                }
+                            }, 1000);
+                        }
+                        
                         displayName = this.leaderboard.formatAddress(address);
                         playerNameDisplay.classList.add('wallet-address');
                     } else {
@@ -2790,6 +2840,15 @@ class MatchThreePro {
         if (leaderboardBtn) {
             leaderboardBtn.addEventListener('click', () => {
                 this.showLeaderboard('all');
+            });
+        }
+
+        // Settings button in game controls
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsModal = document.getElementById('settingsModal');
+        if (settingsBtn && settingsModal) {
+            settingsBtn.addEventListener('click', () => {
+                settingsModal.classList.add('show');
             });
         }
 
