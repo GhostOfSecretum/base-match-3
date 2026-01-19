@@ -178,43 +178,92 @@
             // Обновляем debug панель если она есть
             const debugContent = document.getElementById('debugContent');
             if (debugContent) {
-                debugContent.innerHTML = window.__debugLogs.slice(-20).join('<br>');
+                debugContent.innerHTML = window.__debugLogs.slice(-30).join('<br>');
             }
+        }
+
+        // Функция для поиска всех SDK-подобных объектов в window
+        function findAllSDKs() {
+            const sdkKeys = [];
+            for (const key in window) {
+                try {
+                    const val = window[key];
+                    if (val && typeof val === 'object') {
+                        // Ищем объекты с context или actions
+                        if (val.context || val.actions || val.sdk || key.toLowerCase().includes('sdk') || 
+                            key.toLowerCase().includes('farcaster') || key.toLowerCase().includes('miniapp') ||
+                            key.toLowerCase().includes('base') || key.toLowerCase().includes('frame')) {
+                            sdkKeys.push(key);
+                        }
+                    }
+                } catch (e) {}
+            }
+            return sdkKeys;
         }
 
         // Согласно официальной документации Base Mini Apps
         (async function initFarcasterSDKEarly() {
             try {
-                let sdkInstance = null;
                 debugLog('🔍 Looking for SDK...');
+                
+                // Ищем все возможные SDK объекты
+                const foundKeys = findAllSDKs();
+                debugLog(`Found keys: ${foundKeys.join(', ') || 'none'}`);
 
-                // Способ 1: frame.sdk (CDN версия)
-                if (typeof frame !== 'undefined' && frame.sdk) {
+                let sdkInstance = null;
+
+                // Способ 1: window.sdk (инжектируется Base App)
+                if (typeof window.sdk !== 'undefined' && window.sdk) {
+                    sdkInstance = window.sdk;
+                    debugLog('✅ Found window.sdk');
+                }
+
+                // Способ 2: frame.sdk (CDN версия)
+                if (!sdkInstance && typeof frame !== 'undefined' && frame.sdk) {
                     sdkInstance = frame.sdk;
                     debugLog('✅ Found frame.sdk');
                 }
 
-                // Способ 2: window.farcaster.miniapp (native)
-                if (!sdkInstance && window.farcaster && window.farcaster.miniapp) {
-                    sdkInstance = window.farcaster.miniapp;
-                    debugLog('✅ Found window.farcaster.miniapp');
+                // Способ 3: window.farcaster (native)
+                if (!sdkInstance && window.farcaster) {
+                    if (window.farcaster.miniapp) {
+                        sdkInstance = window.farcaster.miniapp;
+                        debugLog('✅ Found window.farcaster.miniapp');
+                    } else if (window.farcaster.sdk) {
+                        sdkInstance = window.farcaster.sdk;
+                        debugLog('✅ Found window.farcaster.sdk');
+                    }
                 }
 
-                // Способ 3: sdk глобальная переменная
-                if (!sdkInstance && typeof sdk !== 'undefined') {
-                    sdkInstance = sdk;
-                    debugLog('✅ Found global sdk');
+                // Способ 4: window.Farcaster
+                if (!sdkInstance && window.Farcaster) {
+                    sdkInstance = window.Farcaster;
+                    debugLog('✅ Found window.Farcaster');
+                }
+
+                // Способ 5: window.miniApp или window.MiniApp
+                if (!sdkInstance && (window.miniApp || window.MiniApp)) {
+                    sdkInstance = window.miniApp || window.MiniApp;
+                    debugLog('✅ Found window.miniApp/MiniApp');
+                }
+
+                // Способ 6: window.base
+                if (!sdkInstance && window.base) {
+                    sdkInstance = window.base;
+                    debugLog('✅ Found window.base');
                 }
 
                 if (sdkInstance) {
-                    debugLog('📱 SDK found, calling ready()...');
+                    debugLog('📱 SDK found!');
+                    debugLog(`  Keys: ${Object.keys(sdkInstance).slice(0,10).join(', ')}`);
                     
                     // Вызываем ready()
                     if (sdkInstance.actions && sdkInstance.actions.ready) {
                         await sdkInstance.actions.ready();
-                        debugLog('✅ SDK ready() called');
-                    } else {
-                        debugLog('⚠️ No actions.ready method');
+                        debugLog('✅ ready() called');
+                    } else if (typeof sdkInstance.ready === 'function') {
+                        await sdkInstance.ready();
+                        debugLog('✅ ready() called (direct)');
                     }
 
                     window.__farcasterSDKReady = true;
@@ -225,56 +274,95 @@
                         if (typeof sdkInstance.isInMiniApp === 'function') {
                             const inMiniApp = await sdkInstance.isInMiniApp();
                             debugLog(`📱 isInMiniApp: ${inMiniApp}`);
+                        } else {
+                            debugLog('⚠️ No isInMiniApp method');
                         }
                     } catch (e) {
                         debugLog(`⚠️ isInMiniApp error: ${e.message}`);
                     }
 
-                    // Сразу пытаемся получить контекст пользователя
-                    try {
-                        let context = null;
-                        debugLog('🔍 Getting context...');
-                        
-                        if (typeof sdkInstance.context === 'function') {
-                            debugLog('  Trying: context()');
-                            context = await sdkInstance.context();
-                        } else if (sdkInstance.context && typeof sdkInstance.context.get === 'function') {
-                            debugLog('  Trying: context.get()');
-                            context = await sdkInstance.context.get();
-                        } else if (sdkInstance.context && sdkInstance.context.then) {
-                            debugLog('  Trying: await context');
-                            context = await sdkInstance.context;
-                        } else if (sdkInstance.context) {
-                            debugLog('  Trying: context (direct)');
-                            context = sdkInstance.context;
-                        }
-
-                        if (context) {
-                            window.__farcasterContext = context;
-                            debugLog(`✅ Got context!`);
-                            debugLog(`  user: ${context.user ? 'YES' : 'NO'}`);
-                            if (context.user) {
-                                debugLog(`  displayName: ${context.user.displayName || 'null'}`);
-                                debugLog(`  username: ${context.user.username || 'null'}`);
-                                debugLog(`  pfpUrl: ${context.user.pfpUrl ? 'YES' : 'null'}`);
-                                debugLog(`  fid: ${context.user.fid || 'null'}`);
-                            }
-                        } else {
-                            debugLog('❌ Context is null');
-                        }
-                    } catch (e) {
-                        debugLog(`❌ Context error: ${e.message}`);
-                    }
+                    // Пытаемся получить контекст пользователя
+                    await getContextFromSDK(sdkInstance);
                 } else {
-                    debugLog('❌ No SDK found');
-                    debugLog(`  frame: ${typeof frame}`);
-                    debugLog(`  window.farcaster: ${typeof window.farcaster}`);
-                    debugLog(`  window.miniappSdk: ${typeof window.miniappSdk}`);
+                    debugLog('❌ No SDK found immediately');
+                    // Пробуем подождать и найти SDK позже
+                    setTimeout(retryFindSDK, 1000);
+                    setTimeout(retryFindSDK, 2000);
+                    setTimeout(retryFindSDK, 3000);
                 }
             } catch (e) {
                 debugLog(`❌ SDK init error: ${e.message}`);
             }
         })();
+
+        async function retryFindSDK() {
+            if (window.__farcasterContext) return; // Уже получили контекст
+            
+            debugLog('🔄 Retry finding SDK...');
+            const foundKeys = findAllSDKs();
+            debugLog(`  Keys now: ${foundKeys.join(', ') || 'none'}`);
+            
+            let sdkInstance = window.sdk || (typeof frame !== 'undefined' && frame.sdk) || 
+                              window.farcaster?.miniapp || window.farcaster?.sdk ||
+                              window.Farcaster || window.miniApp || window.MiniApp || window.base;
+            
+            if (sdkInstance && !window.__farcasterSDK) {
+                debugLog('✅ Found SDK on retry!');
+                window.__farcasterSDK = sdkInstance;
+                await getContextFromSDK(sdkInstance);
+            }
+        }
+
+        async function getContextFromSDK(sdkInstance) {
+            try {
+                let context = null;
+                debugLog('🔍 Getting context...');
+                
+                // Пробуем все возможные способы
+                if (typeof sdkInstance.context === 'function') {
+                    debugLog('  Trying: context()');
+                    context = await sdkInstance.context();
+                } else if (sdkInstance.context && typeof sdkInstance.context.get === 'function') {
+                    debugLog('  Trying: context.get()');
+                    context = await sdkInstance.context.get();
+                } else if (sdkInstance.context && sdkInstance.context.then) {
+                    debugLog('  Trying: await context');
+                    context = await sdkInstance.context;
+                } else if (sdkInstance.context) {
+                    debugLog('  Trying: context (direct)');
+                    context = sdkInstance.context;
+                } else if (sdkInstance.getContext) {
+                    debugLog('  Trying: getContext()');
+                    context = await sdkInstance.getContext();
+                } else if (sdkInstance.user) {
+                    debugLog('  Trying: user (direct)');
+                    context = { user: sdkInstance.user };
+                }
+
+                if (context) {
+                    window.__farcasterContext = context;
+                    debugLog(`✅ Got context!`);
+                    debugLog(`  Keys: ${Object.keys(context).join(', ')}`);
+                    
+                    if (context.user) {
+                        debugLog(`  👤 USER FOUND:`);
+                        debugLog(`    displayName: ${context.user.displayName || 'null'}`);
+                        debugLog(`    username: ${context.user.username || 'null'}`);
+                        debugLog(`    pfpUrl: ${context.user.pfpUrl ? 'YES' : 'null'}`);
+                        debugLog(`    fid: ${context.user.fid || 'null'}`);
+                        Object.keys(context.user).forEach(k => {
+                            debugLog(`    ${k}: ${typeof context.user[k]}`);
+                        });
+                    } else {
+                        debugLog(`  user: NO`);
+                    }
+                } else {
+                    debugLog('❌ Context is null');
+                }
+            } catch (e) {
+                debugLog(`❌ Context error: ${e.message}`);
+            }
+        }
     </script>
 
     <!-- Загружаем ethers.js с fallback на альтернативный CDN -->
