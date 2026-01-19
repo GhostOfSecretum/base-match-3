@@ -192,7 +192,8 @@
                         // Ищем объекты с context или actions
                         if (val.context || val.actions || val.sdk || key.toLowerCase().includes('sdk') || 
                             key.toLowerCase().includes('farcaster') || key.toLowerCase().includes('miniapp') ||
-                            key.toLowerCase().includes('base') || key.toLowerCase().includes('frame')) {
+                            key.toLowerCase().includes('base') || key.toLowerCase().includes('frame') ||
+                            key.toLowerCase().includes('coinbase') || key.toLowerCase().includes('wallet')) {
                             sdkKeys.push(key);
                         }
                     }
@@ -200,6 +201,61 @@
             }
             return sdkKeys;
         }
+
+        // Попытка получить данные через Coinbase Wallet / frames
+        async function tryGetUserFromCoinbase() {
+            debugLog('🔍 Trying Coinbase/frames...');
+            
+            // Проверяем window.frames
+            if (window.frames && typeof window.frames === 'object') {
+                debugLog(`  frames keys: ${Object.keys(window.frames).slice(0,5).join(', ')}`);
+            }
+
+            // Проверяем coinbaseWalletRequestProvider
+            if (window.coinbaseWalletRequestProvider) {
+                debugLog('  Found coinbaseWalletRequestProvider');
+                const provider = window.coinbaseWalletRequestProvider;
+                debugLog(`    Keys: ${Object.keys(provider).slice(0,10).join(', ')}`);
+                
+                // Пробуем получить аккаунты
+                try {
+                    if (provider.request) {
+                        const accounts = await provider.request({ method: 'eth_accounts' });
+                        debugLog(`    accounts: ${JSON.stringify(accounts)}`);
+                    }
+                } catch (e) {
+                    debugLog(`    request error: ${e.message}`);
+                }
+            }
+
+            // Проверяем coinbaseWalletExtension
+            if (window.coinbaseWalletExtension) {
+                debugLog('  Found coinbaseWalletExtension');
+                const ext = window.coinbaseWalletExtension;
+                debugLog(`    Keys: ${Object.keys(ext).slice(0,10).join(', ')}`);
+            }
+
+            // Проверяем ethereum provider
+            if (window.ethereum) {
+                debugLog('  Found window.ethereum');
+                debugLog(`    isCoinbaseWallet: ${window.ethereum.isCoinbaseWallet}`);
+                debugLog(`    isMetaMask: ${window.ethereum.isMetaMask}`);
+                
+                // Coinbase Wallet может иметь user info
+                if (window.ethereum.selectedAddress) {
+                    debugLog(`    selectedAddress: ${window.ethereum.selectedAddress}`);
+                }
+            }
+        }
+
+        // Проверка postMessage от родительского окна (Base App может так общаться)
+        window.addEventListener('message', (event) => {
+            debugLog(`📨 Message received: ${JSON.stringify(event.data).slice(0, 100)}`);
+            if (event.data && event.data.user) {
+                debugLog(`  👤 User in message!`);
+                window.__farcasterContext = { user: event.data.user };
+            }
+        });
 
         // Согласно официальной документации Base Mini Apps
         (async function initFarcasterSDKEarly() {
@@ -285,11 +341,15 @@
                     await getContextFromSDK(sdkInstance);
                 } else {
                     debugLog('❌ No SDK found immediately');
-                    // Пробуем подождать и найти SDK позже
-                    setTimeout(retryFindSDK, 1000);
-                    setTimeout(retryFindSDK, 2000);
-                    setTimeout(retryFindSDK, 3000);
                 }
+                
+                // Пробуем Coinbase/frames
+                setTimeout(tryGetUserFromCoinbase, 500);
+                
+                // Пробуем подождать и найти SDK позже
+                setTimeout(retryFindSDK, 1000);
+                setTimeout(retryFindSDK, 2000);
+                setTimeout(retryFindSDK, 3000);
             } catch (e) {
                 debugLog(`❌ SDK init error: ${e.message}`);
             }
