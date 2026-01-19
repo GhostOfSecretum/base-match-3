@@ -72,66 +72,7 @@
     --border-color: rgba(255, 255, 255, 0.1);
 }
 
-/* Light mode support */
-@media (prefers-color-scheme: light) {
-    :root {
-        --bg-color: #FFFFFF;
-        --bg-secondary: rgba(0, 0, 0, 0.05);
-        --text-color: #000000;
-        --text-secondary: rgba(0, 0, 0, 0.6);
-        --border-color: rgba(0, 0, 0, 0.1);
-        --board-bg: rgba(255, 255, 255, 0.8);
-    }
-    
-    body {
-        background: var(--bg-color);
-        color: var(--text-color);
-    }
-    
-    .game-container {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-    }
-    
-    .stat-card,
-    .wallet-info,
-    .objectives-panel,
-    .player-name-display {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-    }
-    
-    .stat-label,
-    .objective-title,
-    .player-label {
-        color: var(--text-secondary);
-    }
-    
-    .stat-value,
-    .player-name {
-        color: var(--text-color);
-    }
-    
-    .cell {
-        background: var(--bg-secondary);
-        border: 1.5px solid var(--border-color);
-    }
-    
-    .modal-content {
-        background: rgba(255, 255, 255, 0.95);
-        border: 1px solid var(--border-color);
-    }
-    
-    .modal-header h2,
-    .modal-body {
-        color: var(--text-color);
-    }
-    
-    .final-stat {
-        background: var(--bg-secondary);
-        border: 1px solid var(--border-color);
-    }
-}
+/* Dark theme is default - no need for media query */
 
 body {
     font-family: 'Coinbase Text', sans-serif;
@@ -1679,6 +1620,234 @@ input:checked + .slider {
 
 input:checked + .slider:before {
     transform: translateX(26px);
+}
+
+/* Theme Toggle */
+.theme-toggle {
+    display: flex;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 4px;
+}
+
+.theme-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.6);
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 0.9em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    flex: 1;
+}
+
+.theme-btn span:first-child {
+    font-size: 1.2em;
+}
+
+.theme-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.theme-btn.active {
+    background: var(--primary-gradient);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 82, 255, 0.4);
+}
+
+/* Light Theme Styles */
+body.light-theme {
+    --bg-color: #FFFFFF;
+    --bg-secondary: rgba(0, 0, 0, 0.05);
+    --text-color: #000000;
+    --text-secondary: rgba(0, 0, 0, 0.6);
+    --border-color: rgba(0, 0, 0, 0.1);
+    --board-bg: rgba(255, 255, 255, 0.8);
+    background: var(--bg-color);
+    color: var(--text-color);
+}
+
+body.light-theme .game-container {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+}
+
+body.light-theme .stat-card,
+body.light-theme .wallet-info,
+body.light-theme .objectives-panel,
+body.light-theme .player-name-display {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+}
+
+body.light-theme .stat-label,
+body.light-theme .objective-title,
+body.light-theme .player-label {
+    color: var(--text-secondary);
+}
+
+body.light-theme .stat-value,
+body.light-theme .player-name {
+    color: var(--text-color);
+}
+
+body.light-theme .cell {
+    background: var(--bg-secondary);
+    border: 1.5px solid var(--border-color);
+}
+
+body.light-theme .modal-content {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid var(--border-color);
+}
+
+body.light-theme .modal-header h2,
+body.light-theme .modal-body {
+    color: var(--text-color);
+}
+
+body.light-theme .final-stat {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+}
+
+body.light-theme .start-menu {
+    background: var(--bg-color);
+}
+
+body.light-theme .start-menu-logo .ecosystem-label {
+    color: rgba(0, 0, 0, 0.7);
+}
+
+body.light-theme .setting-item {
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .setting-label {
+    color: var(--text-color);
+}
+
+body.light-theme .theme-toggle {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme .theme-btn {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+body.light-theme .theme-btn:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .modal-backdrop {
+    background: rgba(0, 0, 0, 0.6);
+}
+
+body.light-theme .leaderboard-item,
+body.light-theme .rule-section,
+body.light-theme .day-streak-display,
+body.light-theme .streak-display-large {
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .leaderboard-item:hover,
+body.light-theme .rule-section:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .name-input {
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    color: var(--text-color);
+}
+
+body.light-theme .name-input:focus {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .name-input::placeholder {
+    color: rgba(0, 0, 0, 0.4);
+}
+
+body.light-theme .tab-btn {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+body.light-theme .tab-btn:hover {
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .leaderboard-empty {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+body.light-theme .player-date,
+body.light-theme .combo-value,
+body.light-theme .final-stat-label,
+body.light-theme .streak-description,
+body.light-theme .gm-status,
+body.light-theme .gm-last-said {
+    color: rgba(0, 0, 0, 0.6);
+}
+
+body.light-theme .leaderboard-stats {
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .stat-item .stat-label {
+    color: rgba(0, 0, 0, 0.5);
+}
+
+body.light-theme .day-streak-label {
+    color: rgba(0, 0, 0, 0.7);
+}
+
+body.light-theme .deploy-description,
+body.light-theme .rule-section p {
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .contract-preview {
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 82, 255, 0.2);
+}
+
+body.light-theme .contract-preview-header {
+    background: rgba(0, 82, 255, 0.1);
+    border-bottom: 1px solid rgba(0, 82, 255, 0.15);
+}
+
+body.light-theme .contract-code {
+    color: rgba(0, 0, 0, 0.85);
+}
+
+body.light-theme .deploy-history {
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .history-header {
+    color: rgba(0, 0, 0, 0.7);
+}
+
+body.light-theme .history-item {
+    background: rgba(0, 0, 0, 0.05);
+}
+
+body.light-theme .history-item .history-date {
+    color: rgba(0, 0, 0, 0.4);
 }
 
 /* Day Streak Modal Styles */

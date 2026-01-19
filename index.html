@@ -217,6 +217,20 @@
 </head>
 
 <body>
+    <script>
+        // Ранняя инициализация темы для предотвращения мерцания
+        (function() {
+            try {
+                const savedTheme = localStorage.getItem('theme') || 'dark';
+                if (savedTheme === 'light') {
+                    document.documentElement.classList.add('light-theme');
+                    document.body.classList.add('light-theme');
+                }
+            } catch (e) {
+                // Игнорируем ошибки при ранней инициализации
+            }
+        })();
+    </script>
     <div id="loadingIndicator" style="display: none !important; visibility: hidden !important; opacity: 0 !important;">
         <img src="hero.png" alt="Loading..." id="loadingImage">
         <span>Loading game...</span>
@@ -446,6 +460,19 @@
                                 <input type="checkbox" id="musicToggle" checked>
                                 <span class="slider"></span>
                             </label>
+                        </div>
+                        <div class="setting-item">
+                            <label class="setting-label">Theme</label>
+                            <div class="theme-toggle">
+                                <button id="themeDarkBtn" class="theme-btn active" data-theme="dark">
+                                    <span>🌙</span>
+                                    <span>Dark</span>
+                                </button>
+                                <button id="themeLightBtn" class="theme-btn" data-theme="light">
+                                    <span>☀️</span>
+                                    <span>Light</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

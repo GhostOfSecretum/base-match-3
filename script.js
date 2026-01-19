@@ -2,6 +2,18 @@
 console.log('=== SCRIPT.JS STARTING ===');
 console.log('Timestamp:', new Date().toISOString());
 
+// Ранняя инициализация темы для предотвращения мерцания
+(function initThemeEarly() {
+    try {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        if (savedTheme === 'light' && document.body) {
+            document.body.classList.add('light-theme');
+        }
+    } catch (e) {
+        console.log('Theme initialization error (non-critical):', e.message);
+    }
+})();
+
 // КРИТИЧНО для Farcaster: Если SDK ready() еще не был вызван в index.html, пробуем здесь
 (async function retryFarcasterSDK() {
     // Если уже вызван в index.html, пропускаем
@@ -3112,6 +3124,44 @@ function initStartMenu() {
             settingsModal.classList.remove('show');
         });
     }
+
+    // Theme toggle handlers
+    const themeDarkBtn = document.getElementById('themeDarkBtn');
+    const themeLightBtn = document.getElementById('themeLightBtn');
+    
+    function setTheme(theme) {
+        const body = document.body;
+        if (theme === 'light') {
+            body.classList.add('light-theme');
+            if (themeDarkBtn) themeDarkBtn.classList.remove('active');
+            if (themeLightBtn) themeLightBtn.classList.add('active');
+        } else {
+            body.classList.remove('light-theme');
+            if (themeDarkBtn) themeDarkBtn.classList.add('active');
+            if (themeLightBtn) themeLightBtn.classList.remove('active');
+        }
+        localStorage.setItem('theme', theme);
+    }
+    
+    function initTheme() {
+        const savedTheme = localStorage.getItem('theme') || 'dark';
+        setTheme(savedTheme);
+    }
+    
+    if (themeDarkBtn) {
+        themeDarkBtn.addEventListener('click', () => {
+            setTheme('dark');
+        });
+    }
+    
+    if (themeLightBtn) {
+        themeLightBtn.addEventListener('click', () => {
+            setTheme('light');
+        });
+    }
+    
+    // Initialize theme on page load
+    initTheme();
 
     // Leaderboard - открываем лидерборд
     if (menuLeaderboardBtn) {
