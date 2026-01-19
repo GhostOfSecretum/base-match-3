@@ -117,10 +117,11 @@ class WalletManager {
 
     async initializeBaseAccount() {
         // Пытаемся получить данные пользователя из Base Account SDK
+        // Используем sdk.context из @farcaster/miniapp-sdk согласно документации Base
         try {
             let sdkInstance = null;
 
-            // Ищем SDK в различных местах
+            // Ищем SDK в различных местах согласно документации
             try {
                 if (window.farcaster && window.farcaster.miniapp) {
                     sdkInstance = window.farcaster.miniapp;
@@ -154,17 +155,24 @@ class WalletManager {
                 await new Promise(resolve => setTimeout(resolve, 500));
 
                 try {
+                    // Используем sdk.context.get() согласно документации Base
                     const context = await sdkInstance.context.get();
                     this.userContext = context;
 
-                    // Получаем username и avatar из контекста
+                    // Получаем данные пользователя из контекста
+                    // Согласно Product Guidelines: используем displayName, username, и pfpUrl
                     if (context.user) {
-                        this.username = context.user.username || context.user.displayName || null;
+                        // Приоритет: displayName > username (согласно документации Base)
+                        this.username = context.user.displayName || context.user.username || null;
+                        // Получаем аватар из pfpUrl
                         this.avatar = context.user.pfpUrl || context.user.avatarUrl || null;
                         
                         console.log('Base Account context received:', {
-                            username: this.username,
+                            displayName: context.user.displayName,
+                            username: context.user.username,
+                            finalUsername: this.username,
                             hasAvatar: !!this.avatar,
+                            pfpUrl: context.user.pfpUrl,
                             address: context.user.custodyAddress || context.user.account
                         });
 
@@ -230,6 +238,7 @@ class WalletManager {
 
     async getUsernameFromSDK() {
         // Пытаемся получить username напрямую из SDK, если он еще не был загружен
+        // Используем sdk.context из @farcaster/miniapp-sdk согласно документации Base
         if (this.username) {
             return this.username;
         }
@@ -237,7 +246,7 @@ class WalletManager {
         try {
             let sdkInstance = null;
 
-            // Ищем SDK в различных местах
+            // Ищем SDK в различных местах согласно документации
             if (window.farcaster && window.farcaster.miniapp) {
                 sdkInstance = window.farcaster.miniapp;
             } else if (window.miniappSdk) {
@@ -254,13 +263,19 @@ class WalletManager {
 
             if (sdkInstance && sdkInstance.context) {
                 try {
+                    // Используем sdk.context.get() согласно документации Base
                     const context = await sdkInstance.context.get();
                     if (context.user) {
-                        const username = context.user.username || context.user.displayName || null;
-                        if (username) {
-                            this.username = username;
+                        // Согласно Product Guidelines: приоритет displayName > username
+                        const displayName = context.user.displayName || context.user.username || null;
+                        if (displayName) {
+                            this.username = displayName;
                             this.userContext = context;
-                            return username;
+                            // Также обновляем avatar если доступен
+                            if (context.user.pfpUrl || context.user.avatarUrl) {
+                                this.avatar = context.user.pfpUrl || context.user.avatarUrl;
+                            }
+                            return displayName;
                         }
                     }
                 } catch (e) {
@@ -279,7 +294,45 @@ class WalletManager {
     }
 
     getAvatar() {
+        // Если avatar еще не загружен, пытаемся получить из контекста
+        if (!this.avatar && this.userContext && this.userContext.user) {
+            this.avatar = this.userContext.user.pfpUrl || this.userContext.user.avatarUrl || null;
+        }
         return this.avatar;
+    }
+
+    // Получить полный контекст пользователя из SDK
+    async getUserContext() {
+        // Если контекст уже загружен, возвращаем его
+        if (this.userContext) {
+            return this.userContext;
+        }
+
+        // Иначе пытаемся получить из SDK
+        try {
+            let sdkInstance = null;
+
+            if (window.farcaster && window.farcaster.miniapp) {
+                sdkInstance = window.farcaster.miniapp;
+            } else if (window.miniappSdk) {
+                sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
+            }
+
+            if (sdkInstance && sdkInstance.context) {
+                const context = await sdkInstance.context.get();
+                this.userContext = context;
+                // Обновляем username и avatar из контекста
+                if (context.user) {
+                    this.username = context.user.displayName || context.user.username || null;
+                    this.avatar = context.user.pfpUrl || context.user.avatarUrl || null;
+                }
+                return context;
+            }
+        } catch (error) {
+            console.log('Failed to get user context:', error.message);
+        }
+
+        return this.userContext;
     }
 
     async loadEthersLibrary() {
@@ -583,19 +636,37 @@ class LeaderboardManager {
             return null;
         }
         
-        // Получаем username из Base app SDK, если доступен
+        // Согласно Product Guidelines Base: используем displayName/username вместо адресов
+        // Получаем username из Base app SDK через sdk.context
         let playerName = null;
         if (this.walletManager) {
-            // Пытаемся получить username из SDK
+            // Пытаемся получить username из SDK (приоритет displayName > username)
             playerName = await this.walletManager.getUsernameFromSDK();
             // Если username не получен, используем метод getUsername
             if (!playerName) {
                 playerName = this.walletManager.getUsername();
             }
+            // Если всё ещё нет, пытаемся получить из контекста пользователя
+            if (!playerName && this.walletManager.getUserContext) {
+                try {
+                    const context = await this.walletManager.getUserContext();
+                    if (context && context.user) {
+                        playerName = context.user.displayName || context.user.username || null;
+                    }
+                } catch (e) {
+                    console.log('Could not get user context for leaderboard:', e.message);
+                }
+            }
         }
         
-        // Если username не доступен, используем форматированный адрес как fallback
-        const displayName = playerName || this.formatAddress(walletAddress);
+        // Согласно Product Guidelines: избегаем отправки адресов в лидерборд
+        // Используем displayName/username, если доступен
+        // Если username не доступен, используем форматированный адрес как fallback только для внешних кошельков
+        const isBaseApp = window.farcaster && window.farcaster.miniapp || 
+                         window.miniappSdk || 
+                         (window.parent && window.parent !== window);
+        
+        const displayName = playerName || (isBaseApp ? 'Player' : this.formatAddress(walletAddress));
         
         console.log('Sending result to leaderboard:', { walletAddress, playerName: displayName, score, maxCombo, won });
 
@@ -1200,7 +1271,8 @@ class MatchThreePro {
 
         if (playerNameDisplay) {
             if (this.walletManager.isConnected()) {
-                // Всегда пытаемся получить username из Base app SDK
+                // Согласно Product Guidelines Base: показываем displayName/username вместо адресов
+                // Всегда пытаемся получить username из Base app SDK через sdk.context
                 let displayName = null;
                 
                 // Сначала пробуем получить уже сохраненный username
@@ -1218,33 +1290,53 @@ class MatchThreePro {
                     }
                 }
                 
-                // Если username всё ещё нет, используем форматированный адрес как fallback
-                // НО только если это не Base app (где username должен быть доступен)
+                // Если username всё ещё нет, пытаемся получить контекст пользователя
+                if (!displayName && this.walletManager.getUserContext) {
+                    try {
+                        const context = await this.walletManager.getUserContext();
+                        if (context && context.user) {
+                            displayName = context.user.displayName || context.user.username || null;
+                            console.log('Username from user context:', displayName);
+                        }
+                    } catch (e) {
+                        console.log('Could not get user context:', e.message);
+                    }
+                }
+                
+                // Проверяем, запущено ли приложение в Base app
+                const isBaseApp = window.farcaster && window.farcaster.miniapp || 
+                                 window.miniappSdk || 
+                                 (window.parent && window.parent !== window);
+                
+                // Если это Base app и username нет, пробуем ещё раз через небольшую задержку
+                if (!displayName && isBaseApp) {
+                    console.log('Base app detected but username not found, will retry...');
+                    // Пробуем еще раз через небольшую задержку
+                    setTimeout(async () => {
+                        if (this.walletManager.getUsernameFromSDK) {
+                            const retryUsername = await this.walletManager.getUsernameFromSDK();
+                            if (retryUsername && playerNameDisplay) {
+                                playerNameDisplay.textContent = retryUsername;
+                                playerNameDisplay.classList.remove('wallet-address');
+                            }
+                        }
+                    }, 1000);
+                }
+                
+                // Согласно Product Guidelines: избегаем показа адресов 0x
+                // Используем адрес только как последний fallback, если это не Base app
                 if (!displayName) {
                     const address = this.walletManager.getAccount();
                     if (address) {
-                        // Проверяем, запущено ли приложение в Base app
-                        const isBaseApp = window.farcaster && window.farcaster.miniapp || 
-                                         window.miniappSdk || 
-                                         (window.parent && window.parent !== window);
-                        
-                        // Если это Base app и username нет, пробуем ещё раз через небольшую задержку
+                        // Если это Base app, не показываем адрес - показываем "Player" вместо этого
                         if (isBaseApp) {
-                            console.log('Base app detected but username not found, will retry...');
-                            // Пробуем еще раз через небольшую задержку
-                            setTimeout(async () => {
-                                if (this.walletManager.getUsernameFromSDK) {
-                                    const retryUsername = await this.walletManager.getUsernameFromSDK();
-                                    if (retryUsername && playerNameDisplay) {
-                                        playerNameDisplay.textContent = retryUsername;
-                                        playerNameDisplay.classList.remove('wallet-address');
-                                    }
-                                }
-                            }, 1000);
+                            displayName = 'Player';
+                            playerNameDisplay.classList.remove('wallet-address');
+                        } else {
+                            // Для внешних кошельков показываем форматированный адрес
+                            displayName = this.leaderboard.formatAddress(address);
+                            playerNameDisplay.classList.add('wallet-address');
                         }
-                        
-                        displayName = this.leaderboard.formatAddress(address);
-                        playerNameDisplay.classList.add('wallet-address');
                     } else {
                         displayName = 'Connect Wallet';
                         playerNameDisplay.classList.remove('wallet-address');
@@ -1256,7 +1348,7 @@ class MatchThreePro {
                 
                 playerNameDisplay.textContent = displayName;
 
-                // Показываем avatar, если доступен
+                // Показываем avatar (pfpUrl) из Base app, если доступен
                 const avatar = this.walletManager.getAvatar();
                 if (playerAvatarDisplay && avatar) {
                     playerAvatarDisplay.src = avatar;
@@ -2750,6 +2842,19 @@ class MatchThreePro {
                 ? this.walletManager.getAccount().toLowerCase()
                 : null;
 
+            // Получаем имя текущего игрока из SDK для отображения в лидерборде
+            let currentPlayerName = null;
+            if (currentAddress && this.walletManager) {
+                try {
+                    currentPlayerName = await this.walletManager.getUsernameFromSDK();
+                    if (!currentPlayerName) {
+                        currentPlayerName = this.walletManager.getUsername();
+                    }
+                } catch (e) {
+                    console.log('Could not get current player name for leaderboard:', e.message);
+                }
+            }
+
             list.innerHTML = topResults.map((result, index) => {
                 const date = new Date(result.date);
                 const dateStr = date.toLocaleDateString('en-US', {
@@ -2761,9 +2866,21 @@ class MatchThreePro {
 
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
 
-                // Используем playerName для отображения (username Base app или форматированный адрес)
-                const displayName = result.playerName || (result.walletAddress ? this.leaderboard.formatAddress(result.walletAddress) : 'Unknown');
                 const resultAddress = (result.walletAddress || '').toLowerCase();
+                
+                // Согласно Product Guidelines Base: используем displayName/username вместо адресов
+                // Если это текущий игрок и у нас есть имя из SDK, используем его
+                let displayName = result.playerName;
+                if (!displayName && currentAddress && resultAddress === currentAddress && currentPlayerName) {
+                    displayName = currentPlayerName;
+                }
+                // Если playerName не доступен, используем форматированный адрес только как fallback
+                if (!displayName && result.walletAddress) {
+                    displayName = this.leaderboard.formatAddress(result.walletAddress);
+                }
+                if (!displayName) {
+                    displayName = 'Unknown';
+                }
                 
                 // Проверяем, является ли displayName адресом кошелька (содержит ...)
                 // Если это username, то не применяем класс wallet-address
