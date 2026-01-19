@@ -3242,6 +3242,16 @@ class MatchThreePro {
             });
         }
 
+        // Back button - возврат в главное меню
+        const backBtn = document.getElementById('backBtn');
+        if (backBtn) {
+            backBtn.addEventListener('click', () => {
+                if (window.showGameMenu) {
+                    window.showGameMenu();
+                }
+            });
+        }
+
         const restartBtn = document.getElementById('restartBtn');
         if (restartBtn) {
             restartBtn.addEventListener('click', () => {
