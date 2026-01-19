@@ -4281,9 +4281,57 @@ async function deployContract() {
     }
     
     try {
-        // Check for ethers.js
+        // Check for ethers.js with retry
         if (typeof ethers === 'undefined') {
-            throw new Error('ethers.js not loaded. Please refresh the page.');
+            if (deployStatus) deployStatus.textContent = 'Loading ethers.js...';
+            
+            // Try to load ethers.js dynamically
+            await new Promise((resolve, reject) => {
+                const cdns = [
+                    'https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js',
+                    'https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js',
+                    'https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js'
+                ];
+                
+                let cdnIndex = 0;
+                
+                function tryNextCDN() {
+                    if (typeof ethers !== 'undefined') {
+                        resolve();
+                        return;
+                    }
+                    
+                    if (cdnIndex >= cdns.length) {
+                        reject(new Error('Could not load ethers.js. Please check your internet connection and try again.'));
+                        return;
+                    }
+                    
+                    const script = document.createElement('script');
+                    script.src = cdns[cdnIndex];
+                    script.onload = () => {
+                        if (typeof ethers !== 'undefined') {
+                            resolve();
+                        } else {
+                            cdnIndex++;
+                            tryNextCDN();
+                        }
+                    };
+                    script.onerror = () => {
+                        cdnIndex++;
+                        tryNextCDN();
+                    };
+                    document.head.appendChild(script);
+                }
+                
+                tryNextCDN();
+                
+                // Timeout after 10 seconds
+                setTimeout(() => {
+                    if (typeof ethers === 'undefined') {
+                        reject(new Error('ethers.js loading timeout. Please refresh the page.'));
+                    }
+                }, 10000);
+            });
         }
         
         // Try Farcaster SDK first

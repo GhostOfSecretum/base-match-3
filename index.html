@@ -682,22 +682,56 @@
         }
     </script>
 
-    <!-- Загружаем ethers.js с fallback на альтернативный CDN -->
-    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js" onerror="loadEthersFallback()"></script>
+    <!-- Загружаем ethers.js с множественными fallback CDN -->
     <script>
-        // Fallback загрузка ethers.js с альтернативного CDN
-        function loadEthersFallback() {
-            console.log('Primary ethers.js CDN failed, trying fallback...');
+        // Список CDN для загрузки ethers.js (в порядке приоритета)
+        window.__ethersCDNs = [
+            'https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js',
+            'https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js',
+            'https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js'
+        ];
+        window.__ethersCDNIndex = 0;
+
+        function loadEthersFromCDN() {
+            if (typeof ethers !== 'undefined') {
+                console.log('✅ ethers.js already loaded');
+                return;
+            }
+            
+            if (window.__ethersCDNIndex >= window.__ethersCDNs.length) {
+                console.error('❌ All ethers.js CDNs failed');
+                return;
+            }
+            
+            const cdnUrl = window.__ethersCDNs[window.__ethersCDNIndex];
+            console.log(`Loading ethers.js from CDN ${window.__ethersCDNIndex + 1}/${window.__ethersCDNs.length}: ${cdnUrl}`);
+            
             const script = document.createElement('script');
-            script.src = 'https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js';
-            script.onerror = function () {
-                console.warn('Both ethers.js CDNs failed. Wallet connection will be unavailable.');
+            script.src = cdnUrl;
+            script.async = false;
+            
+            script.onload = function() {
+                if (typeof ethers !== 'undefined') {
+                    console.log('✅ ethers.js loaded successfully from:', cdnUrl);
+                } else {
+                    console.warn('Script loaded but ethers not defined, trying next CDN...');
+                    window.__ethersCDNIndex++;
+                    loadEthersFromCDN();
+                }
             };
-            script.onload = function () {
-                console.log('ethers.js loaded from fallback CDN');
+            
+            script.onerror = function() {
+                console.warn(`CDN failed: ${cdnUrl}, trying next...`);
+                window.__ethersCDNIndex++;
+                loadEthersFromCDN();
             };
+            
             document.head.appendChild(script);
         }
+
+        // Начинаем загрузку
+        loadEthersFromCDN();
     </script>
 </head>
 
