@@ -242,7 +242,15 @@
                                 window.__userAddress = accounts[0];
                                 debugLog(`    ✅ Got address: ${accounts[0].slice(0,10)}...`);
                                 
-                                // Пробуем получить имя через Neynar API
+                                // Сразу устанавливаем аватар по адресу (Effigy)
+                                const avatarEl = document.getElementById('currentPlayerAvatar');
+                                if (avatarEl) {
+                                    avatarEl.src = `https://effigy.im/a/${accounts[0]}.png`;
+                                    avatarEl.style.display = 'block';
+                                    debugLog(`    ✅ Set Effigy avatar`);
+                                }
+                                
+                                // Пробуем получить имя через API (может также обновить аватар)
                                 fetchUsernameFromNeynar(accounts[0]);
                             }
                         } catch (e) {
@@ -380,14 +388,41 @@
                 // Сохраняем в localStorage чтобы не потерять
                 try {
                     localStorage.setItem('playerDisplayName', displayName);
-                    if (avatar) localStorage.setItem('playerAvatar', avatar);
                 } catch (e) {}
             }
             
-            if (avatarEl && avatar) {
-                avatarEl.src = avatar;
-                avatarEl.style.display = 'block';
-                debugLog(`  ✅ Updated player avatar`);
+            // Обновляем аватар
+            if (avatarEl) {
+                let avatarUrl = avatar;
+                
+                // Если аватар не передан, пробуем получить из разных источников
+                if (!avatarUrl) {
+                    avatarUrl = window.__userAvatar;
+                }
+                
+                // Если всё ещё нет аватара, генерируем по адресу
+                if (!avatarUrl && window.__userAddress) {
+                    // Используем Effigy для генерации аватара по адресу
+                    avatarUrl = `https://effigy.im/a/${window.__userAddress}.png`;
+                    debugLog(`  Using Effigy avatar for ${window.__userAddress.slice(0,10)}...`);
+                }
+                
+                if (avatarUrl) {
+                    avatarEl.src = avatarUrl;
+                    avatarEl.style.display = 'block';
+                    avatarEl.onerror = function() {
+                        // Если загрузка не удалась, используем Effigy как fallback
+                        if (window.__userAddress && !this.src.includes('effigy.im')) {
+                            this.src = `https://effigy.im/a/${window.__userAddress}.png`;
+                        }
+                    };
+                    debugLog(`  ✅ Updated player avatar: ${avatarUrl.slice(0,50)}...`);
+                    
+                    // Сохраняем в localStorage
+                    try {
+                        localStorage.setItem('playerAvatar', avatarUrl);
+                    } catch (e) {}
+                }
             }
         }
 
@@ -431,9 +466,24 @@
                         nameEl.textContent = savedName;
                         nameEl.classList.remove('wallet-address');
                     }
-                    if (avatarEl && savedAvatar) {
-                        avatarEl.src = savedAvatar;
-                        avatarEl.style.display = 'block';
+                    
+                    if (avatarEl) {
+                        let avatarUrl = savedAvatar;
+                        
+                        // Если нет сохранённого аватара, используем Effigy
+                        if (!avatarUrl && window.__userAddress) {
+                            avatarUrl = `https://effigy.im/a/${window.__userAddress}.png`;
+                        }
+                        
+                        if (avatarUrl) {
+                            avatarEl.src = avatarUrl;
+                            avatarEl.style.display = 'block';
+                            avatarEl.onerror = function() {
+                                if (window.__userAddress && !this.src.includes('effigy.im')) {
+                                    this.src = `https://effigy.im/a/${window.__userAddress}.png`;
+                                }
+                            };
+                        }
                     }
                 }
             } catch (e) {}

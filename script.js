@@ -1496,21 +1496,35 @@ class MatchThreePro {
                 playerNameDisplay.classList.remove('wallet-address');
 
                 // Показываем avatar
-                const avatar = this.walletManager.getAvatar() || window.__userAvatar;
-                if (playerAvatarDisplay && avatar) {
-                    playerAvatarDisplay.src = avatar;
-                    playerAvatarDisplay.style.display = 'block';
-                } else if (playerAvatarDisplay) {
+                if (playerAvatarDisplay) {
+                    let avatarUrl = this.walletManager.getAvatar() || window.__userAvatar;
+                    
                     // Пробуем загрузить из localStorage
-                    try {
-                        const savedAvatar = localStorage.getItem('playerAvatar');
-                        if (savedAvatar) {
-                            playerAvatarDisplay.src = savedAvatar;
-                            playerAvatarDisplay.style.display = 'block';
-                        } else {
-                            playerAvatarDisplay.style.display = 'none';
+                    if (!avatarUrl) {
+                        try {
+                            avatarUrl = localStorage.getItem('playerAvatar');
+                        } catch (e) {}
+                    }
+                    
+                    // Если нет аватара, используем Effigy (генерация по адресу)
+                    if (!avatarUrl) {
+                        const address = this.walletManager.getAccount() || window.__userAddress;
+                        if (address) {
+                            avatarUrl = `https://effigy.im/a/${address}.png`;
                         }
-                    } catch (e) {
+                    }
+                    
+                    if (avatarUrl) {
+                        playerAvatarDisplay.src = avatarUrl;
+                        playerAvatarDisplay.style.display = 'block';
+                        playerAvatarDisplay.onerror = () => {
+                            // Fallback на Effigy если картинка не загрузилась
+                            const address = this.walletManager.getAccount() || window.__userAddress;
+                            if (address && !playerAvatarDisplay.src.includes('effigy.im')) {
+                                playerAvatarDisplay.src = `https://effigy.im/a/${address}.png`;
+                            }
+                        };
+                    } else {
                         playerAvatarDisplay.style.display = 'none';
                     }
                 }
