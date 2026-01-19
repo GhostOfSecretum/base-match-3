@@ -2,6 +2,18 @@
 console.log('=== SCRIPT.JS STARTING ===');
 console.log('Timestamp:', new Date().toISOString());
 
+// Debug функция для отображения на телефоне
+function debugLog(msg) {
+    const time = new Date().toLocaleTimeString();
+    if (!window.__debugLogs) window.__debugLogs = [];
+    window.__debugLogs.push(`[${time}] ${msg}`);
+    console.log(msg);
+    const debugContent = document.getElementById('debugContent');
+    if (debugContent) {
+        debugContent.innerHTML = window.__debugLogs.slice(-20).join('<br>');
+    }
+}
+
 // Ранняя инициализация темы для предотвращения мерцания
 (function initThemeEarly() {
     try {
@@ -218,7 +230,7 @@ class WalletManager {
     async processUserContext(context) {
         // Обрабатываем контекст пользователя
         this.userContext = context;
-        console.log('Full SDK context:', JSON.stringify(context, null, 2));
+        debugLog('🎮 Processing user context...');
 
         // Получаем данные пользователя из контекста
         // Согласно Product Guidelines: используем displayName, username, и pfpUrl
@@ -228,14 +240,12 @@ class WalletManager {
             // Получаем аватар из pfpUrl
             this.avatar = context.user.pfpUrl || context.user.avatarUrl || null;
 
-            console.log('User data from SDK:', {
-                displayName: context.user.displayName,
-                username: context.user.username,
-                finalUsername: this.username,
-                hasAvatar: !!this.avatar,
-                pfpUrl: context.user.pfpUrl,
-                fid: context.user.fid
-            });
+            debugLog(`👤 User found!`);
+            debugLog(`  displayName: ${context.user.displayName || 'null'}`);
+            debugLog(`  username: ${context.user.username || 'null'}`);
+            debugLog(`  FINAL name: ${this.username || 'null'}`);
+            debugLog(`  avatar: ${this.avatar ? 'YES' : 'NO'}`);
+            debugLog(`  fid: ${context.user.fid || 'null'}`);
 
             // Если есть адрес в контексте, используем его
             const address = context.user.custodyAddress || 
@@ -243,15 +253,21 @@ class WalletManager {
                            context.user.account ||
                            context.connectedAddress;
             
-            if (address && !this.account) {
-                console.log('Auto-connecting with address:', address);
-                await this.connectViaBaseAccount(address);
+            if (address) {
+                debugLog(`  address: ${address.slice(0,10)}...`);
+                if (!this.account) {
+                    await this.connectViaBaseAccount(address);
+                }
+            } else {
+                debugLog('  address: NOT FOUND');
             }
 
             // Обновляем UI
             if (window.game && typeof window.game.updateWalletDisplay === 'function') {
                 setTimeout(() => window.game.updateWalletDisplay(), 100);
             }
+        } else {
+            debugLog('❌ No user in context');
         }
     }
 
