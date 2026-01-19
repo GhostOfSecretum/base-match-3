@@ -268,57 +268,54 @@
                 debugLog(`🌐 Fetching profile for ${address.slice(0,10)}...`);
                 
                 let foundName = null;
-                let foundAvatar = null;
+                let avatarSources = []; // Собираем все возможные источники аватаров
 
-                // 1. Пробуем ENS через публичный resolver
+                // 1. Добавляем Stamp.fyi - универсальный резолвер аватаров (работает всегда)
+                const stampUrl = `https://stamp.fyi/avatar/${address}?s=128`;
+                avatarSources.push(stampUrl);
+                debugLog(`  Added Stamp.fyi to sources`);
+
+                // 2. Пробуем ENS для получения ИМЕНИ
                 try {
-                    debugLog(`  Trying ENS...`);
+                    debugLog(`  Trying ENS for name...`);
                     const ensResponse = await fetch(`https://api.ensideas.com/ens/resolve/${address}`);
                     if (ensResponse.ok) {
                         const ensData = await ensResponse.json();
-                        debugLog(`  ENS data: ${JSON.stringify(ensData).slice(0,150)}`);
+                        debugLog(`  ENS data: ${JSON.stringify(ensData).slice(0,100)}`);
                         if (ensData.name) {
                             foundName = ensData.name;
-                            foundAvatar = ensData.avatar;
                             debugLog(`  ✅ Got ENS name: ${foundName}`);
+                            // Добавляем euc.li если есть имя
+                            avatarSources.push(`https://euc.li/${ensData.name}`);
+                            debugLog(`  Added euc.li to sources`);
                         }
                     }
                 } catch (e) {
                     debugLog(`  ENS error: ${e.message}`);
                 }
 
-                // 2. Пробуем Stamp.fyi - универсальный резолвер аватаров (поддерживает ENS, Farcaster, Lens)
-                if (!foundAvatar) {
-                    try {
-                        debugLog(`  Trying Stamp.fyi...`);
-                        // Stamp.fyi автоматически резолвит аватар из разных источников
-                        const stampUrl = `https://stamp.fyi/avatar/${address}?s=128`;
-                        const stampCheck = await fetch(stampUrl, { method: 'HEAD' });
-                        if (stampCheck.ok && stampCheck.headers.get('content-type')?.includes('image')) {
-                            foundAvatar = stampUrl;
-                            debugLog(`  ✅ Got Stamp.fyi avatar`);
+                // 3. Пробуем Warpcast API (Farcaster) - главный источник для Farcaster
+                try {
+                    debugLog(`  Trying Warpcast...`);
+                    const warpcastResponse = await fetch(`https://api.warpcast.com/v2/user-by-verification?address=${address}`);
+                    if (warpcastResponse.ok) {
+                        const warpcastData = await warpcastResponse.json();
+                        debugLog(`  Warpcast data: ${JSON.stringify(warpcastData).slice(0,150)}`);
+                        if (warpcastData.result?.user) {
+                            const user = warpcastData.result.user;
+                            if (!foundName) foundName = user.displayName || user.username;
+                            if (user.pfp?.url) {
+                                // Добавляем Farcaster аватар в начало - приоритет!
+                                avatarSources.unshift(user.pfp.url);
+                                debugLog(`  ✅ Got Warpcast/Farcaster avatar (priority)`);
+                            }
                         }
-                    } catch (e) {
-                        debugLog(`  Stamp.fyi error: ${e.message}`);
                     }
+                } catch (e) {
+                    debugLog(`  Warpcast error: ${e.message}`);
                 }
 
-                // 3. Пробуем EUC.li - ENS avatar service
-                if (foundName && !foundAvatar) {
-                    try {
-                        debugLog(`  Trying euc.li for ${foundName}...`);
-                        const eucUrl = `https://euc.li/${foundName}`;
-                        const eucCheck = await fetch(eucUrl, { method: 'HEAD' });
-                        if (eucCheck.ok) {
-                            foundAvatar = eucUrl;
-                            debugLog(`  ✅ Got euc.li avatar`);
-                        }
-                    } catch (e) {
-                        debugLog(`  euc.li error: ${e.message}`);
-                    }
-                }
-
-                // 4. Пробуем Basenames resolver
+                // 4. Пробуем Basenames
                 try {
                     debugLog(`  Trying Basenames...`);
                     const basenameResponse = await fetch(`https://resolver-api.basename.app/v1/addresses/${address}`);
@@ -327,35 +324,13 @@
                         debugLog(`  Basename data: ${JSON.stringify(basenameData).slice(0,150)}`);
                         if (basenameData.name || basenameData.basename) {
                             if (!foundName) foundName = basenameData.name || basenameData.basename;
-                            if (basenameData.avatar) foundAvatar = basenameData.avatar;
-                            if (basenameData.avatar_url) foundAvatar = basenameData.avatar_url;
-                            if (basenameData.image) foundAvatar = basenameData.image;
+                            if (basenameData.avatar) avatarSources.push(basenameData.avatar);
+                            if (basenameData.avatar_url) avatarSources.push(basenameData.avatar_url);
+                            if (basenameData.image) avatarSources.push(basenameData.image);
                         }
                     }
                 } catch (e) {
                     debugLog(`  Basename error: ${e.message}`);
-                }
-
-                // 5. Пробуем Warpcast API (Farcaster) напрямую
-                if (!foundAvatar) {
-                    try {
-                        debugLog(`  Trying Warpcast...`);
-                        const warpcastResponse = await fetch(`https://api.warpcast.com/v2/user-by-verification?address=${address}`);
-                        if (warpcastResponse.ok) {
-                            const warpcastData = await warpcastResponse.json();
-                            debugLog(`  Warpcast data: ${JSON.stringify(warpcastData).slice(0,150)}`);
-                            if (warpcastData.result?.user) {
-                                const user = warpcastData.result.user;
-                                if (!foundName) foundName = user.displayName || user.username;
-                                if (user.pfp?.url) {
-                                    foundAvatar = user.pfp.url;
-                                    debugLog(`  ✅ Got Warpcast/Farcaster avatar`);
-                                }
-                            }
-                        }
-                    } catch (e) {
-                        debugLog(`  Warpcast error: ${e.message}`);
-                    }
                 }
 
                 // 6. Пробуем Neynar (Farcaster)
@@ -373,8 +348,11 @@
                         if (data.user) {
                             const user = data.user;
                             if (!foundName) foundName = user.display_name || user.username;
-                            if (!foundAvatar) foundAvatar = user.pfp_url || user.pfp?.url;
-                            if (foundAvatar) debugLog(`  ✅ Got Neynar avatar`);
+                            const neynarAvatar = user.pfp_url || user.pfp?.url;
+                            if (neynarAvatar) {
+                                avatarSources.push(neynarAvatar);
+                                debugLog(`  ✅ Added Neynar avatar to sources`);
+                            }
                         }
                     } else {
                         debugLog(`  Neynar: ${response.status}`);
@@ -384,11 +362,11 @@
                 }
 
                 // Применяем результаты
-                if (foundName || foundAvatar) {
+                debugLog(`  📋 Final: name=${foundName}, ${avatarSources.length} avatar sources`);
+                if (foundName || avatarSources.length > 0) {
                     window.__userName = foundName;
-                    window.__userAvatar = foundAvatar;
-                    debugLog(`  📋 Final: name=${foundName}, avatar=${foundAvatar ? 'YES' : 'NO'}`);
-                    updatePlayerDisplay(foundName, foundAvatar);
+                    window.__userAvatar = avatarSources[0] || null;
+                    updatePlayerDisplay(foundName, null, avatarSources);
                 } else {
                     debugLog(`  ❌ Could not find profile for this address`);
                 }
@@ -398,7 +376,7 @@
         }
 
         // Обновить отображение игрока
-        function updatePlayerDisplay(name, avatar) {
+        function updatePlayerDisplay(name, avatar, avatarSources) {
             const nameEl = document.getElementById('currentPlayerName');
             const avatarEl = document.getElementById('currentPlayerAvatar');
             
@@ -418,22 +396,45 @@
             
             // Обновляем аватар - только реальный из профиля, не генерируем
             if (avatarEl) {
-                let avatarUrl = avatar || window.__userAvatar;
+                // Собираем все возможные источники аватара
+                let sources = avatarSources || [];
+                if (avatar && !sources.includes(avatar)) sources.unshift(avatar);
+                if (window.__userAvatar && !sources.includes(window.__userAvatar)) sources.push(window.__userAvatar);
                 
-                if (avatarUrl) {
-                    avatarEl.src = avatarUrl;
-                    avatarEl.style.display = 'block';
-                    avatarEl.onerror = function() {
-                        // Если загрузка не удалась, скрываем аватар
-                        this.style.display = 'none';
-                        debugLog(`  ❌ Avatar failed to load`);
-                    };
-                    debugLog(`  ✅ Updated player avatar: ${avatarUrl.slice(0,50)}...`);
+                // Сохраняем источники для fallback
+                window.__avatarSources = sources;
+                window.__avatarSourceIndex = 0;
+                
+                function tryNextAvatar() {
+                    if (window.__avatarSourceIndex >= window.__avatarSources.length) {
+                        avatarEl.style.display = 'none';
+                        debugLog(`  ❌ All avatar sources failed`);
+                        return;
+                    }
                     
-                    // Сохраняем в localStorage
+                    const url = window.__avatarSources[window.__avatarSourceIndex];
+                    window.__avatarSourceIndex++;
+                    
+                    debugLog(`  🖼️ Trying avatar ${window.__avatarSourceIndex}/${window.__avatarSources.length}: ${url.slice(0,40)}...`);
+                    avatarEl.src = url;
+                    avatarEl.style.display = 'block';
+                }
+                
+                avatarEl.onerror = function() {
+                    debugLog(`  ❌ Avatar failed, trying next...`);
+                    tryNextAvatar();
+                };
+                
+                avatarEl.onload = function() {
+                    debugLog(`  ✅ Avatar loaded successfully!`);
+                    // Сохраняем работающий URL
                     try {
-                        localStorage.setItem('playerAvatar', avatarUrl);
+                        localStorage.setItem('playerAvatar', this.src);
                     } catch (e) {}
+                };
+                
+                if (sources.length > 0) {
+                    tryNextAvatar();
                 } else {
                     // Нет аватара - скрываем элемент
                     avatarEl.style.display = 'none';

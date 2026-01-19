@@ -1495,25 +1495,43 @@ class MatchThreePro {
                 playerNameDisplay.textContent = displayName;
                 playerNameDisplay.classList.remove('wallet-address');
 
-                // Показываем avatar - только реальный из профиля
+                // Показываем avatar - только реальный из профиля с fallback
                 if (playerAvatarDisplay) {
-                    let avatarUrl = this.walletManager.getAvatar() || window.__userAvatar;
+                    // Собираем все возможные источники аватара
+                    let sources = window.__avatarSources || [];
                     
-                    // Пробуем загрузить из localStorage
-                    if (!avatarUrl) {
-                        try {
-                            avatarUrl = localStorage.getItem('playerAvatar');
-                        } catch (e) {}
-                    }
+                    // Добавляем другие источники если есть
+                    const sdkAvatar = this.walletManager.getAvatar();
+                    if (sdkAvatar && !sources.includes(sdkAvatar)) sources.unshift(sdkAvatar);
+                    if (window.__userAvatar && !sources.includes(window.__userAvatar)) sources.push(window.__userAvatar);
                     
-                    // Показываем только реальный аватар, не генерируем
-                    if (avatarUrl) {
-                        playerAvatarDisplay.src = avatarUrl;
-                        playerAvatarDisplay.style.display = 'block';
-                        playerAvatarDisplay.onerror = () => {
-                            // Если картинка не загрузилась, скрываем
-                            playerAvatarDisplay.style.display = 'none';
+                    // Из localStorage
+                    try {
+                        const savedAvatar = localStorage.getItem('playerAvatar');
+                        if (savedAvatar && !sources.includes(savedAvatar)) sources.push(savedAvatar);
+                    } catch (e) {}
+                    
+                    // Показываем только реальный аватар с fallback
+                    if (sources.length > 0) {
+                        let currentIndex = 0;
+                        
+                        const tryNextAvatar = () => {
+                            if (currentIndex >= sources.length) {
+                                playerAvatarDisplay.style.display = 'none';
+                                return;
+                            }
+                            playerAvatarDisplay.src = sources[currentIndex];
+                            playerAvatarDisplay.style.display = 'block';
+                            currentIndex++;
                         };
+                        
+                        playerAvatarDisplay.onerror = tryNextAvatar;
+                        playerAvatarDisplay.onload = () => {
+                            // Сохраняем работающий URL
+                            try { localStorage.setItem('playerAvatar', playerAvatarDisplay.src); } catch (e) {}
+                        };
+                        
+                        tryNextAvatar();
                     } else {
                         playerAvatarDisplay.style.display = 'none';
                     }
