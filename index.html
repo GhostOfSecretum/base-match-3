@@ -205,45 +205,84 @@
         // Попытка получить данные через Coinbase Wallet / frames
         async function tryGetUserFromCoinbase() {
             debugLog('🔍 Trying Coinbase/frames...');
-            
-            // Проверяем window.frames
-            if (window.frames && typeof window.frames === 'object') {
-                debugLog(`  frames keys: ${Object.keys(window.frames).slice(0,5).join(', ')}`);
-            }
 
-            // Проверяем coinbaseWalletRequestProvider
-            if (window.coinbaseWalletRequestProvider) {
-                debugLog('  Found coinbaseWalletRequestProvider');
-                const provider = window.coinbaseWalletRequestProvider;
-                debugLog(`    Keys: ${Object.keys(provider).slice(0,10).join(', ')}`);
+            // Проверяем coinbaseEvmProvider
+            if (window.coinbaseEvmProvider) {
+                debugLog('  Found coinbaseEvmProvider!');
+                const provider = window.coinbaseEvmProvider;
+                debugLog(`    Keys: ${Object.keys(provider).slice(0,15).join(', ')}`);
                 
-                // Пробуем получить аккаунты
                 try {
-                    if (provider.request) {
-                        const accounts = await provider.request({ method: 'eth_accounts' });
-                        debugLog(`    accounts: ${JSON.stringify(accounts)}`);
+                    // Пробуем получить аккаунты
+                    const accounts = await provider.request({ method: 'eth_accounts' });
+                    debugLog(`    accounts: ${JSON.stringify(accounts)}`);
+                    if (accounts && accounts[0]) {
+                        window.__userAddress = accounts[0];
                     }
                 } catch (e) {
-                    debugLog(`    request error: ${e.message}`);
+                    debugLog(`    eth_accounts error: ${e.message}`);
                 }
-            }
 
-            // Проверяем coinbaseWalletExtension
-            if (window.coinbaseWalletExtension) {
-                debugLog('  Found coinbaseWalletExtension');
-                const ext = window.coinbaseWalletExtension;
-                debugLog(`    Keys: ${Object.keys(ext).slice(0,10).join(', ')}`);
+                // Пробуем получить capabilities (может содержать user info)
+                try {
+                    const caps = await provider.request({ method: 'wallet_getCapabilities' });
+                    debugLog(`    capabilities: ${JSON.stringify(caps).slice(0,100)}`);
+                } catch (e) {
+                    debugLog(`    capabilities: ${e.message}`);
+                }
             }
 
             // Проверяем ethereum provider
             if (window.ethereum) {
                 debugLog('  Found window.ethereum');
                 debugLog(`    isCoinbaseWallet: ${window.ethereum.isCoinbaseWallet}`);
-                debugLog(`    isMetaMask: ${window.ethereum.isMetaMask}`);
+                debugLog(`    Keys: ${Object.keys(window.ethereum).slice(0,15).join(', ')}`);
                 
-                // Coinbase Wallet может иметь user info
-                if (window.ethereum.selectedAddress) {
-                    debugLog(`    selectedAddress: ${window.ethereum.selectedAddress}`);
+                // Получаем аккаунт
+                try {
+                    const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+                    debugLog(`    accounts: ${JSON.stringify(accounts)}`);
+                    if (accounts && accounts[0]) {
+                        window.__userAddress = accounts[0];
+                        debugLog(`    ✅ Got address: ${accounts[0].slice(0,10)}...`);
+                    }
+                } catch (e) {
+                    debugLog(`    eth_accounts error: ${e.message}`);
+                }
+
+                // Проверяем свойства которые могут содержать user info
+                const propsToCheck = ['user', 'userInfo', 'profile', 'account', 'session', 
+                                      '_state', 'state', 'selectedAddress', 'accounts'];
+                for (const prop of propsToCheck) {
+                    if (window.ethereum[prop]) {
+                        debugLog(`    ${prop}: ${JSON.stringify(window.ethereum[prop]).slice(0,50)}`);
+                    }
+                }
+
+                // Пробуем специальные методы Coinbase
+                try {
+                    const walletInfo = await window.ethereum.request({ method: 'wallet_getWalletInfo' });
+                    debugLog(`    walletInfo: ${JSON.stringify(walletInfo)}`);
+                } catch (e) {}
+
+                try {
+                    const permissions = await window.ethereum.request({ method: 'wallet_getPermissions' });
+                    debugLog(`    permissions: ${JSON.stringify(permissions).slice(0,100)}`);
+                } catch (e) {}
+            }
+
+            // Проверяем __farcasterSDK который появился
+            if (window.__farcasterSDK) {
+                debugLog('  Checking __farcasterSDK again...');
+                const sdk = window.__farcasterSDK;
+                debugLog(`    Keys: ${Object.keys(sdk).join(', ')}`);
+                
+                // Пробуем все свойства
+                for (const key of Object.keys(sdk)) {
+                    const val = sdk[key];
+                    if (val && typeof val !== 'function') {
+                        debugLog(`    ${key}: ${JSON.stringify(val).slice(0,50)}`);
+                    }
                 }
             }
         }
