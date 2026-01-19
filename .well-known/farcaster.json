@@ -11,7 +11,6 @@
     "iconUrl": "https://base-match-3.vercel.app/app-icon-2026.png",
     "splashImageUrl": "https://base-match-3.vercel.app/splash.png",
     "splashBackgroundColor": "#000000",
-    "webhookUrl": "https://base-match-3.vercel.app/api/webhook",
     "subtitle": "Fast, fun, crypto match-3",
     "description": "Match crypto tokens in this fast-paced puzzle game. Create combos, unlock special tokens, and climb the leaderboard!",
     "screenshotUrls": [
