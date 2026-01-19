@@ -1371,7 +1371,7 @@ class MatchThreePro {
         this.board = [];
         this.selectedCell = null;
         this.score = 0;
-        this.moves = 30;
+        this.moves = 15;
         this.combo = 1;
         this.maxCombo = 1;
         this.isProcessing = false;
@@ -3264,7 +3264,7 @@ class MatchThreePro {
 
     async newGame() {
         this.score = 0;
-        this.moves = 30;
+        this.moves = 15;
         this.combo = 1;
         this.maxCombo = 1;
         this.selectedCell = null;
