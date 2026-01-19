@@ -815,37 +815,39 @@ class LeaderboardManager {
             return null;
         }
         
-        // Согласно Product Guidelines Base: используем displayName/username вместо адресов
-        // Получаем username из Base app SDK через sdk.context
+        // Получаем имя игрока из разных источников (приоритет)
         let playerName = null;
-        if (this.walletManager) {
-            // Пытаемся получить username из SDK (приоритет displayName > username)
-            playerName = await this.walletManager.getUsernameFromSDK();
-            // Если username не получен, используем метод getUsername
-            if (!playerName) {
-                playerName = this.walletManager.getUsername();
-            }
-            // Если всё ещё нет, пытаемся получить из контекста пользователя
-            if (!playerName && this.walletManager.getUserContext) {
-                try {
-                    const context = await this.walletManager.getUserContext();
-                    if (context && context.user) {
-                        playerName = context.user.displayName || context.user.username || null;
-                    }
-                } catch (e) {
-                    console.log('Could not get user context for leaderboard:', e.message);
-                }
+        
+        // 1. Сначала проверяем localStorage (сохранённое имя)
+        try {
+            playerName = localStorage.getItem('playerDisplayName');
+        } catch (e) {}
+        
+        // 2. Проверяем window.__userName (установлен из API)
+        if (!playerName && window.__userName) {
+            playerName = this.formatBasename(window.__userName);
+        }
+        
+        // 3. Пытаемся получить из WalletManager
+        if (!playerName && this.walletManager) {
+            playerName = this.walletManager.getUsername();
+            if (playerName) {
+                playerName = this.formatBasename(playerName);
             }
         }
         
-        // Согласно Product Guidelines: избегаем отправки адресов в лидерборд
-        // Используем displayName/username, если доступен
-        // Если username не доступен, используем форматированный адрес как fallback только для внешних кошельков
-        const isBaseApp = window.farcaster && window.farcaster.miniapp || 
-                         window.miniappSdk || 
-                         (window.parent && window.parent !== window);
+        // 4. Пытаемся получить из SDK
+        if (!playerName && this.walletManager && this.walletManager.getUsernameFromSDK) {
+            try {
+                const sdkName = await this.walletManager.getUsernameFromSDK();
+                if (sdkName) {
+                    playerName = this.formatBasename(sdkName);
+                }
+            } catch (e) {}
+        }
         
-        const displayName = playerName || (isBaseApp ? 'Player' : this.formatAddress(walletAddress));
+        // Никогда не отправляем адрес - только имя или "Player"
+        const displayName = playerName || 'Player';
         
         console.log('Sending result to leaderboard:', { walletAddress, playerName: displayName, score, maxCombo, won });
 
@@ -3024,16 +3026,20 @@ class MatchThreePro {
                 ? this.walletManager.getAccount().toLowerCase()
                 : null;
 
-            // Получаем имя текущего игрока из SDK для отображения в лидерборде
+            // Получаем имя текущего игрока из разных источников
             let currentPlayerName = null;
-            if (currentAddress && this.walletManager) {
-                try {
-                    currentPlayerName = await this.walletManager.getUsernameFromSDK();
-                    if (!currentPlayerName) {
-                        currentPlayerName = this.walletManager.getUsername();
-                    }
-                } catch (e) {
-                    console.log('Could not get current player name for leaderboard:', e.message);
+            try {
+                currentPlayerName = localStorage.getItem('playerDisplayName');
+            } catch (e) {}
+            
+            if (!currentPlayerName && window.__userName) {
+                currentPlayerName = this.formatBasename(window.__userName);
+            }
+            
+            if (!currentPlayerName && this.walletManager) {
+                currentPlayerName = this.walletManager.getUsername();
+                if (currentPlayerName) {
+                    currentPlayerName = this.formatBasename(currentPlayerName);
                 }
             }
 
@@ -3050,23 +3056,23 @@ class MatchThreePro {
 
                 const resultAddress = (result.walletAddress || '').toLowerCase();
                 
-                // Согласно Product Guidelines Base: используем displayName/username вместо адресов
-                // Если это текущий игрок и у нас есть имя из SDK, используем его
+                // Получаем имя для отображения
                 let displayName = result.playerName;
-                if (!displayName && currentAddress && resultAddress === currentAddress && currentPlayerName) {
-                    displayName = currentPlayerName;
-                }
-                // Если playerName не доступен, используем форматированный адрес только как fallback
-                if (!displayName && result.walletAddress) {
-                    displayName = this.leaderboard.formatAddress(result.walletAddress);
-                }
-                if (!displayName) {
-                    displayName = 'Unknown';
+                
+                // Форматируем имя в .base.eth формат
+                if (displayName && !displayName.includes('.base.eth') && displayName !== 'Player') {
+                    displayName = this.formatBasename(displayName);
                 }
                 
-                // Проверяем, является ли displayName адресом кошелька (содержит ...)
-                // Если это username, то не применяем класс wallet-address
-                const isWalletAddress = displayName.includes('...') || displayName.match(/^0x[a-fA-F0-9]{4}\.\.\.[a-fA-F0-9]{4}$/);
+                // Если это текущий игрок и у нас есть имя, используем его
+                if (currentAddress && resultAddress === currentAddress && currentPlayerName) {
+                    displayName = currentPlayerName;
+                }
+                
+                // Никогда не показываем адреса - только имя или "Player"
+                if (!displayName || displayName.startsWith('0x') || displayName.includes('...')) {
+                    displayName = 'Player';
+                }
                 
                 // Проверяем, является ли это текущий игрок по адресу кошелька
                 const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
@@ -3078,7 +3084,7 @@ class MatchThreePro {
                         </div>
                         <div class="leaderboard-player">
                             <div class="player-name-row">
-                                <span class="player-name ${isWalletAddress ? 'wallet-address' : ''}">${this.escapeHtml(displayName)}</span>
+                                <span class="player-name">${this.escapeHtml(displayName)}</span>
                                 ${isCurrentPlayer ? '<span class="you-badge">You</span>' : ''}
                                 ${result.won ? '<span class="win-badge">✓</span>' : ''}
                             </div>
