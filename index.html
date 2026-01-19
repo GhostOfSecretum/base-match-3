@@ -262,44 +262,105 @@
             }
         }
 
-        // Функция для получения имени через Neynar API
+        // Функция для получения имени - пробуем несколько источников
         async function fetchUsernameFromNeynar(address) {
             try {
-                debugLog(`🌐 Fetching name from Neynar for ${address.slice(0,10)}...`);
+                debugLog(`🌐 Fetching name for ${address.slice(0,10)}...`);
                 
-                const response = await fetch(`https://api.neynar.com/v2/farcaster/user/by_verification?address=${address}`, {
-                    headers: {
-                        'accept': 'application/json',
-                        'api_key': 'NEYNAR_API_DOCS'
+                // 1. Пробуем Basenames (ENS на Base) через публичный API
+                try {
+                    debugLog(`  Trying Basenames...`);
+                    const basenameResponse = await fetch(`https://resolver-api.basename.app/v1/addresses/${address}`);
+                    if (basenameResponse.ok) {
+                        const basenameData = await basenameResponse.json();
+                        debugLog(`  Basename data: ${JSON.stringify(basenameData).slice(0,100)}`);
+                        if (basenameData.name || basenameData.basename) {
+                            const name = basenameData.name || basenameData.basename;
+                            window.__userName = name;
+                            debugLog(`  ✅ Got Basename: ${name}`);
+                            updatePlayerDisplay(name, basenameData.avatar);
+                            return;
+                        }
                     }
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    debugLog(`  Neynar data: ${JSON.stringify(data).slice(0,150)}`);
+                } catch (e) {
+                    debugLog(`  Basename error: ${e.message}`);
+                }
+
+                // 2. Пробуем Base identity API
+                try {
+                    debugLog(`  Trying Base identity...`);
+                    const baseResponse = await fetch(`https://api.base.org/identity/${address}`);
+                    if (baseResponse.ok) {
+                        const baseData = await baseResponse.json();
+                        debugLog(`  Base identity: ${JSON.stringify(baseData).slice(0,100)}`);
+                        if (baseData.name || baseData.displayName) {
+                            const name = baseData.displayName || baseData.name;
+                            window.__userName = name;
+                            window.__userAvatar = baseData.avatar || baseData.pfp;
+                            debugLog(`  ✅ Got Base identity: ${name}`);
+                            updatePlayerDisplay(name, baseData.avatar);
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    debugLog(`  Base identity error: ${e.message}`);
+                }
+
+                // 3. Пробуем ENS через публичный resolver
+                try {
+                    debugLog(`  Trying ENS...`);
+                    const ensResponse = await fetch(`https://api.ensideas.com/ens/resolve/${address}`);
+                    if (ensResponse.ok) {
+                        const ensData = await ensResponse.json();
+                        debugLog(`  ENS data: ${JSON.stringify(ensData).slice(0,100)}`);
+                        if (ensData.name || ensData.displayName) {
+                            const name = ensData.displayName || ensData.name;
+                            window.__userName = name;
+                            window.__userAvatar = ensData.avatar;
+                            debugLog(`  ✅ Got ENS: ${name}`);
+                            updatePlayerDisplay(name, ensData.avatar);
+                            return;
+                        }
+                    }
+                } catch (e) {
+                    debugLog(`  ENS error: ${e.message}`);
+                }
+
+                // 4. Пробуем Neynar (Farcaster)
+                try {
+                    debugLog(`  Trying Neynar...`);
+                    const response = await fetch(`https://api.neynar.com/v2/farcaster/user/by_verification?address=${address}`, {
+                        headers: {
+                            'accept': 'application/json',
+                            'api_key': 'NEYNAR_API_DOCS'
+                        }
+                    });
                     
-                    if (data.user) {
-                        const user = data.user;
-                        const displayName = user.display_name || user.username;
-                        const avatar = user.pfp_url || user.pfp?.url;
-                        
-                        if (displayName) {
-                            window.__userName = displayName;
-                            window.__userAvatar = avatar;
-                            debugLog(`  ✅ Got name: ${displayName}`);
-                            debugLog(`  ✅ Got avatar: ${avatar ? 'YES' : 'NO'}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (data.user) {
+                            const user = data.user;
+                            const displayName = user.display_name || user.username;
+                            const avatar = user.pfp_url || user.pfp?.url;
                             
-                            // Обновляем UI если игра уже загружена
-                            updatePlayerDisplay(displayName, avatar);
+                            if (displayName) {
+                                window.__userName = displayName;
+                                window.__userAvatar = avatar;
+                                debugLog(`  ✅ Got Neynar: ${displayName}`);
+                                updatePlayerDisplay(displayName, avatar);
+                                return;
+                            }
                         }
                     } else {
-                        debugLog(`  No user found for this address`);
+                        debugLog(`  Neynar: ${response.status}`);
                     }
-                } else {
-                    debugLog(`  Neynar API error: ${response.status}`);
+                } catch (e) {
+                    debugLog(`  Neynar error: ${e.message}`);
                 }
+
+                debugLog(`  ❌ Could not find name for this address`);
             } catch (e) {
-                debugLog(`  Neynar fetch error: ${e.message}`);
+                debugLog(`  Fetch error: ${e.message}`);
             }
         }
 
