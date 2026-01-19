@@ -287,24 +287,38 @@
                     debugLog(`  ENS error: ${e.message}`);
                 }
 
-                // 2. Если есть ENS имя, пробуем получить аватар через ENS metadata
-                if (foundName && !foundAvatar) {
+                // 2. Пробуем Stamp.fyi - универсальный резолвер аватаров (поддерживает ENS, Farcaster, Lens)
+                if (!foundAvatar) {
                     try {
-                        debugLog(`  Trying ENS avatar for ${foundName}...`);
-                        // ENS metadata service для аватаров
-                        const avatarUrl = `https://metadata.ens.domains/mainnet/avatar/${foundName}`;
-                        // Проверяем существует ли аватар
-                        const avatarCheck = await fetch(avatarUrl, { method: 'HEAD' });
-                        if (avatarCheck.ok) {
-                            foundAvatar = avatarUrl;
-                            debugLog(`  ✅ Got ENS avatar`);
+                        debugLog(`  Trying Stamp.fyi...`);
+                        // Stamp.fyi автоматически резолвит аватар из разных источников
+                        const stampUrl = `https://stamp.fyi/avatar/${address}?s=128`;
+                        const stampCheck = await fetch(stampUrl, { method: 'HEAD' });
+                        if (stampCheck.ok && stampCheck.headers.get('content-type')?.includes('image')) {
+                            foundAvatar = stampUrl;
+                            debugLog(`  ✅ Got Stamp.fyi avatar`);
                         }
                     } catch (e) {
-                        debugLog(`  ENS avatar error: ${e.message}`);
+                        debugLog(`  Stamp.fyi error: ${e.message}`);
                     }
                 }
 
-                // 3. Пробуем Basenames resolver
+                // 3. Пробуем EUC.li - ENS avatar service
+                if (foundName && !foundAvatar) {
+                    try {
+                        debugLog(`  Trying euc.li for ${foundName}...`);
+                        const eucUrl = `https://euc.li/${foundName}`;
+                        const eucCheck = await fetch(eucUrl, { method: 'HEAD' });
+                        if (eucCheck.ok) {
+                            foundAvatar = eucUrl;
+                            debugLog(`  ✅ Got euc.li avatar`);
+                        }
+                    } catch (e) {
+                        debugLog(`  euc.li error: ${e.message}`);
+                    }
+                }
+
+                // 4. Пробуем Basenames resolver
                 try {
                     debugLog(`  Trying Basenames...`);
                     const basenameResponse = await fetch(`https://resolver-api.basename.app/v1/addresses/${address}`);
@@ -315,44 +329,32 @@
                             if (!foundName) foundName = basenameData.name || basenameData.basename;
                             if (basenameData.avatar) foundAvatar = basenameData.avatar;
                             if (basenameData.avatar_url) foundAvatar = basenameData.avatar_url;
+                            if (basenameData.image) foundAvatar = basenameData.image;
                         }
                     }
                 } catch (e) {
                     debugLog(`  Basename error: ${e.message}`);
                 }
 
-                // 4. Пробуем получить Basename аватар напрямую
-                if (foundName && !foundAvatar) {
-                    try {
-                        // Формат Basename: name.base.eth
-                        let baseName = foundName;
-                        if (baseName.endsWith('.eth') && !baseName.includes('.base.eth')) {
-                            baseName = baseName.replace('.eth', '.base.eth');
-                        }
-                        debugLog(`  Trying Basename avatar for ${baseName}...`);
-                        const avatarUrl = `https://basescan.org/token/images/basename_32.png`; // placeholder
-                        // TODO: найти правильный API для Basename аватаров
-                    } catch (e) {}
-                }
-
-                // 5. Пробуем Rainbow.me API (часто имеет кэшированные аватары)
+                // 5. Пробуем Warpcast API (Farcaster) напрямую
                 if (!foundAvatar) {
                     try {
-                        debugLog(`  Trying Rainbow.me...`);
-                        const rainbowResponse = await fetch(`https://api.rainbow.me/api/v1/resolve/${address}`);
-                        if (rainbowResponse.ok) {
-                            const rainbowData = await rainbowResponse.json();
-                            debugLog(`  Rainbow data: ${JSON.stringify(rainbowData).slice(0,150)}`);
-                            if (rainbowData.data?.avatar) {
-                                foundAvatar = rainbowData.data.avatar;
-                                debugLog(`  ✅ Got Rainbow avatar`);
-                            }
-                            if (!foundName && rainbowData.data?.ens) {
-                                foundName = rainbowData.data.ens;
+                        debugLog(`  Trying Warpcast...`);
+                        const warpcastResponse = await fetch(`https://api.warpcast.com/v2/user-by-verification?address=${address}`);
+                        if (warpcastResponse.ok) {
+                            const warpcastData = await warpcastResponse.json();
+                            debugLog(`  Warpcast data: ${JSON.stringify(warpcastData).slice(0,150)}`);
+                            if (warpcastData.result?.user) {
+                                const user = warpcastData.result.user;
+                                if (!foundName) foundName = user.displayName || user.username;
+                                if (user.pfp?.url) {
+                                    foundAvatar = user.pfp.url;
+                                    debugLog(`  ✅ Got Warpcast/Farcaster avatar`);
+                                }
                             }
                         }
                     } catch (e) {
-                        debugLog(`  Rainbow error: ${e.message}`);
+                        debugLog(`  Warpcast error: ${e.message}`);
                     }
                 }
 
