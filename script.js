@@ -116,91 +116,142 @@ class WalletManager {
     }
 
     async initializeBaseAccount() {
-        // Пытаемся получить данные пользователя из Base Account SDK
-        // Используем sdk.context из @farcaster/miniapp-sdk согласно документации Base
+        // Пытаемся получить данные пользователя из Base/Farcaster Mini App SDK
+        // Согласно документации: https://docs.base.org/mini-apps/features/context
         try {
-            let sdkInstance = null;
+            // Сначала проверяем, есть ли ранний контекст (из index.html)
+            if (window.__farcasterContext && window.__farcasterContext.user) {
+                console.log('Using early context from index.html');
+                await this.processUserContext(window.__farcasterContext);
+                return;
+            }
 
-            // Ищем SDK в различных местах согласно документации
-            try {
-                if (window.farcaster && window.farcaster.miniapp) {
-                    sdkInstance = window.farcaster.miniapp;
-                }
-            } catch (e) {
-                console.log('Cannot access window.farcaster:', e.message);
+            // Ждем немного для загрузки SDK
+            await new Promise(resolve => setTimeout(resolve, 500));
+
+            // Проверяем еще раз ранний контекст
+            if (window.__farcasterContext && window.__farcasterContext.user) {
+                console.log('Using early context from index.html (after delay)');
+                await this.processUserContext(window.__farcasterContext);
+                return;
+            }
+
+            let sdkInstance = null;
+            let isInMiniApp = false;
+
+            // Способ 1: frame.sdk (CDN версия @farcaster/frame-sdk)
+            if (typeof frame !== 'undefined' && frame.sdk) {
+                sdkInstance = frame.sdk;
+                console.log('Found frame.sdk');
+            }
+
+            // Способ 2: window.__farcasterSDK (сохраненный при инициализации)
+            if (!sdkInstance && window.__farcasterSDK) {
+                sdkInstance = window.__farcasterSDK;
+                console.log('Found window.__farcasterSDK');
+            }
+
+            // Способ 3: window.farcaster.miniapp
+            if (!sdkInstance && window.farcaster && window.farcaster.miniapp) {
+                sdkInstance = window.farcaster.miniapp;
+                console.log('Found window.farcaster.miniapp');
+            }
+
+            // Способ 4: window.miniappSdk
+            if (!sdkInstance && window.miniappSdk) {
+                sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
+                console.log('Found window.miniappSdk');
             }
 
             if (!sdkInstance) {
-                try {
-                    if (window.miniappSdk) {
-                        sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
-                    }
-                } catch (e) {
-                    console.log('Cannot access window.miniappSdk:', e.message);
-                }
+                console.log('No Mini App SDK found');
+                return;
             }
 
-            if (!sdkInstance && window.parent && window.parent !== window) {
-                try {
-                    if (window.parent.farcaster && window.parent.farcaster.miniapp) {
-                        sdkInstance = window.parent.farcaster.miniapp;
-                    }
-                } catch (e) {
-                    // Cross-origin
+            // Проверяем, находимся ли мы в Mini App
+            try {
+                if (typeof sdkInstance.isInMiniApp === 'function') {
+                    isInMiniApp = await sdkInstance.isInMiniApp();
+                } else {
+                    // Если метода нет, проверяем по наличию context
+                    isInMiniApp = !!(sdkInstance.context);
                 }
+                console.log('isInMiniApp:', isInMiniApp);
+            } catch (e) {
+                console.log('Could not check isInMiniApp:', e.message);
+                isInMiniApp = true; // Предполагаем, что да
             }
 
-            if (sdkInstance && sdkInstance.context) {
-                // Ждем немного для загрузки контекста
-                await new Promise(resolve => setTimeout(resolve, 500));
+            if (!isInMiniApp) {
+                console.log('Not running in Mini App');
+                return;
+            }
 
-                try {
-                    // Используем sdk.context.get() согласно документации Base
-                    const context = await sdkInstance.context.get();
-                    this.userContext = context;
+            // Получаем контекст пользователя
+            try {
+                let context = null;
 
-                    // Получаем данные пользователя из контекста
-                    // Согласно Product Guidelines: используем displayName, username, и pfpUrl
-                    if (context.user) {
-                        // Приоритет: displayName > username (согласно документации Base)
-                        this.username = context.user.displayName || context.user.username || null;
-                        // Получаем аватар из pfpUrl
-                        this.avatar = context.user.pfpUrl || context.user.avatarUrl || null;
-                        
-                        console.log('Base Account context received:', {
-                            displayName: context.user.displayName,
-                            username: context.user.username,
-                            finalUsername: this.username,
-                            hasAvatar: !!this.avatar,
-                            pfpUrl: context.user.pfpUrl,
-                            address: context.user.custodyAddress || context.user.account
-                        });
-
-                        // Если есть account в контексте, используем его для автоматического подключения
-                        if (context.user.custodyAddress || context.user.account) {
-                            const address = context.user.custodyAddress || context.user.account;
-                            if (address && !this.account) {
-                                // Автоматически подключаемся через Base Account
-                                await this.connectViaBaseAccount(address);
-                            }
-                        }
-
-                        // Обновляем UI с username и avatar после небольшой задержки
-                        if (window.game) {
-                            // Небольшая задержка, чтобы убедиться, что все данные загружены
-                            setTimeout(async () => {
-                                if (window.game && typeof window.game.updateWalletDisplay === 'function') {
-                                    await window.game.updateWalletDisplay();
-                                }
-                            }, 100);
-                        }
-                    }
-                } catch (e) {
-                    console.log('Could not get context from SDK:', e.message);
+                // Пробуем разные способы получения контекста
+                if (typeof sdkInstance.context === 'function') {
+                    context = await sdkInstance.context();
+                } else if (sdkInstance.context && typeof sdkInstance.context.get === 'function') {
+                    context = await sdkInstance.context.get();
+                } else if (sdkInstance.context && typeof sdkInstance.context.then === 'function') {
+                    context = await sdkInstance.context;
+                } else if (sdkInstance.context) {
+                    context = sdkInstance.context;
                 }
+
+                if (context) {
+                    await this.processUserContext(context);
+                } else {
+                    console.log('Could not get context from SDK');
+                }
+            } catch (e) {
+                console.log('Could not get context from SDK:', e.message, e);
             }
         } catch (error) {
-            console.log('Base Account initialization failed (non-critical):', error.message);
+            console.log('Base Account initialization failed (non-critical):', error.message, error);
+        }
+    }
+
+    async processUserContext(context) {
+        // Обрабатываем контекст пользователя
+        this.userContext = context;
+        console.log('Full SDK context:', JSON.stringify(context, null, 2));
+
+        // Получаем данные пользователя из контекста
+        // Согласно Product Guidelines: используем displayName, username, и pfpUrl
+        if (context.user) {
+            // Приоритет: displayName > username
+            this.username = context.user.displayName || context.user.username || null;
+            // Получаем аватар из pfpUrl
+            this.avatar = context.user.pfpUrl || context.user.avatarUrl || null;
+
+            console.log('User data from SDK:', {
+                displayName: context.user.displayName,
+                username: context.user.username,
+                finalUsername: this.username,
+                hasAvatar: !!this.avatar,
+                pfpUrl: context.user.pfpUrl,
+                fid: context.user.fid
+            });
+
+            // Если есть адрес в контексте, используем его
+            const address = context.user.custodyAddress || 
+                           context.user.verifiedAddresses?.ethAddresses?.[0] ||
+                           context.user.account ||
+                           context.connectedAddress;
+            
+            if (address && !this.account) {
+                console.log('Auto-connecting with address:', address);
+                await this.connectViaBaseAccount(address);
+            }
+
+            // Обновляем UI
+            if (window.game && typeof window.game.updateWalletDisplay === 'function') {
+                setTimeout(() => window.game.updateWalletDisplay(), 100);
+            }
         }
     }
 
@@ -237,49 +288,72 @@ class WalletManager {
     }
 
     async getUsernameFromSDK() {
-        // Пытаемся получить username напрямую из SDK, если он еще не был загружен
-        // Используем sdk.context из @farcaster/miniapp-sdk согласно документации Base
+        // Возвращаем уже загруженный username, если есть
         if (this.username) {
             return this.username;
+        }
+
+        // Проверяем ранний контекст из index.html
+        if (window.__farcasterContext && window.__farcasterContext.user) {
+            const user = window.__farcasterContext.user;
+            const displayName = user.displayName || user.username || null;
+            if (displayName) {
+                this.username = displayName;
+                this.userContext = window.__farcasterContext;
+                if (user.pfpUrl || user.avatarUrl) {
+                    this.avatar = user.pfpUrl || user.avatarUrl;
+                }
+                console.log('Got username from early context:', displayName);
+                return displayName;
+            }
         }
         
         try {
             let sdkInstance = null;
 
-            // Ищем SDK в различных местах согласно документации
-            if (window.farcaster && window.farcaster.miniapp) {
+            // Ищем SDK в различных местах
+            if (typeof frame !== 'undefined' && frame.sdk) {
+                sdkInstance = frame.sdk;
+            } else if (window.__farcasterSDK) {
+                sdkInstance = window.__farcasterSDK;
+            } else if (window.farcaster && window.farcaster.miniapp) {
                 sdkInstance = window.farcaster.miniapp;
             } else if (window.miniappSdk) {
                 sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
-            } else if (window.parent && window.parent !== window) {
-                try {
-                    if (window.parent.farcaster && window.parent.farcaster.miniapp) {
-                        sdkInstance = window.parent.farcaster.miniapp;
-                    }
-                } catch (e) {
-                    // Cross-origin
-                }
             }
 
-            if (sdkInstance && sdkInstance.context) {
-                try {
-                    // Используем sdk.context.get() согласно документации Base
-                    const context = await sdkInstance.context.get();
-                    if (context.user) {
-                        // Согласно Product Guidelines: приоритет displayName > username
-                        const displayName = context.user.displayName || context.user.username || null;
-                        if (displayName) {
-                            this.username = displayName;
-                            this.userContext = context;
-                            // Также обновляем avatar если доступен
-                            if (context.user.pfpUrl || context.user.avatarUrl) {
-                                this.avatar = context.user.pfpUrl || context.user.avatarUrl;
-                            }
-                            return displayName;
-                        }
+            if (!sdkInstance) {
+                return this.username;
+            }
+
+            // Получаем контекст (разные способы в зависимости от версии SDK)
+            let context = null;
+            try {
+                if (typeof sdkInstance.context === 'function') {
+                    context = await sdkInstance.context();
+                } else if (sdkInstance.context && typeof sdkInstance.context.get === 'function') {
+                    context = await sdkInstance.context.get();
+                } else if (sdkInstance.context && typeof sdkInstance.context.then === 'function') {
+                    context = await sdkInstance.context;
+                } else if (sdkInstance.context) {
+                    context = sdkInstance.context;
+                }
+            } catch (e) {
+                console.log('Error getting context:', e.message);
+            }
+
+            if (context && context.user) {
+                // Приоритет: displayName > username
+                const displayName = context.user.displayName || context.user.username || null;
+                if (displayName) {
+                    this.username = displayName;
+                    this.userContext = context;
+                    // Также обновляем avatar если доступен
+                    if (context.user.pfpUrl || context.user.avatarUrl) {
+                        this.avatar = context.user.pfpUrl || context.user.avatarUrl;
                     }
-                } catch (e) {
-                    console.log('Could not get username from SDK:', e.message);
+                    console.log('Got username from SDK:', displayName);
+                    return displayName;
                 }
             }
         } catch (error) {
@@ -312,14 +386,33 @@ class WalletManager {
         try {
             let sdkInstance = null;
 
-            if (window.farcaster && window.farcaster.miniapp) {
+            if (typeof frame !== 'undefined' && frame.sdk) {
+                sdkInstance = frame.sdk;
+            } else if (window.__farcasterSDK) {
+                sdkInstance = window.__farcasterSDK;
+            } else if (window.farcaster && window.farcaster.miniapp) {
                 sdkInstance = window.farcaster.miniapp;
             } else if (window.miniappSdk) {
                 sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
             }
 
-            if (sdkInstance && sdkInstance.context) {
-                const context = await sdkInstance.context.get();
+            if (!sdkInstance) {
+                return this.userContext;
+            }
+
+            // Получаем контекст (разные способы)
+            let context = null;
+            if (typeof sdkInstance.context === 'function') {
+                context = await sdkInstance.context();
+            } else if (sdkInstance.context && typeof sdkInstance.context.get === 'function') {
+                context = await sdkInstance.context.get();
+            } else if (sdkInstance.context && typeof sdkInstance.context.then === 'function') {
+                context = await sdkInstance.context;
+            } else if (sdkInstance.context) {
+                context = sdkInstance.context;
+            }
+
+            if (context) {
                 this.userContext = context;
                 // Обновляем username и avatar из контекста
                 if (context.user) {

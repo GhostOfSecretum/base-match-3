@@ -167,30 +167,63 @@
     <!-- Farcaster Frame SDK - загружаем первым для немедленного вызова ready() -->
     <script src="https://cdn.jsdelivr.net/npm/@farcaster/frame-sdk/dist/index.min.js"></script>
 
-    <!-- КРИТИЧНО: Немедленно вызываем ready() для Farcaster -->
+    <!-- КРИТИЧНО: Немедленно вызываем ready() и получаем контекст пользователя -->
     <script>
-        // Согласно официальной документации: frame.sdk.actions.ready()
+        // Согласно официальной документации Base Mini Apps
         (async function initFarcasterSDKEarly() {
             try {
-                // Способ 1: Официальный CDN path - frame.sdk (документация Farcaster)
-                if (typeof frame !== 'undefined' && frame.sdk && frame.sdk.actions) {
-                    await frame.sdk.actions.ready();
-                    window.__farcasterSDKReady = true;
-                    window.__farcasterSDK = frame.sdk;
-                    console.log('Farcaster SDK ready() called via frame.sdk');
-                    return;
+                let sdkInstance = null;
+
+                // Способ 1: frame.sdk (CDN версия)
+                if (typeof frame !== 'undefined' && frame.sdk) {
+                    sdkInstance = frame.sdk;
+                    console.log('Found frame.sdk');
                 }
 
-                // Способ 2: window.farcaster.miniapp (Farcaster native в приложении)
-                if (window.farcaster && window.farcaster.miniapp && window.farcaster.miniapp.actions) {
-                    await window.farcaster.miniapp.actions.ready();
-                    window.__farcasterSDKReady = true;
-                    window.__farcasterSDK = window.farcaster.miniapp;
-                    console.log('Farcaster SDK ready() called via window.farcaster.miniapp');
-                    return;
+                // Способ 2: window.farcaster.miniapp (native)
+                if (!sdkInstance && window.farcaster && window.farcaster.miniapp) {
+                    sdkInstance = window.farcaster.miniapp;
+                    console.log('Found window.farcaster.miniapp');
                 }
 
-                console.log('Farcaster SDK not found on initial check');
+                if (sdkInstance) {
+                    // Вызываем ready()
+                    if (sdkInstance.actions && sdkInstance.actions.ready) {
+                        await sdkInstance.actions.ready();
+                        console.log('SDK ready() called');
+                    }
+
+                    window.__farcasterSDKReady = true;
+                    window.__farcasterSDK = sdkInstance;
+
+                    // Сразу пытаемся получить контекст пользователя
+                    try {
+                        let context = null;
+                        if (typeof sdkInstance.context === 'function') {
+                            context = await sdkInstance.context();
+                        } else if (sdkInstance.context && typeof sdkInstance.context.get === 'function') {
+                            context = await sdkInstance.context.get();
+                        } else if (sdkInstance.context && sdkInstance.context.then) {
+                            context = await sdkInstance.context;
+                        } else if (sdkInstance.context) {
+                            context = sdkInstance.context;
+                        }
+
+                        if (context) {
+                            window.__farcasterContext = context;
+                            console.log('Got context early:', {
+                                hasUser: !!context.user,
+                                displayName: context.user?.displayName,
+                                username: context.user?.username,
+                                pfpUrl: context.user?.pfpUrl
+                            });
+                        }
+                    } catch (e) {
+                        console.log('Could not get early context:', e.message);
+                    }
+                } else {
+                    console.log('Farcaster SDK not found on initial check');
+                }
             } catch (e) {
                 console.log('Early Farcaster SDK init:', e.message);
             }
