@@ -1621,10 +1621,42 @@ class MatchThreePro {
                     }
                 }
             } else {
-                playerNameDisplay.textContent = 'Player';
+                // Даже если кошелек не подключен, проверяем сохраненное имя
+                let displayName = 'Player';
+                
+                try {
+                    const savedName = localStorage.getItem('playerDisplayName');
+                    if (savedName) {
+                        displayName = savedName;
+                    }
+                } catch (e) {}
+                
+                if (!displayName || displayName === 'Player') {
+                    if (window.__userName) {
+                        displayName = this.formatBasename(window.__userName);
+                    }
+                }
+                
+                playerNameDisplay.textContent = displayName;
                 playerNameDisplay.classList.remove('wallet-address');
+                
+                // Показываем аватар если есть сохраненный
                 if (playerAvatarDisplay) {
-                    playerAvatarDisplay.style.display = 'none';
+                    let avatarUrl = window.__userAvatar;
+                    try {
+                        const savedAvatar = localStorage.getItem('playerAvatar');
+                        if (savedAvatar) avatarUrl = savedAvatar;
+                    } catch (e) {}
+                    
+                    if (avatarUrl) {
+                        playerAvatarDisplay.src = avatarUrl;
+                        playerAvatarDisplay.style.display = 'block';
+                        playerAvatarDisplay.onerror = function() {
+                            this.style.display = 'none';
+                        };
+                    } else {
+                        playerAvatarDisplay.style.display = 'none';
+                    }
                 }
             }
         }
