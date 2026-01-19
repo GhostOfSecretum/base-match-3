@@ -784,6 +784,9 @@
                     <button id="menuRulesBtn" class="btn btn-menu btn-primary">
                         <span>How to Play</span>
                     </button>
+                    <button id="menuProfileBtn" class="btn btn-menu btn-primary">
+                        <span>Profile</span>
+                    </button>
                     <button id="menuSettingsBtn" class="btn btn-menu btn-primary">
                         <span>Settings</span>
                     </button>
@@ -796,10 +799,6 @@
                     <button id="menuDeployBtn" class="btn btn-menu btn-primary">
                         <span>Deploy one click on Base</span>
                     </button>
-                </div>
-                <div class="day-streak-display" id="dayStreakDisplay" style="display: none;">
-                    <div class="day-streak-value" id="dayStreakValue">0</div>
-                    <div class="day-streak-label">GM Streak</div>
                 </div>
             </div>
         </div>
@@ -1123,6 +1122,54 @@ contract SimpleStorage {
                 </div>
                 <div class="modal-footer">
                     <button id="closeDeployBtn" class="btn btn-primary">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="profileModal" class="modal">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content profile-modal">
+                <div class="modal-header">
+                    <h2>Player Profile</h2>
+                </div>
+                <div class="modal-body">
+                    <div class="profile-content">
+                        <div class="profile-avatar-section">
+                            <img id="profileAvatar" class="profile-avatar" src="" alt="Avatar" style="display: none;" />
+                            <div id="profileAvatarPlaceholder" class="profile-avatar-placeholder">
+                                <span>👤</span>
+                            </div>
+                        </div>
+                        <div class="profile-info-section">
+                            <div class="profile-info-item">
+                                <span class="profile-info-label">Name</span>
+                                <span id="profileName" class="profile-info-value">Player</span>
+                            </div>
+                            <div class="profile-info-item">
+                                <span class="profile-info-label">Wallet Address</span>
+                                <span id="profileAddress" class="profile-info-value wallet-address-display">Not connected</span>
+                            </div>
+                            <div class="profile-info-item">
+                                <span class="profile-info-label">High Score</span>
+                                <span id="profileHighScore" class="profile-info-value highlight">0</span>
+                            </div>
+                            <div class="profile-info-item">
+                                <span class="profile-info-label">Games Played</span>
+                                <span id="profileGamesPlayed" class="profile-info-value">0</span>
+                            </div>
+                            <div class="profile-info-item">
+                                <span class="profile-info-label">Best Combo</span>
+                                <span id="profileBestCombo" class="profile-info-value">0x</span>
+                            </div>
+                            <div class="profile-info-item">
+                                <span class="profile-info-label">GM Streak</span>
+                                <span id="profileGMStreak" class="profile-info-value">0 days</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button id="closeProfileBtn" class="btn btn-primary">Close</button>
                 </div>
             </div>
         </div>

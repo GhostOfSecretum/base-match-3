@@ -3027,6 +3027,21 @@ class MatchThreePro {
             updateDayStreakAfterGame();
         }
 
+        // Сохраняем статистику игр для профиля
+        try {
+            // Увеличиваем счетчик игр
+            const gamesPlayed = parseInt(localStorage.getItem('gamesPlayed') || '0') + 1;
+            localStorage.setItem('gamesPlayed', gamesPlayed.toString());
+
+            // Обновляем лучший комбо
+            const currentBestCombo = parseInt(localStorage.getItem('bestCombo') || '0');
+            if (this.maxCombo > currentBestCombo) {
+                localStorage.setItem('bestCombo', this.maxCombo.toString());
+            }
+        } catch (e) {
+            console.log('Error saving game stats:', e.message);
+        }
+
         // Проверяем, подключен ли кошелек перед сохранением
         if (!this.walletManager.isConnected()) {
             const modal = document.getElementById('gameOverModal');
@@ -3454,14 +3469,17 @@ function initStartMenu() {
     const menuLeaderboardBtn = document.getElementById('menuLeaderboardBtn');
     const menuDayStreakBtn = document.getElementById('menuDayStreakBtn');
     const menuDeployBtn = document.getElementById('menuDeployBtn');
+    const menuProfileBtn = document.getElementById('menuProfileBtn');
     const settingsModal = document.getElementById('settingsModal');
     const dayStreakModal = document.getElementById('dayStreakModal');
     const rulesModal = document.getElementById('rulesModal');
     const deployModal = document.getElementById('deployModal');
+    const profileModal = document.getElementById('profileModal');
     const closeSettingsBtn = document.getElementById('closeSettingsBtn');
     const closeDayStreakBtn = document.getElementById('closeDayStreakBtn');
     const closeRulesBtn = document.getElementById('closeRulesBtn');
     const closeDeployBtn = document.getElementById('closeDeployBtn');
+    const closeProfileBtn = document.getElementById('closeProfileBtn');
     
     // Проверяем наличие необходимых элементов
     if (!startMenu || !gameContainer) {
@@ -3642,6 +3660,134 @@ function initStartMenu() {
         console.log('Deploy Contract button handler attached');
     } else {
         console.warn('Deploy Contract button or modal not found', { menuDeployBtn, deployModal });
+    }
+
+    // Profile - открываем профиль игрока
+    if (menuProfileBtn && profileModal) {
+        menuProfileBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Profile button clicked');
+            updateProfileDisplay();
+            profileModal.classList.add('show');
+        });
+        console.log('Profile button handler attached');
+    } else {
+        console.warn('Profile button or modal not found', { menuProfileBtn, profileModal });
+    }
+
+    if (closeProfileBtn && profileModal) {
+        closeProfileBtn.addEventListener('click', () => {
+            profileModal.classList.remove('show');
+        });
+    }
+
+    // Функция обновления данных профиля
+    function updateProfileDisplay() {
+        const profileName = document.getElementById('profileName');
+        const profileAddress = document.getElementById('profileAddress');
+        const profileHighScore = document.getElementById('profileHighScore');
+        const profileGamesPlayed = document.getElementById('profileGamesPlayed');
+        const profileBestCombo = document.getElementById('profileBestCombo');
+        const profileGMStreak = document.getElementById('profileGMStreak');
+        const profileAvatar = document.getElementById('profileAvatar');
+        const profileAvatarPlaceholder = document.getElementById('profileAvatarPlaceholder');
+
+        // Имя игрока
+        if (profileName) {
+            const name = window.__userName || 
+                         localStorage.getItem('playerDisplayName') || 
+                         (window.walletManager && window.walletManager.username) ||
+                         'Player';
+            profileName.textContent = name;
+        }
+
+        // Адрес кошелька
+        if (profileAddress) {
+            const address = window.__userAddress || 
+                           (window.walletManager && window.walletManager.account) ||
+                           localStorage.getItem('walletAddress');
+            if (address) {
+                // Сокращаем адрес для отображения
+                const shortAddress = address.slice(0, 6) + '...' + address.slice(-4);
+                profileAddress.textContent = shortAddress;
+                profileAddress.title = address; // Полный адрес в tooltip
+            } else {
+                profileAddress.textContent = 'Not connected';
+            }
+        }
+
+        // High Score из localStorage
+        if (profileHighScore) {
+            try {
+                const scores = JSON.parse(localStorage.getItem('leaderboard') || '[]');
+                const playerName = window.__userName || localStorage.getItem('playerDisplayName') || 'Player';
+                const playerAddress = window.__userAddress || (window.walletManager && window.walletManager.account);
+                
+                let highScore = 0;
+                scores.forEach(entry => {
+                    if ((entry.name === playerName || entry.address === playerAddress) && entry.score > highScore) {
+                        highScore = entry.score;
+                    }
+                });
+                
+                // Также проверяем текущий рекорд из игры
+                if (window.game && window.game.highScore > highScore) {
+                    highScore = window.game.highScore;
+                }
+                
+                profileHighScore.textContent = highScore.toLocaleString();
+            } catch (e) {
+                profileHighScore.textContent = '0';
+            }
+        }
+
+        // Количество игр
+        if (profileGamesPlayed) {
+            try {
+                const gamesPlayed = parseInt(localStorage.getItem('gamesPlayed') || '0');
+                profileGamesPlayed.textContent = gamesPlayed.toString();
+            } catch (e) {
+                profileGamesPlayed.textContent = '0';
+            }
+        }
+
+        // Лучший комбо
+        if (profileBestCombo) {
+            try {
+                const bestCombo = parseInt(localStorage.getItem('bestCombo') || '0');
+                profileBestCombo.textContent = bestCombo + 'x';
+            } catch (e) {
+                profileBestCombo.textContent = '0x';
+            }
+        }
+
+        // GM Streak
+        if (profileGMStreak) {
+            try {
+                const gmStreak = parseInt(localStorage.getItem('gmStreak') || '0');
+                profileGMStreak.textContent = gmStreak + ' days';
+            } catch (e) {
+                profileGMStreak.textContent = '0 days';
+            }
+        }
+
+        // Аватар
+        if (profileAvatar && profileAvatarPlaceholder) {
+            const avatarUrl = window.__userAvatar || localStorage.getItem('playerAvatar');
+            if (avatarUrl) {
+                profileAvatar.src = avatarUrl;
+                profileAvatar.style.display = 'block';
+                profileAvatarPlaceholder.style.display = 'none';
+                profileAvatar.onerror = function() {
+                    profileAvatar.style.display = 'none';
+                    profileAvatarPlaceholder.style.display = 'flex';
+                };
+            } else {
+                profileAvatar.style.display = 'none';
+                profileAvatarPlaceholder.style.display = 'flex';
+            }
+        }
     }
 
     if (closeDeployBtn && deployModal) {
