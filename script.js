@@ -736,8 +736,34 @@ class LeaderboardManager {
     }
 
     formatAddress(address) {
-        if (!address) return 'Guest';
-        return `${address.slice(0, 6)}...${address.slice(-4)}`;
+        // Никогда не показываем адрес - только "Player"
+        return 'Player';
+    }
+
+    // Форматирование имени в формат .base.eth
+    formatBasename(name) {
+        if (!name) return 'Player';
+        
+        // Если уже содержит .base.eth - оставляем как есть
+        if (name.includes('.base.eth')) return name;
+        
+        // Если это .eth имя (ENS) - конвертируем в .base.eth формат
+        if (name.endsWith('.eth')) {
+            const baseName = name.replace('.eth', '');
+            return `${baseName}.base.eth`;
+        }
+        
+        // Если это просто имя без домена и не адрес - добавляем .base.eth
+        if (!name.includes('.') && !name.startsWith('0x')) {
+            return `${name}.base.eth`;
+        }
+        
+        // Если это адрес - возвращаем "Player"
+        if (name.startsWith('0x') || name.includes('...')) {
+            return 'Player';
+        }
+        
+        return name;
     }
 
     // Получить лидерборд с сервера
@@ -1424,99 +1450,102 @@ class MatchThreePro {
 
         if (playerNameDisplay) {
             if (this.walletManager.isConnected()) {
-                // Согласно Product Guidelines Base: показываем displayName/username вместо адресов
-                // Всегда пытаемся получить username из Base app SDK через sdk.context
                 let displayName = null;
                 
-                // Сначала пробуем получить уже сохраненный username
-                if (this.walletManager.getUsername) {
-                    displayName = this.walletManager.getUsername();
+                // 1. Проверяем сохраненное имя в localStorage
+                try {
+                    const savedName = localStorage.getItem('playerDisplayName');
+                    if (savedName) {
+                        displayName = savedName;
+                        debugLog(`Using saved name: ${displayName}`);
+                    }
+                } catch (e) {}
+                
+                // 2. Проверяем window.__userName (установлен из index.html)
+                if (!displayName && window.__userName) {
+                    displayName = this.formatBasename(window.__userName);
+                    debugLog(`Using window.__userName: ${displayName}`);
                 }
                 
-                // Если username нет, всегда пытаемся получить из SDK напрямую
+                // 3. Пробуем получить из WalletManager
+                if (!displayName && this.walletManager.getUsername) {
+                    const username = this.walletManager.getUsername();
+                    if (username) {
+                        displayName = this.formatBasename(username);
+                    }
+                }
+                
+                // 4. Пробуем получить из SDK
                 if (!displayName && this.walletManager.getUsernameFromSDK) {
                     try {
-                        displayName = await this.walletManager.getUsernameFromSDK();
-                        console.log('Username from SDK:', displayName);
-                    } catch (e) {
-                        console.log('Could not get username from SDK:', e.message);
-                    }
-                }
-                
-                // Если username всё ещё нет, пытаемся получить контекст пользователя
-                if (!displayName && this.walletManager.getUserContext) {
-                    try {
-                        const context = await this.walletManager.getUserContext();
-                        if (context && context.user) {
-                            displayName = context.user.displayName || context.user.username || null;
-                            console.log('Username from user context:', displayName);
+                        const sdkName = await this.walletManager.getUsernameFromSDK();
+                        if (sdkName) {
+                            displayName = this.formatBasename(sdkName);
                         }
-                    } catch (e) {
-                        console.log('Could not get user context:', e.message);
-                    }
+                    } catch (e) {}
                 }
                 
-                // Проверяем, запущено ли приложение в Base app
-                const isBaseApp = window.farcaster && window.farcaster.miniapp || 
-                                 window.miniappSdk || 
-                                 (window.parent && window.parent !== window);
-                
-                // Если это Base app и username нет, пробуем ещё раз через небольшую задержку
-                if (!displayName && isBaseApp) {
-                    console.log('Base app detected but username not found, will retry...');
-                    // Пробуем еще раз через небольшую задержку
-                    setTimeout(async () => {
-                        if (this.walletManager.getUsernameFromSDK) {
-                            const retryUsername = await this.walletManager.getUsernameFromSDK();
-                            if (retryUsername && playerNameDisplay) {
-                                playerNameDisplay.textContent = retryUsername;
-                                playerNameDisplay.classList.remove('wallet-address');
-                            }
-                        }
-                    }, 1000);
-                }
-                
-                // Согласно Product Guidelines: избегаем показа адресов 0x
-                // Используем адрес только как последний fallback, если это не Base app
+                // 5. НИКОГДА не показываем адрес кошелька - только "Player"
                 if (!displayName) {
-                    const address = this.walletManager.getAccount();
-                    if (address) {
-                        // Если это Base app, не показываем адрес - показываем "Player" вместо этого
-                        if (isBaseApp) {
-                            displayName = 'Player';
-                            playerNameDisplay.classList.remove('wallet-address');
-                        } else {
-                            // Для внешних кошельков показываем форматированный адрес
-                            displayName = this.leaderboard.formatAddress(address);
-                            playerNameDisplay.classList.add('wallet-address');
-                        }
-                    } else {
-                        displayName = 'Connect Wallet';
-                        playerNameDisplay.classList.remove('wallet-address');
-                    }
-                } else {
-                    // Если есть username, убираем класс wallet-address
-                    playerNameDisplay.classList.remove('wallet-address');
+                    displayName = 'Player';
                 }
                 
                 playerNameDisplay.textContent = displayName;
+                playerNameDisplay.classList.remove('wallet-address');
 
-                // Показываем avatar (pfpUrl) из Base app, если доступен
-                const avatar = this.walletManager.getAvatar();
+                // Показываем avatar
+                const avatar = this.walletManager.getAvatar() || window.__userAvatar;
                 if (playerAvatarDisplay && avatar) {
                     playerAvatarDisplay.src = avatar;
                     playerAvatarDisplay.style.display = 'block';
                 } else if (playerAvatarDisplay) {
-                    playerAvatarDisplay.style.display = 'none';
+                    // Пробуем загрузить из localStorage
+                    try {
+                        const savedAvatar = localStorage.getItem('playerAvatar');
+                        if (savedAvatar) {
+                            playerAvatarDisplay.src = savedAvatar;
+                            playerAvatarDisplay.style.display = 'block';
+                        } else {
+                            playerAvatarDisplay.style.display = 'none';
+                        }
+                    } catch (e) {
+                        playerAvatarDisplay.style.display = 'none';
+                    }
                 }
             } else {
-                playerNameDisplay.textContent = 'Connect Wallet';
+                playerNameDisplay.textContent = 'Player';
                 playerNameDisplay.classList.remove('wallet-address');
                 if (playerAvatarDisplay) {
                     playerAvatarDisplay.style.display = 'none';
                 }
             }
         }
+    }
+
+    // Форматирование имени в формат .base.eth
+    formatBasename(name) {
+        if (!name) return 'Player';
+        
+        // Если уже содержит .base.eth - оставляем как есть
+        if (name.includes('.base.eth')) return name;
+        
+        // Если это .eth имя (ENS) - конвертируем в .base.eth формат
+        if (name.endsWith('.eth')) {
+            const baseName = name.replace('.eth', '');
+            return `${baseName}.base.eth`;
+        }
+        
+        // Если это просто имя без домена и не адрес - добавляем .base.eth
+        if (!name.includes('.') && !name.startsWith('0x')) {
+            return `${name}.base.eth`;
+        }
+        
+        // Если это адрес - возвращаем "Player"
+        if (name.startsWith('0x') || name.includes('...')) {
+            return 'Player';
+        }
+        
+        return name;
     }
 
     createBoard() {

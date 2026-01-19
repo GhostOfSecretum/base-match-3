@@ -370,9 +370,18 @@
             const avatarEl = document.getElementById('currentPlayerAvatar');
             
             if (nameEl && name) {
-                nameEl.textContent = name;
+                // Форматируем имя в формат .base.eth если нужно
+                let displayName = formatBasename(name);
+                
+                nameEl.textContent = displayName;
                 nameEl.classList.remove('wallet-address');
-                debugLog(`  ✅ Updated player name to: ${name}`);
+                debugLog(`  ✅ Updated player name to: ${displayName}`);
+                
+                // Сохраняем в localStorage чтобы не потерять
+                try {
+                    localStorage.setItem('playerDisplayName', displayName);
+                    if (avatar) localStorage.setItem('playerAvatar', avatar);
+                } catch (e) {}
             }
             
             if (avatarEl && avatar) {
@@ -380,6 +389,61 @@
                 avatarEl.style.display = 'block';
                 debugLog(`  ✅ Updated player avatar`);
             }
+        }
+
+        // Форматирование имени в формат .base.eth
+        function formatBasename(name) {
+            if (!name) return 'Player';
+            
+            // Если уже содержит .base.eth - оставляем как есть
+            if (name.includes('.base.eth')) return name;
+            
+            // Если это .eth имя (ENS) - конвертируем в .base.eth формат
+            if (name.endsWith('.eth')) {
+                // eldoktor.eth -> eldoktor.base.eth
+                const baseName = name.replace('.eth', '');
+                return `${baseName}.base.eth`;
+            }
+            
+            // Если это просто имя без домена - добавляем .base.eth
+            if (!name.includes('.') && !name.startsWith('0x')) {
+                return `${name}.base.eth`;
+            }
+            
+            return name;
+        }
+
+        // Загрузить сохраненное имя при старте
+        function loadSavedPlayerName() {
+            try {
+                const savedName = localStorage.getItem('playerDisplayName');
+                const savedAvatar = localStorage.getItem('playerAvatar');
+                
+                if (savedName) {
+                    debugLog(`📦 Loaded saved name: ${savedName}`);
+                    window.__userName = savedName;
+                    window.__userAvatar = savedAvatar;
+                    
+                    const nameEl = document.getElementById('currentPlayerName');
+                    const avatarEl = document.getElementById('currentPlayerAvatar');
+                    
+                    if (nameEl) {
+                        nameEl.textContent = savedName;
+                        nameEl.classList.remove('wallet-address');
+                    }
+                    if (avatarEl && savedAvatar) {
+                        avatarEl.src = savedAvatar;
+                        avatarEl.style.display = 'block';
+                    }
+                }
+            } catch (e) {}
+        }
+
+        // Загружаем сохраненное имя после загрузки DOM
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', loadSavedPlayerName);
+        } else {
+            setTimeout(loadSavedPlayerName, 100);
         }
 
         // Проверка postMessage от родительского окна (Base App может так общаться)
