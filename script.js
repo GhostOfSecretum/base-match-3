@@ -1495,7 +1495,7 @@ class MatchThreePro {
                 playerNameDisplay.textContent = displayName;
                 playerNameDisplay.classList.remove('wallet-address');
 
-                // Показываем avatar
+                // Показываем avatar - только реальный из профиля
                 if (playerAvatarDisplay) {
                     let avatarUrl = this.walletManager.getAvatar() || window.__userAvatar;
                     
@@ -1506,23 +1506,13 @@ class MatchThreePro {
                         } catch (e) {}
                     }
                     
-                    // Если нет аватара, используем Effigy (генерация по адресу)
-                    if (!avatarUrl) {
-                        const address = this.walletManager.getAccount() || window.__userAddress;
-                        if (address) {
-                            avatarUrl = `https://effigy.im/a/${address}.png`;
-                        }
-                    }
-                    
+                    // Показываем только реальный аватар, не генерируем
                     if (avatarUrl) {
                         playerAvatarDisplay.src = avatarUrl;
                         playerAvatarDisplay.style.display = 'block';
                         playerAvatarDisplay.onerror = () => {
-                            // Fallback на Effigy если картинка не загрузилась
-                            const address = this.walletManager.getAccount() || window.__userAddress;
-                            if (address && !playerAvatarDisplay.src.includes('effigy.im')) {
-                                playerAvatarDisplay.src = `https://effigy.im/a/${address}.png`;
-                            }
+                            // Если картинка не загрузилась, скрываем
+                            playerAvatarDisplay.style.display = 'none';
                         };
                     } else {
                         playerAvatarDisplay.style.display = 'none';
