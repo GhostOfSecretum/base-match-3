@@ -271,6 +271,45 @@ class WalletManager {
         }
     }
 
+    // Получить имя пользователя по адресу через Neynar API
+    async fetchUsernameByAddress(address) {
+        if (!address) return null;
+        
+        try {
+            debugLog(`🔍 Fetching username for ${address.slice(0,10)}...`);
+            
+            // Пробуем Neynar API (публичный endpoint для lookup по адресу)
+            const response = await fetch(`https://api.neynar.com/v2/farcaster/user/by_verification?address=${address}`, {
+                headers: {
+                    'accept': 'application/json',
+                    'api_key': 'NEYNAR_API_DOCS' // Публичный ключ для документации
+                }
+            });
+            
+            if (response.ok) {
+                const data = await response.json();
+                debugLog(`  Neynar response: ${JSON.stringify(data).slice(0,100)}`);
+                
+                if (data.user) {
+                    const user = data.user;
+                    this.username = user.display_name || user.username || null;
+                    this.avatar = user.pfp_url || user.pfp?.url || null;
+                    
+                    debugLog(`  ✅ Got from Neynar: ${this.username}`);
+                    debugLog(`  avatar: ${this.avatar ? 'YES' : 'NO'}`);
+                    
+                    return this.username;
+                }
+            } else {
+                debugLog(`  Neynar error: ${response.status}`);
+            }
+        } catch (e) {
+            debugLog(`  Neynar fetch error: ${e.message}`);
+        }
+        
+        return null;
+    }
+
     async connectViaBaseAccount(address) {
         try {
             // Используем ethers provider для Base Account
@@ -288,6 +327,11 @@ class WalletManager {
 
                     // Пытаемся получить username из SDK
                     await this.getUsernameFromSDK();
+                    
+                    // Если username не получен из SDK, пробуем через Neynar API
+                    if (!this.username && address) {
+                        await this.fetchUsernameByAddress(address);
+                    }
 
                     // Обновляем UI
                     this.updateWalletUI();
