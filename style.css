@@ -309,6 +309,17 @@ body::before {
     z-index: 1;
 }
 
+.ecosystem-label {
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 0.7em;
+    font-weight: 400;
+    color: #FFFFFF;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    opacity: 0.9;
+}
+
 .logo h1 {
     font-family: 'Coinbase Text', sans-serif;
     font-size: 1.2em;
@@ -1536,6 +1547,17 @@ body::before {
     display: block;
     margin-left: auto;
     margin-right: auto;
+}
+
+.start-menu-logo .ecosystem-label {
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 0.9em;
+    font-weight: 400;
+    color: #FFFFFF;
+    letter-spacing: 2px;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    opacity: 0.9;
 }
 
 .start-menu-logo h1 {
