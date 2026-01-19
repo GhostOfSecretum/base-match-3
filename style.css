@@ -6,6 +6,105 @@
     font-display: swap;
 }
 
+/* ==================== SPLASH SCREEN ==================== */
+.splash-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #2563EB; /* Base синий под картинку */
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    transition: opacity 0.5s ease-out, visibility 0.5s ease-out;
+}
+
+.splash-screen.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.splash-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    position: relative;
+}
+
+.splash-logo {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.splash-loader {
+    position: absolute;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    width: 80%;
+    max-width: 300px;
+    z-index: 10;
+}
+
+.loader-bar {
+    width: 100%;
+    height: 8px;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 4px;
+    overflow: hidden;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+
+.loader-progress {
+    width: 0%;
+    height: 100%;
+    background: #FFFFFF;
+    border-radius: 4px;
+    transition: width 0.3s ease-out;
+    box-shadow: 0 0 15px rgba(255, 255, 255, 0.7);
+}
+
+.loader-text {
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 18px;
+    font-weight: 500;
+    color: #FFFFFF;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+@media (max-width: 768px) {
+    .splash-loader {
+        bottom: 60px;
+        max-width: 250px;
+    }
+    
+    .loader-bar {
+        height: 6px;
+    }
+    
+    .loader-text {
+        font-size: 14px;
+    }
+}
+/* ==================== END SPLASH SCREEN ==================== */
+
 @font-face {
     font-family: 'Coinbase Text';
     src: url('fonts/Coinbase_Text-Medium-web-1.32.woff2') format('woff2');

@@ -2,6 +2,90 @@
 console.log('=== SCRIPT.JS STARTING ===');
 console.log('Timestamp:', new Date().toISOString());
 
+// ==================== SPLASH SCREEN MANAGER ====================
+const SplashScreenManager = {
+    splashScreen: null,
+    progressBar: null,
+    progress: 0,
+    minDisplayTime: 2500, // Минимум 2.5 секунды показа
+    startTime: Date.now(),
+    progressInterval: null,
+    
+    init() {
+        this.splashScreen = document.getElementById('splashScreen');
+        this.progressBar = document.getElementById('loaderProgress');
+        
+        if (!this.splashScreen) {
+            console.log('Splash screen not found');
+            return;
+        }
+        
+        // Запускаем анимацию прогресса
+        this.startProgressAnimation();
+        console.log('Splash screen initialized');
+    },
+    
+    startProgressAnimation() {
+        // Плавная анимация прогресса до 90%
+        this.progressInterval = setInterval(() => {
+            if (this.progress < 90) {
+                this.progress += Math.random() * 8 + 2; // +2-10% каждые 100мс
+                if (this.progress > 90) this.progress = 90;
+                this.updateProgress(this.progress);
+            }
+        }, 100);
+    },
+    
+    updateProgress(value) {
+        const percent = Math.min(100, Math.round(value));
+        if (this.progressBar) {
+            this.progressBar.style.width = percent + '%';
+        }
+    },
+    
+    hide() {
+        if (!this.splashScreen) {
+            this.splashScreen = document.getElementById('splashScreen');
+        }
+        
+        if (!this.splashScreen) return;
+        
+        // Останавливаем интервал
+        if (this.progressInterval) {
+            clearInterval(this.progressInterval);
+        }
+        
+        // Быстро доводим до 100%
+        this.updateProgress(100);
+        
+        const elapsed = Date.now() - this.startTime;
+        const remainingTime = Math.max(300, this.minDisplayTime - elapsed);
+        
+        // Ждем минимальное время отображения для плавности
+        setTimeout(() => {
+            this.splashScreen.classList.add('hidden');
+            console.log('Splash screen hidden');
+            
+            // Удаляем элемент после анимации
+            setTimeout(() => {
+                if (this.splashScreen && this.splashScreen.parentNode) {
+                    this.splashScreen.parentNode.removeChild(this.splashScreen);
+                    console.log('Splash screen removed from DOM');
+                }
+            }, 600);
+        }, remainingTime);
+    }
+};
+
+// Инициализируем splash screen manager
+SplashScreenManager.init();
+
+// Fallback: гарантированно скрыть splash через 6 секунд
+setTimeout(() => {
+    SplashScreenManager.hide();
+}, 6000);
+// ==================== END SPLASH SCREEN MANAGER ====================
+
 // Debug функция для отображения на телефоне
 function debugLog(msg) {
     const time = new Date().toLocaleTimeString();
@@ -4550,12 +4634,18 @@ async function initializeGame() {
         // Дополнительный вызов не требуется
         console.log('Game initialized, SDK ready status:', window.__farcasterSDKReady ? 'READY' : 'not available');
 
+        // Скрываем splash screen после успешной инициализации
+        SplashScreenManager.hide();
+
     } catch (error) {
         console.error('Error initializing game:', error);
         console.error('Error stack:', error.stack);
 
         // Скрываем индикатор загрузки даже при ошибке
         hideLoadingIndicator();
+        
+        // Скрываем splash screen даже при ошибке
+        SplashScreenManager.hide();
 
         // Убеждаемся что контент виден даже при ошибке
         const gameWrapper = document.querySelector('.game-wrapper');
