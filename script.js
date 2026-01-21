@@ -72,6 +72,7 @@ const SplashScreenManager = {
                 const gameContainer = document.getElementById('gameContainer');
                 if (gameContainer) {
                     gameContainer.style.display = 'none';
+                    gameContainer.style.visibility = 'hidden';
                 }
                 
                 // Показываем onboarding, если пользователь его еще не видел
@@ -80,6 +81,7 @@ const SplashScreenManager = {
                     const startMenu = document.getElementById('startMenu');
                     if (startMenu) {
                         startMenu.style.display = 'none';
+                        startMenu.style.visibility = 'hidden';
                     }
                     OnboardingManager.show();
                 } else {
@@ -87,6 +89,8 @@ const SplashScreenManager = {
                     const startMenu = document.getElementById('startMenu');
                     if (startMenu) {
                         startMenu.style.display = 'flex';
+                        startMenu.style.visibility = 'visible';
+                        startMenu.style.opacity = '1';
                         startMenu.classList.remove('hidden');
                     }
                 }
@@ -256,12 +260,15 @@ const OnboardingManager = {
             const gameContainer = document.getElementById('gameContainer');
             if (gameContainer) {
                 gameContainer.style.display = 'none';
+                gameContainer.style.visibility = 'hidden';
             }
             
             // Показываем start menu ДО скрытия onboarding (чтобы не было мерцания)
             const startMenu = document.getElementById('startMenu');
             if (startMenu) {
                 startMenu.style.display = 'flex';
+                startMenu.style.visibility = 'visible';
+                startMenu.style.opacity = '1';
                 startMenu.classList.remove('hidden');
             }
             
@@ -4365,9 +4372,12 @@ function initStartMenu() {
     function showGame() {
         if (startMenu) {
             startMenu.classList.add('hidden');
+            startMenu.style.display = 'none';
         }
         if (gameContainer) {
             gameContainer.style.display = 'block';
+            gameContainer.style.visibility = 'visible';
+            gameContainer.style.opacity = '1';
         }
     }
 
@@ -4376,9 +4386,12 @@ function initStartMenu() {
         if (startMenu) {
             startMenu.classList.remove('hidden');
             startMenu.style.display = 'flex';
+            startMenu.style.visibility = 'visible';
+            startMenu.style.opacity = '1';
         }
         if (gameContainer) {
             gameContainer.style.display = 'none';
+            gameContainer.style.visibility = 'hidden';
         }
     }
 

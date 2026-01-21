@@ -593,6 +593,9 @@ body::before {
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
     transition: background-color 0.3s ease, border-color 0.3s ease;
+    /* Базовые стили видимости - без !important, чтобы JS мог скрывать */
+    visibility: visible;
+    opacity: 1;
 }
 
 .game-container::before {
