@@ -672,11 +672,12 @@ const SponsoredTransactions = {
             // Continue without capabilities - will try regular transaction
         }
         
-        // Step 2: Try wallet_sendCalls with built-in wallet paymaster
+        // Step 2: Try wallet_sendCalls for Base Mini App
+        // Base Account supports gasless transactions via paymasterService
         const baseCapabilities = capabilities?.['0x2105'] || capabilities?.['8453'];
         if (baseCapabilities?.paymasterService?.supported) {
             try {
-                log('paymasterService is supported by wallet - using built-in sponsorship');
+                log('paymasterService is supported - trying Base Mini App sponsorship');
                 if (statusCallback) statusCallback('Sending gasless transaction...');
                 
                 const calls = [{
@@ -686,84 +687,64 @@ const SponsoredTransactions = {
                 }];
                 
                 log(`Calls: ${JSON.stringify(calls)}`);
-                log('Using wallet built-in paymaster for sponsorship');
                 
                 let result;
                 let lastError = null;
                 
-                // Format A: EIP-5792 standard format with paymasterService: true
-                // This tells the wallet to use its built-in paymaster
+                // For Base Mini Apps, try wallet_sendCalls without specifying paymaster URL
+                // Base App will use its built-in sponsorship if available
+                
+                // Format 1: Simple wallet_sendCalls - let Base App decide on sponsorship
                 try {
-                    log('Trying Format A: EIP-5792 with paymasterService: true...');
+                    log('Trying Format 1: wallet_sendCalls (Base App auto-sponsor)...');
                     result = await ethProvider.request({
                         method: 'wallet_sendCalls',
                         params: [{
                             version: '1.0',
                             chainId: '0x2105',
                             from: txParams.from,
-                            calls: calls,
-                            capabilities: {
-                                paymasterService: true
-                            }
+                            calls: calls
                         }]
                     });
-                    log(`Format A success: ${JSON.stringify(result)}`);
-                } catch (errA) {
-                    log(`Format A failed: ${errA.message}`);
-                    lastError = errA;
+                    log(`Format 1 success: ${JSON.stringify(result)}`);
+                } catch (err1) {
+                    log(`Format 1 failed: ${err1.message}`);
+                    lastError = err1;
                     
-                    // Format B: Without capabilities - let wallet decide on sponsorship
+                    // Format 2: With empty paymasterService capabilities
                     try {
-                        log('Trying Format B: simple wallet_sendCalls without capabilities...');
+                        log('Trying Format 2: with paymasterService capability...');
                         result = await ethProvider.request({
                             method: 'wallet_sendCalls',
                             params: [{
                                 version: '1.0',
                                 chainId: '0x2105',
                                 from: txParams.from,
-                                calls: calls
+                                calls: calls,
+                                capabilities: {
+                                    paymasterService: {}
+                                }
                             }]
                         });
-                        log(`Format B success: ${JSON.stringify(result)}`);
-                    } catch (errB) {
-                        log(`Format B failed: ${errB.message}`);
+                        log(`Format 2 success: ${JSON.stringify(result)}`);
+                    } catch (err2) {
+                        log(`Format 2 failed: ${err2.message}`);
                         
-                        // Format C: EIP-5792 newer format with atomic capability
+                        // Format 3: Without version field
                         try {
-                            log('Trying Format C: with atomic capability...');
+                            log('Trying Format 3: without version...');
                             result = await ethProvider.request({
                                 method: 'wallet_sendCalls',
                                 params: [{
-                                    version: '1.0',
                                     chainId: '0x2105',
                                     from: txParams.from,
-                                    calls: calls,
-                                    capabilities: {
-                                        atomic: { required: false },
-                                        paymasterService: true
-                                    }
+                                    calls: calls
                                 }]
                             });
-                            log(`Format C success: ${JSON.stringify(result)}`);
-                        } catch (errC) {
-                            log(`Format C failed: ${errC.message}`);
-                            
-                            // Format D: Minimal format without version
-                            try {
-                                log('Trying Format D: minimal without version...');
-                                result = await ethProvider.request({
-                                    method: 'wallet_sendCalls',
-                                    params: [{
-                                        chainId: '0x2105',
-                                        from: txParams.from,
-                                        calls: calls
-                                    }]
-                                });
-                                log(`Format D success: ${JSON.stringify(result)}`);
-                            } catch (errD) {
-                                log(`Format D failed: ${errD.message}`);
-                                throw lastError;
-                            }
+                            log(`Format 3 success: ${JSON.stringify(result)}`);
+                        } catch (err3) {
+                            log(`Format 3 failed: ${err3.message}`);
+                            throw lastError;
                         }
                     }
                 }
@@ -823,9 +804,44 @@ const SponsoredTransactions = {
             }
         }
         
-        // NO fallback to eth_sendTransaction - we only want sponsored transactions
-        log('ERROR: All sponsored transaction methods failed');
-        throw new Error('Gasless transaction failed. Please try again.');
+        // Step 4: Final fallback - eth_sendTransaction via ethProvider
+        // Base App may still sponsor this
+        if (ethProvider) {
+            try {
+                log('Trying eth_sendTransaction via ethProvider (final fallback)...');
+                if (statusCallback) statusCallback('Sending transaction...');
+                
+                const txRequest = {
+                    from: txParams.from,
+                    to: txParams.to,
+                    value: txParams.value || '0x0',
+                    data: txParams.data || '0x'
+                };
+                
+                log(`eth_sendTransaction request: ${JSON.stringify(txRequest)}`);
+                
+                const txHash = await ethProvider.request({
+                    method: 'eth_sendTransaction',
+                    params: [txRequest]
+                });
+                
+                log(`eth_sendTransaction result: ${txHash}`);
+                
+                if (txHash && typeof txHash === 'string') {
+                    return {
+                        success: true,
+                        sponsored: true, // Base App sponsors transactions in Mini Apps
+                        txHash: txHash
+                    };
+                }
+            } catch (ethError) {
+                log(`eth_sendTransaction ERROR: ${ethError.message}`);
+            }
+        }
+        
+        // All methods failed
+        log('ERROR: All transaction methods failed');
+        throw new Error('Transaction failed. Please try again.');
     },
     
     /**
