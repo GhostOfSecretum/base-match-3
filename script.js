@@ -4707,134 +4707,28 @@ async function sendGMTransaction() {
     }
     
     try {
-        let txHash = null;
-        let wasSponsored = false;
-        
-        // Get provider and user address first
-        let provider = null;
-        let userAddress = null;
-        
-        // Try Farcaster SDK first (for Base Mini App)
-        const farcasterSDK = SponsoredTransactions.getFarcasterSDK();
-        console.log('Farcaster SDK detected:', !!farcasterSDK);
-        
-        if (farcasterSDK && farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
-            console.log('Using Farcaster wallet.ethProvider');
-            provider = farcasterSDK.wallet.ethProvider;
-            try {
-                const accounts = await provider.request({ method: 'eth_requestAccounts' });
-                userAddress = accounts?.[0];
-                console.log('Got address from Farcaster provider:', userAddress);
-            } catch (e) {
-                console.log('eth_requestAccounts failed:', e.message);
-            }
-        }
-        
-        // Try getting address from context if not available
-        if (!userAddress && farcasterSDK && farcasterSDK.context) {
-            try {
-                const ctx = typeof farcasterSDK.context === 'function' 
-                    ? await farcasterSDK.context() 
-                    : await farcasterSDK.context;
-                userAddress = ctx?.user?.custodyAddress || ctx?.connectedAddress || ctx?.user?.verifiedAddresses?.ethAddresses?.[0];
-                console.log('Got address from Farcaster context:', userAddress);
-            } catch (e) {
-                console.log('Could not get context:', e);
-            }
-        }
-        
-        // Fallback to window.ethereum
-        if (!userAddress && window.ethereum) {
-            console.log('Falling back to window.ethereum');
-            provider = window.ethereum;
-            try {
-                const accounts = await provider.request({ method: 'eth_requestAccounts' });
-                userAddress = accounts?.[0];
-                console.log('Got address from window.ethereum:', userAddress);
-            } catch (e) {
-                console.log('window.ethereum eth_requestAccounts failed:', e.message);
-            }
-        }
-        
-        // Also check stored address
-        if (!userAddress) {
-            userAddress = window.__userAddress;
-            console.log('Using stored address:', userAddress);
-        }
-        
-        if (!userAddress) {
-            throw new Error('No wallet connected. Please connect your wallet first.');
-        }
-        
         // GM Contract transaction params - call sayGM() on contract
         const contractTxParams = {
-            from: userAddress,
             to: GM_CONTRACT.address,
             value: '0x0',
             data: GM_CONTRACT.sayGMSelector // sayGM() function selector = 0x41cf91d1
         };
         
-        console.log('GM Contract transaction params:', contractTxParams);
-        console.log('Contract address:', GM_CONTRACT.address);
-        console.log('Function selector (sayGM):', GM_CONTRACT.sayGMSelector);
-        
-        // Verify contract exists on Base mainnet before sending
-        if (provider) {
-            try {
-                const code = await provider.request({
-                    method: 'eth_getCode',
-                    params: [GM_CONTRACT.address, 'latest']
-                });
-                console.log('Contract code check:', code ? (code.length > 10 ? 'EXISTS' : 'NOT FOUND') : 'NOT FOUND');
-                if (!code || code === '0x' || code === '0x0') {
-                    console.warn('WARNING: GM Contract may not be deployed at', GM_CONTRACT.address);
-                }
-            } catch (codeError) {
-                console.log('Could not verify contract code:', codeError.message);
-            }
-        }
+        console.log('GM Contract:', GM_CONTRACT.address);
+        console.log('sayGM() selector:', GM_CONTRACT.sayGMSelector);
         
         // ===== SEND TRANSACTION =====
         if (gmStatus) gmStatus.textContent = 'Sending GM on Base...';
-        console.log('Sending GM transaction...');
         
-        try {
-            const sponsorResult = await SponsoredTransactions.sendTransaction(
-                provider,
-                contractTxParams,
-                userAddress,
-                (status) => { if (gmStatus) gmStatus.textContent = status; }
-            );
-            
-            if (sponsorResult.success && sponsorResult.txHash) {
-                txHash = sponsorResult.txHash;
-                wasSponsored = sponsorResult.sponsored || false;
-                console.log('GM sent:', txHash, wasSponsored ? '(sponsored/gasless)' : '(regular)');
-            }
-        } catch (sponsorError) {
-            console.log('SponsoredTransactions.sendTransaction failed:', sponsorError.message);
-            
-            // Provide user-friendly error messages
-            let userMessage = 'Transaction failed';
-            const errorMsg = sponsorError.message?.toLowerCase() || '';
-            
-            if (errorMsg.includes('reject') || errorMsg.includes('denied') || errorMsg.includes('cancelled')) {
-                userMessage = 'Transaction cancelled. Please try again and confirm in your wallet.';
-            } else if (errorMsg.includes('insufficient') || errorMsg.includes('balance')) {
-                userMessage = 'Insufficient balance for gas fees.';
-            } else if (errorMsg.includes('network') || errorMsg.includes('rpc')) {
-                userMessage = 'Network error. Please check your connection and try again.';
-            } else if (errorMsg.includes('provider')) {
-                userMessage = 'Wallet connection issue. Please refresh and try again.';
-            } else {
-                userMessage = 'Transaction failed. Please try again.';
-            }
-            
-            throw new Error(userMessage);
-        }
+        const result = await SponsoredTransactions.sendViaFarcasterSDK(
+            contractTxParams,
+            (status) => { if (gmStatus) gmStatus.textContent = status; }
+        );
+        
+        const txHash = result.txHash;
         
         if (txHash) {
-            console.log('GM transaction sent:', txHash, wasSponsored ? '(sponsored)' : '(regular)');
+            console.log('GM transaction sent:', txHash);
             
             // Update GM data
             const gmData = getGMData();
@@ -4857,8 +4751,7 @@ async function sendGMTransaction() {
                 gmCount: (gmData.gmCount || 0) + 1,
                 lastGMDate: today,
                 lastTxHash: txHash,
-                streak: newStreak,
-                wasSponsored: wasSponsored
+                streak: newStreak
             });
             
             // Also update the game's day streak
@@ -4873,8 +4766,7 @@ async function sendGMTransaction() {
             gmButton.classList.add('success');
             
             if (gmStatus) {
-                const sponsoredBadge = wasSponsored ? '<span class="sponsored-badge">Gasless</span> ' : '';
-                gmStatus.innerHTML = `${sponsoredBadge}GM sent successfully! <a href="https://basescan.org/tx/${txHash}" target="_blank" class="gm-tx-link">View ↗</a>`;
+                gmStatus.innerHTML = `GM sent successfully! <a href="https://basescan.org/tx/${txHash}" target="_blank" class="gm-tx-link">View ↗</a>`;
                 gmStatus.className = 'gm-status success';
             }
             
