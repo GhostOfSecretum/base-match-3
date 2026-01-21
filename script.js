@@ -170,7 +170,7 @@ const BASE_NETWORK = {
 // ==================== GM CONTRACT CONFIGURATION ====================
 // Smart contract for gasless GM transactions on Base
 const GM_CONTRACT = {
-    address: '0x819C8fA87f61b1843d1Cf46046cd4637d4afd1c0',
+    address: '0x56Fa8D9d0Ba5C17350163D8F632f734996F4944A',
     chainId: '0x2105', // Base mainnet
     // Function selector for sayGM() = keccak256("sayGM()")[:4] = 0x27a80bb0
     sayGMSelector: '0x27a80bb0',
