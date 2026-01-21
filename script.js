@@ -604,6 +604,7 @@ const SponsoredTransactions = {
                 };
                 log(`Using paymaster URL: ${paymasterUrl?.substring(0, 50)}...`);
                 
+                // Try format 1: Object with all params
                 const sendCallsParams = {
                     version: '1.0',
                     chainId: '0x2105', // Base mainnet
@@ -614,10 +615,48 @@ const SponsoredTransactions = {
                 
                 log(`wallet_sendCalls params: ${JSON.stringify(sendCallsParams)}`);
                 
-                const result = await ethProvider.request({
-                    method: 'wallet_sendCalls',
-                    params: [sendCallsParams]
-                });
+                let result;
+                try {
+                    // Format 1: Single object param
+                    result = await ethProvider.request({
+                        method: 'wallet_sendCalls',
+                        params: [sendCallsParams]
+                    });
+                } catch (err1) {
+                    log(`Format 1 failed: ${err1.message}`);
+                    
+                    // Format 2: Try without version
+                    try {
+                        log('Trying format 2 (no version)...');
+                        result = await ethProvider.request({
+                            method: 'wallet_sendCalls',
+                            params: [{
+                                chainId: '0x2105',
+                                from: txParams.from,
+                                calls: calls,
+                                capabilities: txCapabilities
+                            }]
+                        });
+                    } catch (err2) {
+                        log(`Format 2 failed: ${err2.message}`);
+                        
+                        // Format 3: Try with account param separate
+                        try {
+                            log('Trying format 3 (account separate)...');
+                            result = await ethProvider.request({
+                                method: 'wallet_sendCalls',
+                                params: [
+                                    txParams.from,
+                                    calls,
+                                    { paymasterService: { url: paymasterUrl } }
+                                ]
+                            });
+                        } catch (err3) {
+                            log(`Format 3 failed: ${err3.message}`);
+                            throw err1; // Throw original error
+                        }
+                    }
+                }
                 
                 log(`wallet_sendCalls result: ${JSON.stringify(result)}`);
                 
