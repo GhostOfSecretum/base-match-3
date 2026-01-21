@@ -4266,6 +4266,7 @@ function initStartMenu() {
             e.preventDefault();
             e.stopPropagation();
             console.log('Say GM button clicked');
+            updateGMUI(); // Update streak display before showing
             gmModal.classList.add('show');
         });
         console.log('Say GM button handler attached');
@@ -4291,11 +4292,18 @@ function initStartMenu() {
             e.preventDefault();
             e.stopPropagation();
             console.log('Deploy Contract button clicked');
-            // Reset status
+            // Reset status and button
             const deployStatus = document.getElementById('deployStatus');
-            const deployResult = document.getElementById('deployResult');
-            if (deployStatus) deployStatus.textContent = '';
-            if (deployResult) deployResult.style.display = 'none';
+            const deployBtn = document.getElementById('deployBtn');
+            if (deployStatus) {
+                deployStatus.textContent = '';
+                deployStatus.style.color = '';
+            }
+            if (deployBtn) {
+                deployBtn.disabled = false;
+                deployBtn.textContent = 'Deploy Contract';
+            }
+            updateDeployUI(); // Update contracts list before showing
             deployModal.classList.add('show');
         });
         console.log('Deploy Contract button handler attached');
@@ -5854,9 +5862,133 @@ async function initializeGame() {
 })();
 
 // ==================== SIMPLE GM FUNCTION ====================
+// ==================== GM STREAK SYSTEM ====================
+
+const GM_STORAGE_KEY = 'gm_streak_data';
+
+function getGMStreakData() {
+    try {
+        const data = localStorage.getItem(GM_STORAGE_KEY);
+        if (data) {
+            return JSON.parse(data);
+        }
+    } catch (e) {
+        console.error('Error reading GM streak data:', e);
+    }
+    return { streak: 0, lastGMDate: null };
+}
+
+function saveGMStreakData(data) {
+    try {
+        localStorage.setItem(GM_STORAGE_KEY, JSON.stringify(data));
+    } catch (e) {
+        console.error('Error saving GM streak data:', e);
+    }
+}
+
+function getTodayDateString() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+}
+
+function getYesterdayDateString() {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    return `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+}
+
+function canSendGMToday() {
+    const data = getGMStreakData();
+    const today = getTodayDateString();
+    return data.lastGMDate !== today;
+}
+
+function updateGMStreak() {
+    const data = getGMStreakData();
+    const today = getTodayDateString();
+    const yesterday = getYesterdayDateString();
+    
+    if (data.lastGMDate === yesterday) {
+        // Continue streak
+        data.streak += 1;
+    } else if (data.lastGMDate !== today) {
+        // Streak broken or first GM
+        data.streak = 1;
+    }
+    
+    data.lastGMDate = today;
+    saveGMStreakData(data);
+    return data.streak;
+}
+
+function updateGMUI() {
+    const data = getGMStreakData();
+    const today = getTodayDateString();
+    const yesterday = getYesterdayDateString();
+    
+    const streakCountEl = document.getElementById('gmStreakCount');
+    const gmSendBtn = document.getElementById('gmSendBtn');
+    const gmNextAvailable = document.getElementById('gmNextAvailable');
+    const gmStatus = document.getElementById('gmStatus');
+    
+    // Check if streak should be reset (missed a day)
+    let displayStreak = data.streak;
+    if (data.lastGMDate && data.lastGMDate !== today && data.lastGMDate !== yesterday) {
+        // Streak is broken
+        displayStreak = 0;
+    }
+    
+    if (streakCountEl) {
+        streakCountEl.textContent = displayStreak;
+    }
+    
+    const canSend = canSendGMToday();
+    
+    if (gmSendBtn) {
+        if (canSend) {
+            gmSendBtn.disabled = false;
+            gmSendBtn.textContent = 'Say GM';
+            gmSendBtn.style.background = '';
+        } else {
+            gmSendBtn.disabled = true;
+            gmSendBtn.textContent = 'GM Sent Today';
+            gmSendBtn.style.background = '#4ade80';
+        }
+    }
+    
+    if (gmNextAvailable) {
+        if (!canSend) {
+            // Calculate time until midnight
+            const now = new Date();
+            const midnight = new Date(now);
+            midnight.setDate(midnight.getDate() + 1);
+            midnight.setHours(0, 0, 0, 0);
+            const hoursLeft = Math.floor((midnight - now) / (1000 * 60 * 60));
+            const minutesLeft = Math.floor(((midnight - now) % (1000 * 60 * 60)) / (1000 * 60));
+            gmNextAvailable.textContent = `Next GM available in ${hoursLeft}h ${minutesLeft}m`;
+        } else {
+            gmNextAvailable.textContent = '';
+        }
+    }
+    
+    if (gmStatus && canSend) {
+        gmStatus.textContent = '';
+        gmStatus.style.color = '';
+    }
+}
+
 async function sendSimpleGM() {
     const gmStatus = document.getElementById('gmStatus');
     const gmSendBtn = document.getElementById('gmSendBtn');
+    
+    // Check if already sent today
+    if (!canSendGMToday()) {
+        if (gmStatus) {
+            gmStatus.textContent = 'You already said GM today!';
+            gmStatus.style.color = '#f59e0b';
+        }
+        return;
+    }
     
     if (gmSendBtn) {
         gmSendBtn.disabled = true;
@@ -5902,14 +6034,16 @@ async function sendSimpleGM() {
         
         console.log('GM TX sent:', txHash);
         
+        // Update streak
+        const newStreak = updateGMStreak();
+        
         if (gmStatus) {
-            gmStatus.innerHTML = `GM sent! <a href="https://basescan.org/tx/${txHash}" target="_blank" style="color: #0052ff;">View TX</a>`;
+            gmStatus.innerHTML = `GM sent! Streak: ${newStreak} <a href="https://basescan.org/tx/${txHash}" target="_blank" style="color: #0052ff;">View TX</a>`;
             gmStatus.style.color = '#4ade80';
         }
-        if (gmSendBtn) {
-            gmSendBtn.textContent = 'GM Sent!';
-            gmSendBtn.style.background = '#4ade80';
-        }
+        
+        // Update UI
+        updateGMUI();
         
     } catch (error) {
         console.error('GM error:', error);
@@ -5924,21 +6058,74 @@ async function sendSimpleGM() {
     }
 }
 
-// ==================== SIMPLE DEPLOY FUNCTION ====================
+// ==================== DEPLOY CONTRACT SYSTEM ====================
 // Uses SIMPLE_STORAGE_BYTECODE defined earlier in the file
+
+const DEPLOY_STORAGE_KEY = 'deployed_contracts';
+
+function getDeployedContracts() {
+    try {
+        const data = localStorage.getItem(DEPLOY_STORAGE_KEY);
+        if (data) {
+            return JSON.parse(data);
+        }
+    } catch (e) {
+        console.error('Error reading deployed contracts:', e);
+    }
+    return [];
+}
+
+function saveDeployedContract(txHash) {
+    try {
+        const contracts = getDeployedContracts();
+        contracts.unshift({
+            txHash: txHash,
+            timestamp: Date.now(),
+            date: new Date().toLocaleString()
+        });
+        localStorage.setItem(DEPLOY_STORAGE_KEY, JSON.stringify(contracts));
+    } catch (e) {
+        console.error('Error saving deployed contract:', e);
+    }
+}
+
+function updateDeployUI() {
+    const contracts = getDeployedContracts();
+    const deployCountEl = document.getElementById('deployCount');
+    const contractsListEl = document.getElementById('deployedContractsList');
+    
+    if (deployCountEl) {
+        deployCountEl.textContent = contracts.length;
+    }
+    
+    if (contractsListEl) {
+        if (contracts.length === 0) {
+            contractsListEl.innerHTML = '<p style="color: #666; text-align: center; font-size: 14px;">No contracts deployed yet</p>';
+        } else {
+            contractsListEl.innerHTML = contracts.map((contract, index) => `
+                <div style="padding: 10px; margin-bottom: 8px; background: rgba(0,82,255,0.1); border-radius: 8px; border-left: 3px solid #0052ff;">
+                    <div style="font-size: 12px; color: #888; margin-bottom: 4px;">#${contracts.length - index} - ${contract.date}</div>
+                    <a href="https://basescan.org/tx/${contract.txHash}" target="_blank" style="color: #0052ff; font-size: 13px; word-break: break-all;">
+                        ${contract.txHash.slice(0, 16)}...${contract.txHash.slice(-8)}
+                    </a>
+                </div>
+            `).join('');
+        }
+    }
+}
 
 async function sendSimpleDeploy() {
     const deployStatus = document.getElementById('deployStatus');
-    const deployResult = document.getElementById('deployResult');
     const deployBtn = document.getElementById('deployBtn');
-    const deployTxLink = document.getElementById('deployTxLink');
     
     if (deployBtn) {
         deployBtn.disabled = true;
         deployBtn.textContent = 'Deploying...';
     }
-    if (deployStatus) deployStatus.textContent = 'Connecting to wallet...';
-    if (deployResult) deployResult.style.display = 'none';
+    if (deployStatus) {
+        deployStatus.textContent = 'Connecting to wallet...';
+        deployStatus.style.color = '';
+    }
     
     try {
         // Get provider
@@ -5977,20 +6164,20 @@ async function sendSimpleDeploy() {
         
         console.log('Deploy TX sent:', txHash);
         
+        // Save to list
+        saveDeployedContract(txHash);
+        
         if (deployStatus) {
-            deployStatus.textContent = 'Contract deploying...';
+            deployStatus.innerHTML = `Contract deployed! <a href="https://basescan.org/tx/${txHash}" target="_blank" style="color: #0052ff;">View TX</a>`;
             deployStatus.style.color = '#4ade80';
         }
         
-        if (deployResult && deployTxLink) {
-            deployTxLink.href = `https://basescan.org/tx/${txHash}`;
-            deployTxLink.textContent = `TX: ${txHash.slice(0, 10)}...${txHash.slice(-8)}`;
-            deployResult.style.display = 'block';
-        }
+        // Update UI and re-enable button for next deploy
+        updateDeployUI();
         
         if (deployBtn) {
-            deployBtn.textContent = 'Deployed!';
-            deployBtn.style.background = '#4ade80';
+            deployBtn.disabled = false;
+            deployBtn.textContent = 'Deploy Another';
         }
         
     } catch (error) {

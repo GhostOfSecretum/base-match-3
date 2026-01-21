@@ -1028,16 +1028,20 @@
             <div class="modal-backdrop"></div>
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2>Say GM on Base</h2>
+                    <h2>GM Streak</h2>
                 </div>
                 <div class="modal-body">
                     <div class="gm-content" style="text-align: center; padding: 20px;">
-                        <div class="gm-icon-large" style="font-size: 64px; margin-bottom: 20px;">☀️</div>
-                        <p style="margin-bottom: 20px; color: #888;">Send a GM transaction on Base network.<br>Requires ETH for gas fees.</p>
+                        <div class="gm-streak-display" style="margin-bottom: 20px;">
+                            <div id="gmStreakCount" style="font-size: 48px; font-weight: bold; color: #0052ff;">0</div>
+                            <div style="font-size: 14px; color: #888;">day streak</div>
+                        </div>
+                        <p id="gmDescription" style="margin-bottom: 20px; color: #888;">Say GM once per day to build your streak.<br>Miss a day and your streak resets to 0.</p>
                         <button id="gmSendBtn" class="btn btn-primary btn-large" style="font-size: 18px; padding: 15px 40px;">
                             Say GM
                         </button>
                         <div id="gmStatus" style="margin-top: 15px; min-height: 24px;"></div>
+                        <div id="gmNextAvailable" style="margin-top: 10px; font-size: 12px; color: #666;"></div>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -1050,20 +1054,20 @@
             <div class="modal-backdrop"></div>
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2>Deploy Contract</h2>
+                    <h2>Deploy Contracts</h2>
                 </div>
                 <div class="modal-body">
                     <div class="deploy-content" style="text-align: center; padding: 20px;">
-                        <div class="deploy-icon-large" style="font-size: 64px; margin-bottom: 20px;">📄</div>
-                        <p style="margin-bottom: 20px; color: #888;">Deploy a SimpleStorage contract on Base.<br>Requires ETH for gas fees.</p>
+                        <div class="deploy-count-display" style="margin-bottom: 20px;">
+                            <div id="deployCount" style="font-size: 48px; font-weight: bold; color: #0052ff;">0</div>
+                            <div style="font-size: 14px; color: #888;">contracts deployed</div>
+                        </div>
+                        <p style="margin-bottom: 20px; color: #888;">Deploy SimpleStorage contracts on Base.</p>
                         <button id="deployBtn" class="btn btn-primary btn-large" style="font-size: 18px; padding: 15px 40px;">
                             Deploy Contract
                         </button>
                         <div id="deployStatus" style="margin-top: 15px; min-height: 24px;"></div>
-                        <div id="deployResult" style="display: none; margin-top: 20px; padding: 15px; background: rgba(0,255,0,0.1); border-radius: 8px;">
-                            <p style="color: #4ade80; margin-bottom: 10px;">Contract Deployed!</p>
-                            <a id="deployTxLink" href="" target="_blank" style="color: #0052ff;">View on BaseScan</a>
-                        </div>
+                        <div id="deployedContractsList" style="margin-top: 20px; text-align: left; max-height: 200px; overflow-y: auto;"></div>
                     </div>
                 </div>
                 <div class="modal-footer">
