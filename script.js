@@ -172,8 +172,8 @@ const BASE_NETWORK = {
 const GM_CONTRACT = {
     address: '0x56Fa8D9d0Ba5C17350163D8F632f734996F4944A',
     chainId: '0x2105', // Base mainnet
-    // Function selector for sayGM() = keccak256("sayGM()")[:4] = 0x27a80bb0
-    sayGMSelector: '0x27a80bb0',
+    // Function selector for sayGM() = keccak256("sayGM()")[:4] = 0x41cf91d1
+    sayGMSelector: '0x41cf91d1',
     // ABI for the contract
     abi: [
         {
@@ -357,23 +357,6 @@ const SponsoredTransactions = {
      */
     async sendSponsoredCalls(provider, calls, userAddress) {
         try {
-            // Get paymaster configuration from our API
-            const paymasterResponse = await fetch(this.paymasterApiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    action: 'sendSponsoredTransaction',
-                    calls: calls
-                })
-            });
-            
-            const paymasterData = await paymasterResponse.json();
-            console.log('Paymaster API response:', paymasterData);
-            
-            if (!paymasterData.success || !paymasterData.sponsored) {
-                throw new Error(paymasterData.error || 'Paymaster service unavailable');
-            }
-            
             // Build calls array in EIP-5792 format
             const formattedCalls = calls.map(call => ({
                 to: call.to || undefined, // undefined for contract deployment
@@ -381,26 +364,51 @@ const SponsoredTransactions = {
                 data: call.data || '0x'
             }));
             
-            // EIP-5792 wallet_sendCalls with paymasterService capability
-            // Format: wallet_sendCalls([{ chainId, from, calls, capabilities }])
-            const sendCallsParams = [{
-                chainId: '0x2105', // Base mainnet (8453)
-                from: userAddress,
-                calls: formattedCalls,
-                capabilities: {
-                    paymasterService: {
-                        url: paymasterData.paymasterServiceUrl || paymasterData.capabilities?.paymasterService?.url
-                    }
+            console.log('sendSponsoredCalls: Using wallet built-in paymaster');
+            console.log('Calls:', JSON.stringify(formattedCalls));
+            
+            let result;
+            let lastError = null;
+            
+            // Try multiple formats for wallet_sendCalls
+            // Format 1: Request sponsorship via paymasterService: true
+            try {
+                console.log('Trying: wallet_sendCalls with paymasterService: true');
+                result = await provider.request({
+                    method: 'wallet_sendCalls',
+                    params: [{
+                        version: '1.0',
+                        chainId: '0x2105',
+                        from: userAddress,
+                        calls: formattedCalls,
+                        capabilities: {
+                            paymasterService: true
+                        }
+                    }]
+                });
+                console.log('Success with paymasterService: true');
+            } catch (err1) {
+                console.log('paymasterService: true failed:', err1.message);
+                lastError = err1;
+                
+                // Format 2: Without capabilities (wallet decides)
+                try {
+                    console.log('Trying: wallet_sendCalls without capabilities');
+                    result = await provider.request({
+                        method: 'wallet_sendCalls',
+                        params: [{
+                            version: '1.0',
+                            chainId: '0x2105',
+                            from: userAddress,
+                            calls: formattedCalls
+                        }]
+                    });
+                    console.log('Success without capabilities');
+                } catch (err2) {
+                    console.log('Without capabilities failed:', err2.message);
+                    throw lastError;
                 }
-            }];
-            
-            console.log('Sending sponsored calls via wallet_sendCalls:', JSON.stringify(sendCallsParams, null, 2));
-            
-            // Send the transaction using wallet_sendCalls (EIP-5792)
-            const result = await provider.request({
-                method: 'wallet_sendCalls',
-                params: sendCallsParams
-            });
+            }
             
             console.log('wallet_sendCalls result:', result);
             
@@ -499,20 +507,77 @@ const SponsoredTransactions = {
         }
         if (statusCallback) statusCallback('Connecting to Base Account...');
         
-        // ========== PRIORITY 1: Try sdk.actions.sendTransaction ==========
-        // This is the PRIMARY method for Farcaster Mini Apps - gasless by default
+        // ========== PRIORITY 1: Try sdk.wallet.ethProvider with eth_sendTransaction ==========
+        // This is the PRIMARY method for Farcaster Mini Apps - transactions are sponsored by Warpcast
+        log('Checking for wallet.ethProvider...');
+        
+        let ethProviderFromSDK = null;
+        if (farcasterSDK.wallet?.ethProvider) {
+            ethProviderFromSDK = farcasterSDK.wallet.ethProvider;
+        } else if (farcasterSDK.wallet?.getEthereumProvider) {
+            ethProviderFromSDK = await farcasterSDK.wallet.getEthereumProvider();
+        }
+        
+        if (ethProviderFromSDK) {
+            try {
+                log('>>> USING sdk.wallet.ethProvider.request (PRIMARY METHOD) <<<');
+                if (statusCallback) statusCallback('Sending gasless transaction via Warpcast...');
+                
+                // Get accounts first
+                const accounts = await ethProviderFromSDK.request({ method: 'eth_accounts' });
+                const fromAddress = accounts?.[0] || txParams.from;
+                log(`From address: ${fromAddress}`);
+                
+                // Format according to Farcaster Frame SDK v2 - eth_sendTransaction
+                const txRequest = {
+                    from: fromAddress,
+                    to: txParams.to,
+                    value: txParams.value || '0x0',
+                    data: txParams.data || '0x',
+                    chainId: '0x2105' // Base mainnet hex
+                };
+                
+                log(`TX Request: ${JSON.stringify(txRequest)}`);
+                
+                const result = await ethProviderFromSDK.request({
+                    method: 'eth_sendTransaction',
+                    params: [txRequest]
+                });
+                
+                log(`TX Result: ${JSON.stringify(result)}`);
+                
+                // Result is the transaction hash
+                if (result && typeof result === 'string') {
+                    log(`SUCCESS! Tx hash: ${result}`);
+                    return {
+                        success: true,
+                        sponsored: true, // Warpcast sponsors transactions in Mini Apps
+                        txHash: result
+                    };
+                } else {
+                    log('Unexpected result format, continuing...');
+                }
+            } catch (ethProviderError) {
+                log(`wallet.ethProvider ERROR: ${ethProviderError.message}`);
+                log(`Error code: ${ethProviderError.code}, data: ${JSON.stringify(ethProviderError.data)}`);
+                // Don't throw - try actions.sendTransaction next
+            }
+        }
+        
+        // ========== PRIORITY 2: Try sdk.actions.sendTransaction ==========
+        // Alternative method for Farcaster Mini Apps
         log('Checking for actions.sendTransaction...');
         
         if (farcasterSDK.actions && typeof farcasterSDK.actions.sendTransaction === 'function') {
             try {
-                log('>>> USING sdk.actions.sendTransaction (PRIMARY METHOD) <<<');
+                log('>>> USING sdk.actions.sendTransaction <<<');
                 if (statusCallback) statusCallback('Sending gasless transaction...');
                 
-                // Format according to Farcaster Frame v2 docs
+                // Format according to Farcaster Frame v2 docs - CAIP-2 chainId
                 const txRequest = {
                     chainId: 'eip155:8453', // Base mainnet in CAIP-2 format
                     to: txParams.to,
-                    value: '0', // Value as decimal string
+                    value: txParams.value || '0x0',
                     data: txParams.data || '0x'
                 };
                 
@@ -620,65 +685,85 @@ const SponsoredTransactions = {
                     data: txParams.data || '0x'
                 }];
                 
-                // Request wallet to use its built-in paymaster (no URL needed)
-                // Coinbase Smart Wallet will sponsor automatically
-                const txCapabilities = {
-                    paymasterService: { supported: true }
-                };
-                
                 log(`Calls: ${JSON.stringify(calls)}`);
-                log('Using wallet built-in paymaster (no URL)');
+                log('Using wallet built-in paymaster for sponsorship');
                 
                 let result;
+                let lastError = null;
                 
-                // Try format 1: Simple params without capabilities (wallet decides)
+                // Format A: EIP-5792 standard format with paymasterService: true
+                // This tells the wallet to use its built-in paymaster
                 try {
-                    log('Trying format 1: simple wallet_sendCalls...');
+                    log('Trying Format A: EIP-5792 with paymasterService: true...');
                     result = await ethProvider.request({
                         method: 'wallet_sendCalls',
                         params: [{
                             version: '1.0',
                             chainId: '0x2105',
                             from: txParams.from,
-                            calls: calls
+                            calls: calls,
+                            capabilities: {
+                                paymasterService: true
+                            }
                         }]
                     });
-                    log(`Format 1 success: ${JSON.stringify(result)}`);
-                } catch (err1) {
-                    log(`Format 1 failed: ${err1.message}`);
+                    log(`Format A success: ${JSON.stringify(result)}`);
+                } catch (errA) {
+                    log(`Format A failed: ${errA.message}`);
+                    lastError = errA;
                     
-                    // Try format 2: with capabilities requesting sponsorship
+                    // Format B: Without capabilities - let wallet decide on sponsorship
                     try {
-                        log('Trying format 2: with paymasterService capability...');
+                        log('Trying Format B: simple wallet_sendCalls without capabilities...');
                         result = await ethProvider.request({
                             method: 'wallet_sendCalls',
                             params: [{
                                 version: '1.0',
                                 chainId: '0x2105',
                                 from: txParams.from,
-                                calls: calls,
-                                capabilities: txCapabilities
+                                calls: calls
                             }]
                         });
-                        log(`Format 2 success: ${JSON.stringify(result)}`);
-                    } catch (err2) {
-                        log(`Format 2 failed: ${err2.message}`);
+                        log(`Format B success: ${JSON.stringify(result)}`);
+                    } catch (errB) {
+                        log(`Format B failed: ${errB.message}`);
                         
-                        // Try format 3: without version
+                        // Format C: EIP-5792 newer format with atomic capability
                         try {
-                            log('Trying format 3: without version...');
+                            log('Trying Format C: with atomic capability...');
                             result = await ethProvider.request({
                                 method: 'wallet_sendCalls',
                                 params: [{
+                                    version: '1.0',
                                     chainId: '0x2105',
                                     from: txParams.from,
-                                    calls: calls
+                                    calls: calls,
+                                    capabilities: {
+                                        atomic: { required: false },
+                                        paymasterService: true
+                                    }
                                 }]
                             });
-                            log(`Format 3 success: ${JSON.stringify(result)}`);
-                        } catch (err3) {
-                            log(`Format 3 failed: ${err3.message}`);
-                            throw err1;
+                            log(`Format C success: ${JSON.stringify(result)}`);
+                        } catch (errC) {
+                            log(`Format C failed: ${errC.message}`);
+                            
+                            // Format D: Minimal format without version
+                            try {
+                                log('Trying Format D: minimal without version...');
+                                result = await ethProvider.request({
+                                    method: 'wallet_sendCalls',
+                                    params: [{
+                                        chainId: '0x2105',
+                                        from: txParams.from,
+                                        calls: calls
+                                    }]
+                                });
+                                log(`Format D success: ${JSON.stringify(result)}`);
+                            } catch (errD) {
+                                log(`Format D failed: ${errD.message}`);
+                                throw lastError;
+                            }
                         }
                     }
                 }
@@ -5030,15 +5115,32 @@ async function sendGMTransaction() {
         }
         
         // GM Contract transaction params - call sayGM() on contract
-        // This allows CDP Paymaster to sponsor the transaction
         const contractTxParams = {
             from: userAddress,
             to: GM_CONTRACT.address,
             value: '0x0',
-            data: GM_CONTRACT.sayGMSelector // sayGM() function selector
+            data: GM_CONTRACT.sayGMSelector // sayGM() function selector = 0x41cf91d1
         };
         
         console.log('GM Contract transaction params:', contractTxParams);
+        console.log('Contract address:', GM_CONTRACT.address);
+        console.log('Function selector (sayGM):', GM_CONTRACT.sayGMSelector);
+        
+        // Verify contract exists on Base mainnet before sending
+        if (provider) {
+            try {
+                const code = await provider.request({
+                    method: 'eth_getCode',
+                    params: [GM_CONTRACT.address, 'latest']
+                });
+                console.log('Contract code check:', code ? (code.length > 10 ? 'EXISTS' : 'NOT FOUND') : 'NOT FOUND');
+                if (!code || code === '0x' || code === '0x0') {
+                    console.warn('WARNING: GM Contract may not be deployed at', GM_CONTRACT.address);
+                }
+            } catch (codeError) {
+                console.log('Could not verify contract code:', codeError.message);
+            }
+        }
         
         // ===== TRY SPONSORED TRANSACTION =====
         if (gmStatus) gmStatus.textContent = 'Sending gasless GM on Base...';
@@ -5059,8 +5161,24 @@ async function sendGMTransaction() {
             }
         } catch (sponsorError) {
             console.log('SponsoredTransactions.sendTransaction failed:', sponsorError.message);
-            // Don't fallback to paid transactions - throw error
-            throw new Error('Gasless transaction failed: ' + sponsorError.message);
+            
+            // Provide user-friendly error messages
+            let userMessage = 'Transaction failed';
+            const errorMsg = sponsorError.message?.toLowerCase() || '';
+            
+            if (errorMsg.includes('reject') || errorMsg.includes('denied') || errorMsg.includes('cancelled')) {
+                userMessage = 'Transaction cancelled. Please try again and confirm in your wallet.';
+            } else if (errorMsg.includes('insufficient') || errorMsg.includes('balance')) {
+                userMessage = 'Insufficient balance for gas fees.';
+            } else if (errorMsg.includes('network') || errorMsg.includes('rpc')) {
+                userMessage = 'Network error. Please check your connection and try again.';
+            } else if (errorMsg.includes('provider')) {
+                userMessage = 'Wallet connection issue. Please refresh and try again.';
+            } else {
+                userMessage = 'Gasless transaction failed. Please try again.';
+            }
+            
+            throw new Error(userMessage);
         }
         
         if (txHash) {
@@ -5249,10 +5367,15 @@ async function runGMDebugCheck() {
     // Check isInMiniApp
     DebugLogger.logGM(`isInFarcasterFrame: ${SponsoredTransactions.isInFarcasterFrame()}`);
     
+    // Log GM Contract info
+    DebugLogger.logGM(`GM Contract: ${GM_CONTRACT.address}`);
+    DebugLogger.logGM(`sayGM() selector: ${GM_CONTRACT.sayGMSelector}`);
+    
     // Try to get provider and capabilities
     let userAddress = null;
+    let provider = null;
     try {
-        let provider = sdk?.wallet?.ethProvider || window.ethereum;
+        provider = sdk?.wallet?.ethProvider || window.ethereum;
         if (provider) {
             DebugLogger.logGM('Checking wallet capabilities...');
             
@@ -5270,6 +5393,22 @@ async function runGMDebugCheck() {
                 }
             } catch (e) {
                 DebugLogger.logGM(`Capabilities error: ${e.message}`);
+            }
+            
+            // Check if GM contract exists
+            DebugLogger.logGM('=== Checking GM Contract ===');
+            try {
+                const code = await provider.request({
+                    method: 'eth_getCode',
+                    params: [GM_CONTRACT.address, 'latest']
+                });
+                const hasCode = code && code !== '0x' && code !== '0x0' && code.length > 10;
+                DebugLogger.logGM(`Contract code: ${hasCode ? 'EXISTS (' + code.length + ' bytes)' : 'NOT DEPLOYED'}`);
+                if (!hasCode) {
+                    DebugLogger.logGM('WARNING: GM Contract not found! Need to deploy it first.');
+                }
+            } catch (codeErr) {
+                DebugLogger.logGM(`Contract check error: ${codeErr.message}`);
             }
         }
     } catch (e) {
@@ -5306,7 +5445,7 @@ async function runGMDebugCheck() {
                         sender: userAddress,
                         nonce: '0x0',
                         initCode: '0x',
-                        callData: '0x27a80bb0', // sayGM()
+                        callData: '0x41cf91d1', // sayGM()
                         callGasLimit: '0x5208',
                         verificationGasLimit: '0x5208',
                         preVerificationGas: '0x5208',
