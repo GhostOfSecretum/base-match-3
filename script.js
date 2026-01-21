@@ -68,6 +68,12 @@ const SplashScreenManager = {
             
             // После скрытия splash screen показываем onboarding (если нужно)
             setTimeout(() => {
+                // Всегда скрываем gameContainer при переходе с splash
+                const gameContainer = document.getElementById('gameContainer');
+                if (gameContainer) {
+                    gameContainer.style.display = 'none';
+                }
+                
                 // Показываем onboarding, если пользователь его еще не видел
                 if (typeof OnboardingManager !== 'undefined' && OnboardingManager.shouldShow()) {
                     // Скрываем start menu пока показывается onboarding
@@ -246,20 +252,27 @@ const OnboardingManager = {
     
     hide() {
         if (this.screen) {
+            // Сначала убеждаемся что gameContainer скрыт
+            const gameContainer = document.getElementById('gameContainer');
+            if (gameContainer) {
+                gameContainer.style.display = 'none';
+            }
+            
+            // Показываем start menu ДО скрытия onboarding (чтобы не было мерцания)
+            const startMenu = document.getElementById('startMenu');
+            if (startMenu) {
+                startMenu.style.display = 'flex';
+                startMenu.classList.remove('hidden');
+            }
+            
+            // Теперь скрываем onboarding с анимацией
             this.screen.classList.add('hidden');
             console.log('Onboarding screen hidden');
             
-            // Remove after animation
+            // Remove from DOM after animation
             setTimeout(() => {
                 if (this.screen) {
                     this.screen.style.display = 'none';
-                }
-                
-                // Show start menu after onboarding
-                const startMenu = document.getElementById('startMenu');
-                if (startMenu) {
-                    startMenu.style.display = 'flex';
-                    startMenu.classList.remove('hidden');
                 }
             }, 400);
         }
@@ -6419,24 +6432,19 @@ async function sendSimpleDeploy() {
                 gameWrapper.style.opacity = '1';
             }
 
+            // Скрываем игровой контейнер при ошибке
             const gameContainer = document.querySelector('.game-container');
             if (gameContainer) {
-                gameContainer.style.display = 'block';
-                gameContainer.style.visibility = 'visible';
-                gameContainer.style.opacity = '1';
+                gameContainer.style.display = 'none';
+            }
+            
+            // Показываем меню при ошибке
+            const startMenu = document.getElementById('startMenu');
+            if (startMenu) {
+                startMenu.style.display = 'flex';
             }
 
-            // Показываем сообщение об ошибке пользователю
-            const gameBoard = document.getElementById('gameBoard');
-            if (gameBoard) {
-                gameBoard.innerHTML = `
-                    <div style="color: white; padding: 20px; text-align: center; background: rgba(255,0,0,0.2); border-radius: 10px;">
-                        <h3>Error loading game</h3>
-                        <p>Please refresh the page.</p>
-                        <p style="font-size: 0.8em; color: #999; margin-top: 10px;">${error.message || 'Unknown error'}</p>
-                    </div>
-                `;
-            }
+            console.error('Game initialization failed, showing menu');
         });
     }
 
