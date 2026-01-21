@@ -76,24 +76,13 @@ const SplashScreenManager = {
                     gameContainer.style.display = 'none';
                 }
                 
-                // Показываем onboarding, если пользователь его еще не видел
+                // Показываем onboarding если нужно (он перекроет меню своим z-index)
                 if (typeof OnboardingManager !== 'undefined' && OnboardingManager.shouldShow()) {
-                    // Скрываем start menu пока показывается onboarding
-                    const startMenu = document.getElementById('startMenu');
-                    if (startMenu) {
-                        startMenu.style.display = 'none';
-                        startMenu.classList.add('hidden');
-                    }
                     console.log('Showing onboarding');
                     OnboardingManager.show();
                 } else {
-                    // Показываем сразу start menu
-                    const startMenu = document.getElementById('startMenu');
-                    if (startMenu) {
-                        startMenu.classList.remove('hidden');
-                        startMenu.style.display = 'flex';
-                        console.log('Showing start menu directly');
-                    }
+                    // Меню уже видно по умолчанию
+                    console.log('Menu already visible');
                 }
             }, 100);
             
@@ -258,24 +247,16 @@ const OnboardingManager = {
     hide() {
         console.log('OnboardingManager.hide() called');
         if (this.screen) {
-            // Сначала убеждаемся что gameContainer скрыт
+            // Скрываем onboarding - меню уже видно под ним
+            this.screen.classList.add('hidden');
+            this.screen.style.display = 'none';
+            console.log('Onboarding screen hidden, menu should be visible now');
+            
+            // Убеждаемся что gameContainer скрыт
             const gameContainer = document.getElementById('gameContainer');
             if (gameContainer) {
                 gameContainer.style.display = 'none';
             }
-            
-            // Показываем start menu ДО скрытия onboarding
-            const startMenu = document.getElementById('startMenu');
-            if (startMenu) {
-                startMenu.classList.remove('hidden');
-                startMenu.style.display = 'flex';
-                console.log('Start menu shown from OnboardingManager.hide()');
-            }
-            
-            // Теперь скрываем onboarding
-            this.screen.classList.add('hidden');
-            this.screen.style.display = 'none';
-            console.log('Onboarding screen hidden');
         }
     }
 };
@@ -4366,7 +4347,6 @@ function initStartMenu() {
     function showGame() {
         console.log('showGame() called');
         if (startMenu) {
-            startMenu.classList.add('hidden');
             startMenu.style.display = 'none';
         }
         if (gameContainer) {
@@ -4378,7 +4358,6 @@ function initStartMenu() {
     function showMenu() {
         console.log('showMenu() called');
         if (startMenu) {
-            startMenu.classList.remove('hidden');
             startMenu.style.display = 'flex';
         }
         if (gameContainer) {
