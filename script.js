@@ -4247,7 +4247,7 @@ function initStartMenu() {
             const gmData = JSON.parse(localStorage.getItem('gmData') || '{}');
             gmData.lastGMDate = null;
             localStorage.setItem('gmData', JSON.stringify(gmData));
-            updateGMUI();
+            updateGMButtonState();
             const gmStatus = document.getElementById('gmStatus');
             if (gmStatus) {
                 gmStatus.textContent = 'GM reset! You can say GM again.';
