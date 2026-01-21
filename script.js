@@ -491,51 +491,62 @@ const SponsoredTransactions = {
         
         log('=== sendViaFarcasterSDK ===');
         log(`SDK keys: ${Object.keys(farcasterSDK).join(', ')}`);
-        if (farcasterSDK.wallet) {
-            log(`wallet keys: ${Object.keys(farcasterSDK.wallet).join(', ')}`);
-        }
+        log(`actions exists: ${!!farcasterSDK.actions}`);
+        log(`actions type: ${typeof farcasterSDK.actions}`);
         if (farcasterSDK.actions) {
             log(`actions keys: ${Object.keys(farcasterSDK.actions).join(', ')}`);
+            log(`sendTransaction exists: ${!!farcasterSDK.actions.sendTransaction}`);
         }
         if (statusCallback) statusCallback('Connecting to Base Account...');
         
-        // ========== PRIORITY 1: Try sdk.actions.sendTransaction first ==========
-        // This is the recommended method for Farcaster Mini Apps
-        if (farcasterSDK.actions?.sendTransaction) {
+        // ========== PRIORITY 1: Try sdk.actions.sendTransaction ==========
+        // This is the PRIMARY method for Farcaster Mini Apps - gasless by default
+        log('Checking for actions.sendTransaction...');
+        
+        if (farcasterSDK.actions && typeof farcasterSDK.actions.sendTransaction === 'function') {
             try {
-                log('Trying sdk.actions.sendTransaction (recommended for Mini Apps)...');
+                log('>>> USING sdk.actions.sendTransaction (PRIMARY METHOD) <<<');
                 if (statusCallback) statusCallback('Sending gasless transaction...');
                 
-                // Format according to Farcaster docs - use CAIP-2 chain ID
+                // Format according to Farcaster Frame v2 docs
                 const txRequest = {
                     chainId: 'eip155:8453', // Base mainnet in CAIP-2 format
                     to: txParams.to,
-                    value: '0', // Value as string without 0x prefix
+                    value: '0', // Value as decimal string
                     data: txParams.data || '0x'
                 };
                 
-                log(`actions.sendTransaction request: ${JSON.stringify(txRequest)}`);
+                log(`TX Request: ${JSON.stringify(txRequest)}`);
                 
                 const result = await farcasterSDK.actions.sendTransaction(txRequest);
                 
-                log(`actions.sendTransaction result: ${JSON.stringify(result)}`);
+                log(`TX Result: ${JSON.stringify(result)}`);
                 
-                // Result can be { transactionHash } or { receipt: { transactionHash } }
-                const txHash = result?.transactionHash || result?.receipt?.transactionHash || result?.hash || result;
+                // Parse result - could be hash string or object
+                let txHash = null;
+                if (typeof result === 'string') {
+                    txHash = result;
+                } else if (result) {
+                    txHash = result.transactionHash || result.receipt?.transactionHash || result.hash;
+                }
                 
                 if (txHash) {
-                    log(`SUCCESS: Gasless tx hash: ${txHash}`);
+                    log(`SUCCESS! Gasless tx hash: ${txHash}`);
                     return {
                         success: true,
                         sponsored: true,
                         txHash: txHash
                     };
+                } else {
+                    log('No txHash in result, continuing...');
                 }
             } catch (actionsError) {
-                log(`actions.sendTransaction ERROR: ${actionsError.message}`);
-                log(`Error details: ${JSON.stringify({code: actionsError.code, data: actionsError.data})}`);
-                // Continue to try other methods
+                log(`actions.sendTransaction FAILED: ${actionsError.message}`);
+                log(`Error code: ${actionsError.code}, data: ${JSON.stringify(actionsError.data)}`);
+                // Don't throw - try wallet_sendCalls next
             }
+        } else {
+            log('actions.sendTransaction NOT AVAILABLE - trying wallet_sendCalls');
         }
         
         // Get the Ethereum provider from SDK
