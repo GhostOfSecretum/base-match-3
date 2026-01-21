@@ -5888,16 +5888,17 @@ async function sendSimpleGM() {
             throw new Error('No account connected');
         }
         
-        // Send transaction to GM contract
+        // Send simple self-transfer as GM (0 ETH to self)
+        // This avoids issues with unverified contracts
         if (gmStatus) gmStatus.textContent = 'Please confirm transaction...';
         
         const txHash = await provider.request({
             method: 'eth_sendTransaction',
             params: [{
                 from: from,
-                to: '0x56Fa8D9d0Ba5C17350163D8F632f734996F4944A', // GM Contract
+                to: from, // Send to self
                 value: '0x0',
-                data: '0x41cf91d1' // sayGM()
+                data: '0x474d' // "GM" in hex
             }]
         });
         
