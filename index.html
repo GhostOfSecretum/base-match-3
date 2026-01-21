@@ -1048,8 +1048,12 @@
                         <p class="streak-description">Send a GM transaction on Base to increase your streak!</p>
                     </div>
                 </div>
+                <div id="gmDebugPanel" class="debug-panel-inline" style="display: none; margin-top: 15px; background: rgba(0,0,0,0.8); border: 1px solid #0f0; border-radius: 8px; padding: 10px; max-height: 150px; overflow-y: auto;">
+                    <div style="color: #0f0; font-family: monospace; font-size: 11px; white-space: pre-wrap;" id="gmDebugContent">Debug logs will appear here...</div>
+                </div>
                 <div class="modal-footer">
-                    <button id="resetGMBtn" class="btn btn-secondary" style="margin-right: 10px;">🔄 Reset GM (Test)</button>
+                    <button id="gmDebugBtn" class="btn btn-secondary" style="margin-right: 10px;">🔧 Debug</button>
+                    <button id="resetGMBtn" class="btn btn-secondary" style="margin-right: 10px;">🔄 Reset</button>
                     <button id="closeDayStreakBtn" class="btn btn-primary">Close</button>
                 </div>
             </div>
@@ -1121,9 +1125,13 @@ contract SimpleStorage {
                             <div class="history-header">Previously Deployed:</div>
                             <div id="historyList" class="history-list"></div>
                         </div>
+                        <div id="deployDebugPanel" class="debug-panel-inline" style="display: none; margin-top: 15px; background: rgba(0,0,0,0.8); border: 1px solid #0f0; border-radius: 8px; padding: 10px; max-height: 150px; overflow-y: auto;">
+                            <div style="color: #0f0; font-family: monospace; font-size: 11px; white-space: pre-wrap;" id="deployDebugContent">Debug logs will appear here...</div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
+                    <button id="deployDebugBtn" class="btn btn-secondary" style="margin-right: 10px;">🔧 Debug</button>
                     <button id="closeDeployBtn" class="btn btn-primary">Close</button>
                 </div>
             </div>

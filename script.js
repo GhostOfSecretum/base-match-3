@@ -474,14 +474,23 @@ const SponsoredTransactions = {
      * Base App automatically provides paymaster capabilities for sponsored transactions
      */
     async sendViaFarcasterSDK(txParams, statusCallback) {
+        const log = (msg) => {
+            console.log('[SDK]', msg);
+            if (window.DebugLogger) {
+                window.DebugLogger.logGM(msg);
+                window.DebugLogger.logDeploy(msg);
+            }
+        };
+        
         const farcasterSDK = this.getFarcasterSDK();
         
         if (!farcasterSDK) {
+            log('ERROR: Farcaster SDK not available');
             throw new Error('Farcaster SDK not available');
         }
         
-        console.log('=== sendViaFarcasterSDK ===');
-        console.log('SDK keys:', Object.keys(farcasterSDK));
+        log('=== sendViaFarcasterSDK ===');
+        log(`SDK keys: ${Object.keys(farcasterSDK).join(', ')}`);
         if (statusCallback) statusCallback('Connecting to Base Account...');
         
         // Get the Ethereum provider from SDK
@@ -489,21 +498,22 @@ const SponsoredTransactions = {
         
         if (farcasterSDK.wallet?.ethProvider) {
             ethProvider = farcasterSDK.wallet.ethProvider;
-            console.log('Got ethProvider from sdk.wallet.ethProvider');
+            log('Got ethProvider from sdk.wallet.ethProvider');
         } else if (farcasterSDK.wallet?.getEthereumProvider) {
             ethProvider = await farcasterSDK.wallet.getEthereumProvider();
-            console.log('Got ethProvider from sdk.wallet.getEthereumProvider()');
+            log('Got ethProvider from sdk.wallet.getEthereumProvider()');
         } else if (window.ethereum) {
             ethProvider = window.ethereum;
-            console.log('Fallback to window.ethereum');
+            log('Fallback to window.ethereum');
         }
         
         if (!ethProvider) {
+            log('ERROR: No Ethereum provider available');
             throw new Error('No Ethereum provider available');
         }
         
         // Step 1: Get wallet capabilities to check for paymaster support
-        console.log('Checking wallet capabilities...');
+        log('Checking wallet capabilities...');
         if (statusCallback) statusCallback('Checking sponsorship...');
         
         let capabilities = null;
@@ -515,7 +525,7 @@ const SponsoredTransactions = {
                 params: [txParams.from]
             });
             
-            console.log('wallet_getCapabilities response:', JSON.stringify(capabilities, null, 2));
+            log(`wallet_getCapabilities response: ${JSON.stringify(capabilities)}`);
             
             // Check for paymaster on Base (chainId 8453)
             const baseChainId = '8453';
@@ -523,26 +533,28 @@ const SponsoredTransactions = {
                                     capabilities?.['0x2105'] || 
                                     capabilities?.['eip155:8453'];
             
-            console.log('Base capabilities:', baseCapabilities);
+            log(`Base capabilities: ${JSON.stringify(baseCapabilities)}`);
             
             if (baseCapabilities?.paymasterService) {
-                console.log('paymasterService found:', baseCapabilities.paymasterService);
+                log(`paymasterService: ${JSON.stringify(baseCapabilities.paymasterService)}`);
                 
                 if (baseCapabilities.paymasterService.supported) {
                     // Base App provides the paymaster URL
                     paymasterUrl = baseCapabilities.paymasterService.url;
-                    console.log('Paymaster URL from capabilities:', paymasterUrl);
+                    log(`Paymaster URL: ${paymasterUrl}`);
                 }
+            } else {
+                log('No paymasterService in capabilities');
             }
         } catch (capError) {
-            console.log('wallet_getCapabilities failed:', capError.message);
+            log(`wallet_getCapabilities error: ${capError.message}`);
             // Continue without capabilities - will try regular transaction
         }
         
         // Step 2: Try wallet_sendCalls with paymaster if available
         if (paymasterUrl || capabilities) {
             try {
-                console.log('Attempting wallet_sendCalls with paymaster...');
+                log('Attempting wallet_sendCalls with paymaster...');
                 if (statusCallback) statusCallback('Sending gasless transaction...');
                 
                 const calls = [{
@@ -555,9 +567,11 @@ const SponsoredTransactions = {
                 const txCapabilities = {};
                 if (paymasterUrl) {
                     txCapabilities.paymasterService = { url: paymasterUrl };
+                    log(`Using paymaster URL: ${paymasterUrl}`);
                 } else {
                     // Let Base App use its default paymaster
                     txCapabilities.paymasterService = true;
+                    log('Using default paymaster (true)');
                 }
                 
                 const sendCallsParams = {
@@ -568,14 +582,14 @@ const SponsoredTransactions = {
                     capabilities: txCapabilities
                 };
                 
-                console.log('wallet_sendCalls params:', JSON.stringify(sendCallsParams, null, 2));
+                log(`wallet_sendCalls params: ${JSON.stringify(sendCallsParams)}`);
                 
                 const result = await ethProvider.request({
                     method: 'wallet_sendCalls',
                     params: [sendCallsParams]
                 });
                 
-                console.log('wallet_sendCalls result:', result);
+                log(`wallet_sendCalls result: ${JSON.stringify(result)}`);
                 
                 // Parse result - could be bundle ID or tx hash
                 let txHash = result;
@@ -586,10 +600,12 @@ const SponsoredTransactions = {
                     
                     // If we got a bundle ID, wait for receipt
                     if (result.id && !txHash) {
+                        log(`Got bundle ID: ${result.id}, waiting for receipt...`);
                         txHash = await this.waitForBundleReceipt(ethProvider, result.id);
                     }
                 }
                 
+                log(`SUCCESS: Sponsored tx hash: ${txHash}`);
                 return {
                     success: true,
                     sponsored: true,
@@ -597,14 +613,13 @@ const SponsoredTransactions = {
                 };
                 
             } catch (sendCallsError) {
-                console.log('wallet_sendCalls failed:', sendCallsError.message);
-                console.log('Full error:', sendCallsError);
+                log(`wallet_sendCalls ERROR: ${sendCallsError.message}`);
                 // Continue to fallback
             }
         }
         
         // Step 3: Fallback to eth_sendTransaction
-        console.log('Falling back to eth_sendTransaction...');
+        log('Falling back to eth_sendTransaction...');
         if (statusCallback) statusCallback('Confirm in wallet...');
         
         try {
@@ -618,7 +633,7 @@ const SponsoredTransactions = {
                 }]
             });
             
-            console.log('eth_sendTransaction result:', txHash);
+            log(`eth_sendTransaction result: ${txHash}`);
             
             return {
                 success: true,
@@ -626,13 +641,13 @@ const SponsoredTransactions = {
                 txHash: txHash
             };
         } catch (txError) {
-            console.log('eth_sendTransaction failed:', txError.message);
+            log(`eth_sendTransaction ERROR: ${txError.message}`);
         }
         
         // Step 4: Try sdk.actions.sendTransaction as last resort
         if (farcasterSDK.actions?.sendTransaction) {
             try {
-                console.log('Trying sdk.actions.sendTransaction...');
+                log('Trying sdk.actions.sendTransaction...');
                 if (statusCallback) statusCallback('Sending via Farcaster...');
                 
                 const result = await farcasterSDK.actions.sendTransaction({
@@ -645,7 +660,7 @@ const SponsoredTransactions = {
                     }
                 });
                 
-                console.log('actions.sendTransaction result:', result);
+                log(`actions.sendTransaction result: ${JSON.stringify(result)}`);
                 
                 return {
                     success: true,
@@ -653,10 +668,11 @@ const SponsoredTransactions = {
                     txHash: result?.transactionHash || result?.hash || result
                 };
             } catch (actionsError) {
-                console.log('actions.sendTransaction failed:', actionsError.message);
+                log(`actions.sendTransaction ERROR: ${actionsError.message}`);
             }
         }
         
+        log('ERROR: All transaction methods failed');
         throw new Error('All transaction methods failed');
     },
     
@@ -5110,6 +5126,57 @@ async function sendGMTransaction() {
     }
 }
 
+// Debug logging for GM and Deploy panels
+const DebugLogger = {
+    gmLogs: [],
+    deployLogs: [],
+    
+    logGM(msg) {
+        const time = new Date().toLocaleTimeString();
+        const logEntry = `[${time}] ${msg}`;
+        this.gmLogs.push(logEntry);
+        console.log('[GM]', msg);
+        this.updateGMPanel();
+    },
+    
+    logDeploy(msg) {
+        const time = new Date().toLocaleTimeString();
+        const logEntry = `[${time}] ${msg}`;
+        this.deployLogs.push(logEntry);
+        console.log('[Deploy]', msg);
+        this.updateDeployPanel();
+    },
+    
+    updateGMPanel() {
+        const content = document.getElementById('gmDebugContent');
+        if (content) {
+            content.textContent = this.gmLogs.slice(-20).join('\n');
+            content.scrollTop = content.scrollHeight;
+        }
+    },
+    
+    updateDeployPanel() {
+        const content = document.getElementById('deployDebugContent');
+        if (content) {
+            content.textContent = this.deployLogs.slice(-20).join('\n');
+            content.scrollTop = content.scrollHeight;
+        }
+    },
+    
+    clearGM() {
+        this.gmLogs = [];
+        this.updateGMPanel();
+    },
+    
+    clearDeploy() {
+        this.deployLogs = [];
+        this.updateDeployPanel();
+    }
+};
+
+// Make it globally accessible
+window.DebugLogger = DebugLogger;
+
 // Initialize GM button
 function initGMButton() {
     const gmButton = document.getElementById('gmButton');
@@ -5117,6 +5184,8 @@ function initGMButton() {
         gmButton.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
+            DebugLogger.clearGM();
+            DebugLogger.logGM('GM button clicked');
             sendGMTransaction();
         });
         
@@ -5124,6 +5193,77 @@ function initGMButton() {
         updateGMButtonState();
         console.log('GM button initialized');
     }
+    
+    // Initialize GM Debug button
+    const gmDebugBtn = document.getElementById('gmDebugBtn');
+    const gmDebugPanel = document.getElementById('gmDebugPanel');
+    if (gmDebugBtn && gmDebugPanel) {
+        gmDebugBtn.addEventListener('click', () => {
+            if (gmDebugPanel.style.display === 'none') {
+                gmDebugPanel.style.display = 'block';
+                gmDebugBtn.textContent = '🔧 Hide Debug';
+                // Run debug check
+                runGMDebugCheck();
+            } else {
+                gmDebugPanel.style.display = 'none';
+                gmDebugBtn.textContent = '🔧 Debug';
+            }
+        });
+    }
+}
+
+// Run debug check for GM
+async function runGMDebugCheck() {
+    DebugLogger.logGM('=== Debug Check Started ===');
+    
+    // Check Farcaster SDK
+    const sdk = SponsoredTransactions.getFarcasterSDK();
+    DebugLogger.logGM(`Farcaster SDK: ${sdk ? 'Found' : 'Not found'}`);
+    
+    if (sdk) {
+        DebugLogger.logGM(`SDK keys: ${Object.keys(sdk).join(', ')}`);
+        if (sdk.wallet) {
+            DebugLogger.logGM(`wallet keys: ${Object.keys(sdk.wallet).join(', ')}`);
+        }
+    }
+    
+    // Check window.ethereum
+    DebugLogger.logGM(`window.ethereum: ${window.ethereum ? 'Found' : 'Not found'}`);
+    
+    // Check isInMiniApp
+    DebugLogger.logGM(`isInFarcasterFrame: ${SponsoredTransactions.isInFarcasterFrame()}`);
+    
+    // Try to get provider and capabilities
+    try {
+        let provider = sdk?.wallet?.ethProvider || window.ethereum;
+        if (provider) {
+            DebugLogger.logGM('Checking wallet capabilities...');
+            
+            try {
+                const accounts = await provider.request({ method: 'eth_accounts' });
+                DebugLogger.logGM(`Accounts: ${accounts?.length > 0 ? accounts[0].slice(0,10) + '...' : 'None'}`);
+                
+                if (accounts?.[0]) {
+                    const caps = await provider.request({
+                        method: 'wallet_getCapabilities',
+                        params: [accounts[0]]
+                    });
+                    DebugLogger.logGM(`Capabilities: ${JSON.stringify(caps, null, 2)}`);
+                }
+            } catch (e) {
+                DebugLogger.logGM(`Capabilities error: ${e.message}`);
+            }
+        }
+    } catch (e) {
+        DebugLogger.logGM(`Provider error: ${e.message}`);
+    }
+    
+    // Check sponsorship
+    const sponsorAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
+    DebugLogger.logGM(`Sponsorship available: ${sponsorAvailable}`);
+    DebugLogger.logGM(`Sponsor type: ${SponsoredTransactions.sponsorType || 'none'}`);
+    
+    DebugLogger.logGM('=== Debug Check Complete ===');
 }
 
 // ==================== DEPLOY CONTRACT FUNCTIONS ====================
@@ -5365,11 +5505,15 @@ function resetForNewDeploy() {
 function initDeployContract() {
     const deployBtn = document.getElementById('deployContractBtn');
     const deployAnotherBtn = document.getElementById('deployAnotherBtn');
+    const deployDebugBtn = document.getElementById('deployDebugBtn');
+    const deployDebugPanel = document.getElementById('deployDebugPanel');
     
     if (deployBtn) {
         deployBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
+            DebugLogger.clearDeploy();
+            DebugLogger.logDeploy('Deploy button clicked');
             await deployContract();
         });
         console.log('Deploy contract button initialized');
@@ -5383,6 +5527,83 @@ function initDeployContract() {
         });
         console.log('Deploy another button initialized');
     }
+    
+    // Initialize Deploy Debug button
+    if (deployDebugBtn && deployDebugPanel) {
+        deployDebugBtn.addEventListener('click', () => {
+            if (deployDebugPanel.style.display === 'none') {
+                deployDebugPanel.style.display = 'block';
+                deployDebugBtn.textContent = '🔧 Hide Debug';
+                // Run debug check
+                runDeployDebugCheck();
+            } else {
+                deployDebugPanel.style.display = 'none';
+                deployDebugBtn.textContent = '🔧 Debug';
+            }
+        });
+    }
+}
+
+// Run debug check for Deploy
+async function runDeployDebugCheck() {
+    DebugLogger.logDeploy('=== Debug Check Started ===');
+    
+    // Check ethers.js
+    DebugLogger.logDeploy(`ethers.js: ${typeof ethers !== 'undefined' ? 'Loaded' : 'Not loaded'}`);
+    
+    // Check Farcaster SDK
+    const sdk = SponsoredTransactions.getFarcasterSDK();
+    DebugLogger.logDeploy(`Farcaster SDK: ${sdk ? 'Found' : 'Not found'}`);
+    
+    if (sdk) {
+        DebugLogger.logDeploy(`SDK keys: ${Object.keys(sdk).join(', ')}`);
+    }
+    
+    // Check window.ethereum
+    DebugLogger.logDeploy(`window.ethereum: ${window.ethereum ? 'Found' : 'Not found'}`);
+    
+    // Try to get provider and capabilities
+    try {
+        let provider = sdk?.wallet?.ethProvider || window.ethereum;
+        if (provider) {
+            DebugLogger.logDeploy('Checking wallet...');
+            
+            try {
+                const accounts = await provider.request({ method: 'eth_accounts' });
+                DebugLogger.logDeploy(`Accounts: ${accounts?.length > 0 ? accounts[0].slice(0,10) + '...' : 'None'}`);
+                
+                if (accounts?.[0]) {
+                    try {
+                        const chainId = await provider.request({ method: 'eth_chainId' });
+                        DebugLogger.logDeploy(`Chain ID: ${chainId} (${parseInt(chainId, 16)})`);
+                    } catch (e) {
+                        DebugLogger.logDeploy(`Chain error: ${e.message}`);
+                    }
+                    
+                    try {
+                        const caps = await provider.request({
+                            method: 'wallet_getCapabilities',
+                            params: [accounts[0]]
+                        });
+                        DebugLogger.logDeploy(`Capabilities: ${JSON.stringify(caps, null, 2)}`);
+                    } catch (e) {
+                        DebugLogger.logDeploy(`Capabilities error: ${e.message}`);
+                    }
+                }
+            } catch (e) {
+                DebugLogger.logDeploy(`Accounts error: ${e.message}`);
+            }
+        }
+    } catch (e) {
+        DebugLogger.logDeploy(`Provider error: ${e.message}`);
+    }
+    
+    // Check sponsorship
+    const sponsorAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
+    DebugLogger.logDeploy(`Sponsorship available: ${sponsorAvailable}`);
+    DebugLogger.logDeploy(`Sponsor type: ${SponsoredTransactions.sponsorType || 'none'}`);
+    
+    DebugLogger.logDeploy('=== Debug Check Complete ===');
 }
 
 // Deploy smart contract
