@@ -39,7 +39,7 @@
           "name":"Base Match-3",
           "url":"https://base-match-3.vercel.app",
           "splashImageUrl":"https://base-match-3.vercel.app/splash.png?v=2",
-          "splashBackgroundColor":"#0052FF"
+          "splashBackgroundColor":"#1434F8"
           }
       }
     }' />
@@ -134,12 +134,8 @@
             display: block !important;
         }
 
-        /* Убеждаемся, что game-container виден */
-        .game-container {
-            display: block !important;
-            visibility: visible !important;
-            opacity: 1 !important;
-        }
+        /* game-container управляется через JavaScript */
+        /* НЕ используем !important чтобы позволить JS скрывать контейнер */
 
         /* Критично: убеждаемся что игровая доска видна даже до инициализации */
         #gameBoard {

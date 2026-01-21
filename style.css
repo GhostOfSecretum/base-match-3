@@ -13,7 +13,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background: #0052FF; /* Base синий официальный */
+    background: #1434F8; /* Кастомный синий */
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -593,10 +593,6 @@ body::before {
     transform: translateZ(0);
     -webkit-transform: translateZ(0);
     transition: background-color 0.3s ease, border-color 0.3s ease;
-    /* Критично для Farcaster - убеждаемся что контейнер виден */
-    display: block !important;
-    visibility: visible !important;
-    opacity: 1 !important;
 }
 
 .game-container::before {

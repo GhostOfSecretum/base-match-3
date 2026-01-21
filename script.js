@@ -2222,6 +2222,9 @@ class MatchThreePro {
             gameBoard: null,
             cells: new Map() // Кеш ячеек для быстрого доступа
         };
+        
+        // Флаг для предотвращения повторной установки обработчиков событий
+        this.eventListenersInitialized = false;
     }
 
     // Методы для работы с именем игрока
@@ -2324,6 +2327,10 @@ class MatchThreePro {
                 const containerStyles = window.getComputedStyle(gameContainer);
                 console.log('Game container visible:', containerRect.width > 0 && containerRect.height > 0);
                 console.log('Game container display:', containerStyles.display);
+                
+                // ВАЖНО: убеждаемся что game container скрыт после инициализации
+                // Игра должна показываться только когда пользователь нажмет "New Game"
+                gameContainer.style.display = 'none';
             }
         } catch (error) {
             console.error('Error in init():', error);
@@ -4072,10 +4079,23 @@ class MatchThreePro {
         this.selectedCell = null;
         this.isProcessing = false;
         document.getElementById('gameOverModal').classList.remove('show');
-        await this.init();
+        
+        // Не вызываем полный init() чтобы избежать дублирования обработчиков событий
+        // Просто создаем новую доску и обновляем UI
+        this.createBoard();
+        this.render();
+        this.removeInitialMatches();
+        this.updateUI();
     }
 
     setupEventListeners() {
+        // Защита от повторной установки обработчиков событий
+        if (this.eventListenersInitialized) {
+            console.log('Event listeners already initialized, skipping...');
+            return;
+        }
+        this.eventListenersInitialized = true;
+        
         // Функция для активации звуков при первом взаимодействии
         const activateSoundsOnce = () => {
             if (!this.soundManager.initialized) {
