@@ -68,11 +68,12 @@ const SplashScreenManager = {
             
             // После скрытия splash screen показываем onboarding (если нужно)
             setTimeout(() => {
+                console.log('SplashScreenManager: showing next screen');
+                
                 // Всегда скрываем gameContainer при переходе с splash
                 const gameContainer = document.getElementById('gameContainer');
                 if (gameContainer) {
                     gameContainer.style.display = 'none';
-                    gameContainer.style.visibility = 'hidden';
                 }
                 
                 // Показываем onboarding, если пользователь его еще не видел
@@ -81,17 +82,17 @@ const SplashScreenManager = {
                     const startMenu = document.getElementById('startMenu');
                     if (startMenu) {
                         startMenu.style.display = 'none';
-                        startMenu.style.visibility = 'hidden';
+                        startMenu.classList.add('hidden');
                     }
+                    console.log('Showing onboarding');
                     OnboardingManager.show();
                 } else {
                     // Показываем сразу start menu
                     const startMenu = document.getElementById('startMenu');
                     if (startMenu) {
-                        startMenu.style.display = 'flex';
-                        startMenu.style.visibility = 'visible';
-                        startMenu.style.opacity = '1';
                         startMenu.classList.remove('hidden');
+                        startMenu.style.display = 'flex';
+                        console.log('Showing start menu directly');
                     }
                 }
             }, 100);
@@ -255,33 +256,26 @@ const OnboardingManager = {
     },
     
     hide() {
+        console.log('OnboardingManager.hide() called');
         if (this.screen) {
             // Сначала убеждаемся что gameContainer скрыт
             const gameContainer = document.getElementById('gameContainer');
             if (gameContainer) {
                 gameContainer.style.display = 'none';
-                gameContainer.style.visibility = 'hidden';
             }
             
-            // Показываем start menu ДО скрытия onboarding (чтобы не было мерцания)
+            // Показываем start menu ДО скрытия onboarding
             const startMenu = document.getElementById('startMenu');
             if (startMenu) {
-                startMenu.style.display = 'flex';
-                startMenu.style.visibility = 'visible';
-                startMenu.style.opacity = '1';
                 startMenu.classList.remove('hidden');
+                startMenu.style.display = 'flex';
+                console.log('Start menu shown from OnboardingManager.hide()');
             }
             
-            // Теперь скрываем onboarding с анимацией
+            // Теперь скрываем onboarding
             this.screen.classList.add('hidden');
+            this.screen.style.display = 'none';
             console.log('Onboarding screen hidden');
-            
-            // Remove from DOM after animation
-            setTimeout(() => {
-                if (this.screen) {
-                    this.screen.style.display = 'none';
-                }
-            }, 400);
         }
     }
 };
@@ -4370,28 +4364,25 @@ function initStartMenu() {
 
     // Функция для скрытия меню и показа игры
     function showGame() {
+        console.log('showGame() called');
         if (startMenu) {
             startMenu.classList.add('hidden');
             startMenu.style.display = 'none';
         }
         if (gameContainer) {
             gameContainer.style.display = 'block';
-            gameContainer.style.visibility = 'visible';
-            gameContainer.style.opacity = '1';
         }
     }
 
     // Функция для показа меню и скрытия игры
     function showMenu() {
+        console.log('showMenu() called');
         if (startMenu) {
             startMenu.classList.remove('hidden');
             startMenu.style.display = 'flex';
-            startMenu.style.visibility = 'visible';
-            startMenu.style.opacity = '1';
         }
         if (gameContainer) {
             gameContainer.style.display = 'none';
-            gameContainer.style.visibility = 'hidden';
         }
     }
 

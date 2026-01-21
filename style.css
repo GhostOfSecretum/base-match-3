@@ -117,6 +117,7 @@
 }
 
 .onboarding-screen.hidden {
+    display: none !important;
     opacity: 0;
     visibility: hidden;
     pointer-events: none;
@@ -1849,14 +1850,10 @@ body::before {
     align-items: center;
     justify-content: center;
     background: var(--bg-color);
-    transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 
 .start-menu.hidden {
-    display: none;
-    visibility: hidden;
-    opacity: 0;
-    pointer-events: none;
+    display: none !important;
 }
 
 .start-menu-content {
