@@ -4240,6 +4240,22 @@ function initStartMenu() {
         });
     }
 
+    // Reset GM button for testing
+    const resetGMBtn = document.getElementById('resetGMBtn');
+    if (resetGMBtn) {
+        resetGMBtn.addEventListener('click', () => {
+            const gmData = JSON.parse(localStorage.getItem('gmData') || '{}');
+            gmData.lastGMDate = null;
+            localStorage.setItem('gmData', JSON.stringify(gmData));
+            updateGMUI();
+            const gmStatus = document.getElementById('gmStatus');
+            if (gmStatus) {
+                gmStatus.textContent = 'GM reset! You can say GM again.';
+                gmStatus.style.color = '#4ade80';
+            }
+        });
+    }
+
     // Deploy Contract - открываем модальное окно для деплоя
     if (menuDeployBtn && deployModal) {
         menuDeployBtn.addEventListener('click', (e) => {
