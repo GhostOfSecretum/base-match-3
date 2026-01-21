@@ -672,12 +672,32 @@ const SponsoredTransactions = {
             // Continue without capabilities - will try regular transaction
         }
         
-        // Step 2: Try wallet_sendCalls for Base Mini App
-        // Base Account supports gasless transactions via paymasterService
+        // Step 2: Try wallet_sendCalls with CDP Paymaster URL for Base Mini App
         const baseCapabilities = capabilities?.['0x2105'] || capabilities?.['8453'];
         if (baseCapabilities?.paymasterService?.supported) {
             try {
-                log('paymasterService is supported - trying Base Mini App sponsorship');
+                log('paymasterService is supported - getting CDP Paymaster URL...');
+                if (statusCallback) statusCallback('Preparing gasless transaction...');
+                
+                // Get paymaster URL from our API
+                let paymasterUrl = null;
+                try {
+                    const paymasterResponse = await fetch('/api/paymaster', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: 'sendSponsoredTransaction' })
+                    });
+                    const paymasterData = await paymasterResponse.json();
+                    log(`Paymaster API response: ${JSON.stringify(paymasterData)}`);
+                    
+                    if (paymasterData.success && paymasterData.paymasterServiceUrl) {
+                        paymasterUrl = paymasterData.paymasterServiceUrl;
+                        log(`Got CDP Paymaster URL`);
+                    }
+                } catch (apiErr) {
+                    log(`Paymaster API error: ${apiErr.message}`);
+                }
+                
                 if (statusCallback) statusCallback('Sending gasless transaction...');
                 
                 const calls = [{
@@ -687,33 +707,15 @@ const SponsoredTransactions = {
                 }];
                 
                 log(`Calls: ${JSON.stringify(calls)}`);
+                log(`Paymaster URL: ${paymasterUrl ? 'configured' : 'not available'}`);
                 
                 let result;
                 let lastError = null;
                 
-                // For Base Mini Apps, try wallet_sendCalls without specifying paymaster URL
-                // Base App will use its built-in sponsorship if available
-                
-                // Format 1: Simple wallet_sendCalls - let Base App decide on sponsorship
-                try {
-                    log('Trying Format 1: wallet_sendCalls (Base App auto-sponsor)...');
-                    result = await ethProvider.request({
-                        method: 'wallet_sendCalls',
-                        params: [{
-                            version: '1.0',
-                            chainId: '0x2105',
-                            from: txParams.from,
-                            calls: calls
-                        }]
-                    });
-                    log(`Format 1 success: ${JSON.stringify(result)}`);
-                } catch (err1) {
-                    log(`Format 1 failed: ${err1.message}`);
-                    lastError = err1;
-                    
-                    // Format 2: With empty paymasterService capabilities
+                // Format 1: wallet_sendCalls with CDP Paymaster URL
+                if (paymasterUrl) {
                     try {
-                        log('Trying Format 2: with paymasterService capability...');
+                        log('Trying Format 1: wallet_sendCalls with CDP Paymaster URL...');
                         result = await ethProvider.request({
                             method: 'wallet_sendCalls',
                             params: [{
@@ -722,30 +724,61 @@ const SponsoredTransactions = {
                                 from: txParams.from,
                                 calls: calls,
                                 capabilities: {
-                                    paymasterService: {}
+                                    paymasterService: {
+                                        url: paymasterUrl
+                                    }
+                                }
+                            }]
+                        });
+                        log(`Format 1 success: ${JSON.stringify(result)}`);
+                    } catch (err1) {
+                        log(`Format 1 failed: ${err1.message}`);
+                        lastError = err1;
+                    }
+                }
+                
+                // Format 2: Without version, with paymaster URL
+                if (!result && paymasterUrl) {
+                    try {
+                        log('Trying Format 2: without version, with paymaster URL...');
+                        result = await ethProvider.request({
+                            method: 'wallet_sendCalls',
+                            params: [{
+                                chainId: '0x2105',
+                                from: txParams.from,
+                                calls: calls,
+                                capabilities: {
+                                    paymasterService: {
+                                        url: paymasterUrl
+                                    }
                                 }
                             }]
                         });
                         log(`Format 2 success: ${JSON.stringify(result)}`);
                     } catch (err2) {
                         log(`Format 2 failed: ${err2.message}`);
-                        
-                        // Format 3: Without version field
-                        try {
-                            log('Trying Format 3: without version...');
-                            result = await ethProvider.request({
-                                method: 'wallet_sendCalls',
-                                params: [{
-                                    chainId: '0x2105',
-                                    from: txParams.from,
-                                    calls: calls
-                                }]
-                            });
-                            log(`Format 3 success: ${JSON.stringify(result)}`);
-                        } catch (err3) {
-                            log(`Format 3 failed: ${err3.message}`);
-                            throw lastError;
-                        }
+                        lastError = lastError || err2;
+                    }
+                }
+                
+                // Format 3: Simple wallet_sendCalls without paymaster (fallback)
+                if (!result) {
+                    try {
+                        log('Trying Format 3: simple wallet_sendCalls...');
+                        result = await ethProvider.request({
+                            method: 'wallet_sendCalls',
+                            params: [{
+                                version: '1.0',
+                                chainId: '0x2105',
+                                from: txParams.from,
+                                calls: calls
+                            }]
+                        });
+                        log(`Format 3 success: ${JSON.stringify(result)}`);
+                    } catch (err3) {
+                        log(`Format 3 failed: ${err3.message}`);
+                        if (lastError) throw lastError;
+                        throw err3;
                     }
                 }
                 
