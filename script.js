@@ -4097,8 +4097,20 @@ class MatchThreePro {
         const backBtn = document.getElementById('backBtn');
         if (backBtn) {
             backBtn.addEventListener('click', () => {
+                console.log('Back button clicked');
                 if (window.showGameMenu) {
                     window.showGameMenu();
+                } else {
+                    // Fallback: напрямую показываем меню и скрываем игру
+                    console.log('showGameMenu not found, using fallback');
+                    const startMenu = document.getElementById('startMenu');
+                    const gameContainer = document.getElementById('gameContainer');
+                    if (startMenu) {
+                        startMenu.style.display = 'flex';
+                    }
+                    if (gameContainer) {
+                        gameContainer.style.display = 'none';
+                    }
                 }
             });
         }
