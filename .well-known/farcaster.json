@@ -15,7 +15,7 @@
     "subtitle": "Fast, fun, crypto match-3",
     "description": "Match crypto tokens in this fast-paced puzzle game. Create combos, unlock special tokens, and climb the leaderboard!",
     "screenshotUrls": [
-      "https://base-match-3.vercel.app/splash-bg.PNG"
+      "https://base-match-3.vercel.app/screenshot-1.png"
     ],
     "primaryCategory": "games",
     "tags": ["match-3", "puzzle", "crypto", "base", "gaming"],
@@ -23,7 +23,7 @@
     "tagline": "Match crypto tokens",
     "ogTitle": "Base Match-3",
     "ogDescription": "Match crypto tokens in this fast-paced puzzle game on Base.",
-    "ogImageUrl": "https://base-match-3.vercel.app/splash-bg.PNG",
+    "ogImageUrl": "https://base-match-3.vercel.app/og.png",
     "noindex": false
   }
 }
