@@ -244,25 +244,36 @@ async function handleSponsorUserOperation(req, res, apiKey, userOp) {
 /**
  * Send a sponsored transaction using wallet_sendCalls
  * This is the simplified approach for EIP-5792 compatible wallets
+ * Returns the paymaster service URL for client-side wallet_sendCalls
  */
 async function handleSendSponsoredTransaction(req, res, apiKey, calls) {
     try {
-        // Build the paymaster service URL with API key in path
+        // CDP Paymaster URL format: https://api.developer.coinbase.com/rpc/v1/base/{API_KEY}
         const paymasterServiceUrl = getCdpPaymasterUrl(apiKey);
 
         console.log('Returning paymaster service config for wallet_sendCalls');
+        console.log('Paymaster URL (masked):', paymasterServiceUrl.replace(apiKey, '***'));
 
-        // Return the configuration for client-side wallet_sendCalls
+        // Return the configuration for client-side wallet_sendCalls (EIP-5792)
+        // The paymasterServiceUrl is used in the capabilities.paymasterService.url field
         return res.status(200).json({
             success: true,
             sponsored: true,
+            // Primary URL field for the client
+            paymasterServiceUrl: paymasterServiceUrl,
+            // Also include in capabilities for compatibility
             capabilities: {
                 paymasterService: {
-                    url: paymasterServiceUrl
+                    url: paymasterServiceUrl,
+                    supported: true
                 }
             },
             chainId: BASE_CHAIN_ID,
-            entryPoint: ENTRYPOINT_ADDRESS
+            entryPoint: ENTRYPOINT_ADDRESS,
+            sponsorMetadata: {
+                name: 'Base Match-3',
+                description: 'Gasless transaction sponsored by Base Match-3 game'
+            }
         });
 
     } catch (error) {
