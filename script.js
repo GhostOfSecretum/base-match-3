@@ -66,6 +66,26 @@ const SplashScreenManager = {
             this.splashScreen.classList.add('hidden');
             console.log('Splash screen hidden');
             
+            // После скрытия splash screen показываем onboarding (если нужно)
+            setTimeout(() => {
+                // Показываем onboarding, если пользователь его еще не видел
+                if (typeof OnboardingManager !== 'undefined' && OnboardingManager.shouldShow()) {
+                    // Скрываем start menu пока показывается onboarding
+                    const startMenu = document.getElementById('startMenu');
+                    if (startMenu) {
+                        startMenu.style.display = 'none';
+                    }
+                    OnboardingManager.show();
+                } else {
+                    // Показываем сразу start menu
+                    const startMenu = document.getElementById('startMenu');
+                    if (startMenu) {
+                        startMenu.style.display = 'flex';
+                        startMenu.classList.remove('hidden');
+                    }
+                }
+            }, 100);
+            
             // Удаляем элемент после анимации
             setTimeout(() => {
                 if (this.splashScreen && this.splashScreen.parentNode) {
@@ -85,6 +105,174 @@ setTimeout(() => {
     SplashScreenManager.hide();
 }, 6000);
 // ==================== END SPLASH SCREEN MANAGER ====================
+
+// ==================== ONBOARDING SCREEN MANAGER ====================
+const OnboardingManager = {
+    screen: null,
+    slides: null,
+    dots: null,
+    nextBtn: null,
+    skipBtn: null,
+    currentSlide: 0,
+    totalSlides: 2,
+    storageKey: 'onboarding_completed',
+    
+    init() {
+        this.screen = document.getElementById('onboardingScreen');
+        this.slides = document.querySelectorAll('.onboarding-slide');
+        this.dots = document.querySelectorAll('.onboarding-dot');
+        this.nextBtn = document.getElementById('onboardingNextBtn');
+        this.skipBtn = document.getElementById('onboardingSkipBtn');
+        
+        if (!this.screen) {
+            console.log('Onboarding screen not found');
+            return;
+        }
+        
+        this.totalSlides = this.slides.length;
+        this.setupEventListeners();
+        console.log('Onboarding manager initialized');
+    },
+    
+    setupEventListeners() {
+        if (this.nextBtn) {
+            this.nextBtn.addEventListener('click', () => this.handleNext());
+        }
+        
+        if (this.skipBtn) {
+            this.skipBtn.addEventListener('click', () => this.complete());
+        }
+        
+        // Dots navigation
+        this.dots.forEach((dot, index) => {
+            dot.addEventListener('click', () => this.goToSlide(index));
+        });
+        
+        // Swipe support for mobile
+        let touchStartX = 0;
+        let touchEndX = 0;
+        
+        if (this.screen) {
+            this.screen.addEventListener('touchstart', (e) => {
+                touchStartX = e.changedTouches[0].screenX;
+            }, { passive: true });
+            
+            this.screen.addEventListener('touchend', (e) => {
+                touchEndX = e.changedTouches[0].screenX;
+                this.handleSwipe(touchStartX, touchEndX);
+            }, { passive: true });
+        }
+    },
+    
+    handleSwipe(startX, endX) {
+        const threshold = 50;
+        const diff = startX - endX;
+        
+        if (Math.abs(diff) > threshold) {
+            if (diff > 0) {
+                // Swipe left - next
+                this.handleNext();
+            } else {
+                // Swipe right - previous
+                this.goToSlide(Math.max(0, this.currentSlide - 1));
+            }
+        }
+    },
+    
+    handleNext() {
+        if (this.currentSlide < this.totalSlides - 1) {
+            this.goToSlide(this.currentSlide + 1);
+        } else {
+            this.complete();
+        }
+    },
+    
+    goToSlide(index) {
+        if (index < 0 || index >= this.totalSlides) return;
+        
+        // Update slides
+        this.slides.forEach((slide, i) => {
+            slide.classList.remove('active');
+            if (i === index) {
+                slide.classList.add('active');
+            }
+        });
+        
+        // Update dots
+        this.dots.forEach((dot, i) => {
+            dot.classList.remove('active');
+            if (i === index) {
+                dot.classList.add('active');
+            }
+        });
+        
+        // Update button text on last slide
+        if (this.nextBtn) {
+            if (index === this.totalSlides - 1) {
+                this.nextBtn.textContent = 'Get Started';
+            } else {
+                this.nextBtn.textContent = 'Next';
+            }
+        }
+        
+        this.currentSlide = index;
+    },
+    
+    shouldShow() {
+        // Показываем onboarding при каждом запуске
+        return true;
+    },
+    
+    show() {
+        if (!this.screen) {
+            this.init();
+        }
+        
+        if (this.screen && this.shouldShow()) {
+            this.screen.style.display = 'flex';
+            this.currentSlide = 0;
+            this.goToSlide(0);
+            console.log('Onboarding screen shown');
+            return true;
+        }
+        
+        return false;
+    },
+    
+    complete() {
+        // Просто скрываем onboarding (показывается при каждом запуске)
+        this.hide();
+    },
+    
+    hide() {
+        if (this.screen) {
+            this.screen.classList.add('hidden');
+            console.log('Onboarding screen hidden');
+            
+            // Remove after animation
+            setTimeout(() => {
+                if (this.screen) {
+                    this.screen.style.display = 'none';
+                }
+                
+                // Show start menu after onboarding
+                const startMenu = document.getElementById('startMenu');
+                if (startMenu) {
+                    startMenu.style.display = 'flex';
+                    startMenu.classList.remove('hidden');
+                }
+            }, 400);
+        }
+    }
+};
+
+// Initialize onboarding manager when DOM is ready
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => OnboardingManager.init());
+} else {
+    OnboardingManager.init();
+}
+// ==================== END ONBOARDING SCREEN MANAGER ====================
 
 // Debug функция для отображения на телефоне
 function debugLog(msg) {
@@ -4123,9 +4311,21 @@ function initStartMenu() {
     
     startMenuInitialized = true;
 
-    // Показываем меню по умолчанию
-    if (startMenu) {
-        startMenu.style.display = 'flex';
+    // Показываем меню только если onboarding уже завершен или не активен
+    // Если onboarding активен, меню будет показано после его завершения
+    const onboardingScreen = document.getElementById('onboardingScreen');
+    const onboardingVisible = onboardingScreen && 
+                              onboardingScreen.style.display !== 'none' && 
+                              !onboardingScreen.classList.contains('hidden');
+    
+    // Меню будет показано после завершения onboarding
+    // Не показываем его здесь, если onboarding активен или splash еще виден
+    if (startMenu && !onboardingVisible) {
+        const splashScreen = document.getElementById('splashScreen');
+        // Если splash уже скрыт и onboarding не виден, показываем меню
+        if (!splashScreen) {
+            // Меню показывается через OnboardingManager.hide() или SplashScreenManager.hide()
+        }
     }
 
     // Функция для скрытия меню и показа игры

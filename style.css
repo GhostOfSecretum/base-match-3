@@ -101,6 +101,306 @@
 }
 /* ==================== END SPLASH SCREEN ==================== */
 
+/* ==================== ONBOARDING SCREEN ==================== */
+.onboarding-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg-color, #000000);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 9000;
+    transition: opacity 0.4s ease-out, visibility 0.4s ease-out;
+}
+
+.onboarding-screen.hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+}
+
+.onboarding-container {
+    width: 100%;
+    max-width: 420px;
+    padding: 40px 24px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+}
+
+.onboarding-slide {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    animation: slideIn 0.4s ease-out;
+    width: 100%;
+}
+
+.onboarding-slide.active {
+    display: flex;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateX(30px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+.onboarding-slide-icon {
+    width: 100px;
+    height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+}
+
+.onboarding-logo {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 0 20px rgba(0, 82, 255, 0.6));
+}
+
+.onboarding-emoji {
+    font-size: 72px;
+    line-height: 1;
+    filter: drop-shadow(0 0 15px rgba(255, 255, 255, 0.3));
+}
+
+.onboarding-slide-title {
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 1.8em;
+    font-weight: 700;
+    color: var(--base-blue);
+    text-shadow: 0 0 20px rgba(0, 82, 255, 0.5);
+    margin-bottom: 16px;
+    letter-spacing: 0.5px;
+}
+
+.onboarding-slide-description {
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 1em;
+    color: var(--text-secondary, rgba(255, 255, 255, 0.7));
+    line-height: 1.6;
+    margin-bottom: 32px;
+    max-width: 340px;
+}
+
+.onboarding-features {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 100%;
+    max-width: 320px;
+}
+
+.onboarding-feature {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 14px 18px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 14px;
+    transition: all 0.3s ease;
+}
+
+.onboarding-feature:hover {
+    background: rgba(255, 255, 255, 0.08);
+    border-color: rgba(0, 82, 255, 0.3);
+    transform: translateX(5px);
+}
+
+.feature-icon {
+    font-size: 1.5em;
+    width: 36px;
+    text-align: center;
+    display: none;
+}
+
+.feature-text {
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 0.95em;
+    color: var(--text-color, #ffffff);
+    font-weight: 500;
+}
+
+.onboarding-dots {
+    display: flex;
+    gap: 10px;
+    margin-top: 40px;
+    margin-bottom: 24px;
+}
+
+.onboarding-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.3);
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.onboarding-dot.active {
+    background: var(--base-blue);
+    box-shadow: 0 0 12px rgba(0, 82, 255, 0.6);
+    transform: scale(1.2);
+}
+
+.onboarding-dot:hover:not(.active) {
+    background: rgba(255, 255, 255, 0.5);
+}
+
+.onboarding-buttons {
+    display: flex;
+    gap: 16px;
+    width: 100%;
+    max-width: 320px;
+}
+
+.btn-onboarding-skip {
+    flex: 1;
+    padding: 14px 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 14px;
+    color: rgba(255, 255, 255, 0.7);
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 1em;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.btn-onboarding-skip:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #ffffff;
+}
+
+.btn-onboarding-next {
+    flex: 1.5;
+    padding: 14px 20px;
+    background: var(--primary-gradient);
+    border: none;
+    border-radius: 14px;
+    color: #ffffff;
+    font-family: 'Coinbase Text', sans-serif;
+    font-size: 1em;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 4px 20px rgba(0, 82, 255, 0.4);
+    transition: all 0.3s ease;
+}
+
+.btn-onboarding-next:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 30px rgba(0, 82, 255, 0.6);
+}
+
+/* Light Theme Styles for Onboarding */
+body.light-theme .onboarding-screen {
+    background: var(--bg-color);
+}
+
+body.light-theme .onboarding-slide-description {
+    color: rgba(0, 0, 0, 0.7);
+}
+
+body.light-theme .onboarding-feature {
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .onboarding-feature:hover {
+    background: rgba(0, 0, 0, 0.08);
+}
+
+body.light-theme .feature-text {
+    color: var(--text-color);
+}
+
+body.light-theme .onboarding-dot {
+    background: rgba(0, 0, 0, 0.2);
+}
+
+body.light-theme .onboarding-dot:hover:not(.active) {
+    background: rgba(0, 0, 0, 0.4);
+}
+
+body.light-theme .btn-onboarding-skip {
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    color: rgba(0, 0, 0, 0.7);
+}
+
+body.light-theme .btn-onboarding-skip:hover {
+    background: rgba(0, 0, 0, 0.1);
+    color: #000000;
+}
+
+@media (max-width: 768px) {
+    .onboarding-container {
+        padding: 30px 20px;
+    }
+    
+    .onboarding-slide-icon {
+        width: 80px;
+        height: 80px;
+        margin-bottom: 20px;
+    }
+    
+    .onboarding-emoji {
+        font-size: 56px;
+    }
+    
+    .onboarding-slide-title {
+        font-size: 1.5em;
+    }
+    
+    .onboarding-slide-description {
+        font-size: 0.9em;
+        margin-bottom: 24px;
+    }
+    
+    .onboarding-feature {
+        padding: 12px 14px;
+        gap: 12px;
+    }
+    
+    .feature-icon {
+        font-size: 1.3em;
+        width: 30px;
+    }
+    
+    .feature-text {
+        font-size: 0.85em;
+    }
+    
+    .onboarding-dots {
+        margin-top: 30px;
+        margin-bottom: 20px;
+    }
+    
+    .btn-onboarding-skip,
+    .btn-onboarding-next {
+        padding: 12px 16px;
+        font-size: 0.9em;
+    }
+}
+/* ==================== END ONBOARDING SCREEN ==================== */
+
 @font-face {
     font-family: 'Coinbase Text';
     src: url('fonts/Coinbase_Text-Medium-web-1.32.woff2') format('woff2');

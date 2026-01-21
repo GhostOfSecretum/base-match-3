@@ -764,6 +764,62 @@
         </div>
     </div>
     
+    <!-- Onboarding Screen -->
+    <div id="onboardingScreen" class="onboarding-screen" style="display: none;">
+        <div class="onboarding-container">
+            <!-- Slide 1 -->
+            <div class="onboarding-slide active" data-slide="0">
+                <h2 class="onboarding-slide-title">Welcome to Base Match-3!</h2>
+                <p class="onboarding-slide-description">
+                    Match crypto tokens in this exciting puzzle game built on the Base network. 
+                    Swap adjacent tiles to create matches of 3 or more tokens and earn points!
+                </p>
+                <div class="onboarding-features">
+                    <div class="onboarding-feature">
+                        <span class="feature-text">Match 3+ tokens to score</span>
+                    </div>
+                    <div class="onboarding-feature">
+                        <span class="feature-text">Build combos for multipliers</span>
+                    </div>
+                    <div class="onboarding-feature">
+                        <span class="feature-text">Compete on the leaderboard</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Slide 2 -->
+            <div class="onboarding-slide" data-slide="1">
+                <h2 class="onboarding-slide-title">Powerful Features</h2>
+                <p class="onboarding-slide-description">
+                    Experience Web3 gaming with seamless blockchain integration and exciting rewards!
+                </p>
+                <div class="onboarding-features">
+                    <div class="onboarding-feature">
+                        <span class="feature-text">Say GM daily for streak rewards</span>
+                    </div>
+                    <div class="onboarding-feature">
+                        <span class="feature-text">Deploy smart contracts on Base</span>
+                    </div>
+                    <div class="onboarding-feature">
+                        <span class="feature-text">Gasless sponsored transactions</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Dots indicator -->
+            <div class="onboarding-dots">
+                <span class="onboarding-dot active" data-dot="0"></span>
+                <span class="onboarding-dot" data-dot="1"></span>
+            </div>
+            
+            <!-- Navigation buttons -->
+            <div class="onboarding-buttons">
+                <button id="onboardingSkipBtn" class="btn btn-onboarding-skip">Skip</button>
+                <button id="onboardingNextBtn" class="btn btn-onboarding-next">Next</button>
+            </div>
+        </div>
+    </div>
+    
     <div id="loadingIndicator" style="display: none !important; visibility: hidden !important; opacity: 0 !important;">
         <img src="hero.png" alt="Loading..." id="loadingImage">
         <span>Loading game...</span>
@@ -771,7 +827,7 @@
     <div class="game-wrapper">
         <div class="particles-container" id="particlesContainer"></div>
 
-        <div id="startMenu" class="start-menu">
+        <div id="startMenu" class="start-menu" style="display: none;">
             <div class="start-menu-content">
                 <div class="start-menu-logo">
                     <div class="ecosystem-label">Base Ecosystem Project</div>
