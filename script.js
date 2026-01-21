@@ -167,6 +167,35 @@ const BASE_NETWORK = {
     blockExplorerUrls: ['https://basescan.org']
 };
 
+// ==================== GM CONTRACT CONFIGURATION ====================
+// Smart contract for gasless GM transactions on Base
+const GM_CONTRACT = {
+    address: '0x819C8fA87f61b1843d1Cf46046cd4637d4afd1c0',
+    chainId: '0x2105', // Base mainnet
+    // Function selector for sayGM() = keccak256("sayGM()")[:4] = 0x27a80bb0
+    sayGMSelector: '0x27a80bb0',
+    // ABI for the contract
+    abi: [
+        {
+            "inputs": [],
+            "name": "sayGM",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "inputs": [{"name": "user", "type": "address"}],
+            "name": "getGMData",
+            "outputs": [
+                {"name": "lastTimestamp", "type": "uint256"},
+                {"name": "streak", "type": "uint256"}
+            ],
+            "stateMutability": "view",
+            "type": "function"
+        }
+    ]
+};
+
 // ==================== SPONSORED TRANSACTIONS MANAGER ====================
 // Handles gasless transactions via Coinbase CDP Paymaster and Farcaster Frame SDK
 
@@ -4595,7 +4624,7 @@ function updateGMButtonState() {
     }
 }
 
-// Send GM transaction
+// Send GM transaction using GM Contract for sponsorship
 async function sendGMTransaction() {
     const gmButton = document.getElementById('gmButton');
     const gmStatus = document.getElementById('gmStatus');
@@ -4631,7 +4660,8 @@ async function sendGMTransaction() {
         // Try Farcaster SDK first (for miniapp)
         const farcasterSDK = window.__farcasterSDK || 
                             (typeof frame !== 'undefined' && frame.sdk) || 
-                            (window.farcaster && window.farcaster.miniapp);
+                            (window.farcaster && window.farcaster.miniapp) ||
+                            window.sdk;
         
         if (farcasterSDK && farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
             provider = farcasterSDK.wallet.ethProvider;
@@ -4656,22 +4686,25 @@ async function sendGMTransaction() {
             throw new Error('No wallet connected. Please connect your wallet first.');
         }
         
-        // GM transaction params - send 0 ETH to self with GM message
-        const txParams = {
+        // GM Contract transaction params - call sayGM() on contract
+        // This allows CDP Paymaster to sponsor the transaction
+        const contractTxParams = {
             from: userAddress,
-            to: userAddress,
-            value: '0x0', // 0 ETH for sponsored, or 1 wei for regular
-            data: '0x474d' // "GM" in hex
+            to: GM_CONTRACT.address,
+            value: '0x0',
+            data: GM_CONTRACT.sayGMSelector // sayGM() function selector
         };
         
+        console.log('GM Contract transaction params:', contractTxParams);
+        
         // ===== TRY SPONSORED TRANSACTION FIRST =====
-        if (gmStatus) gmStatus.textContent = 'Checking for gasless transaction...';
-        console.log('Attempting sponsored GM transaction...');
+        if (gmStatus) gmStatus.textContent = 'Sending gasless GM...';
+        console.log('Attempting sponsored GM transaction via contract...');
         
         try {
             const sponsorResult = await SponsoredTransactions.sendTransaction(
                 provider,
-                txParams,
+                contractTxParams,
                 userAddress,
                 (status) => { if (gmStatus) gmStatus.textContent = status; }
             );
@@ -4690,16 +4723,13 @@ async function sendGMTransaction() {
             console.log('Using regular (non-sponsored) transaction');
             if (gmStatus) gmStatus.textContent = 'Confirm in your wallet...';
             
-            // Update value to 1 wei for regular transaction (to avoid 0-value issues)
-            txParams.value = '0x1';
-            
             if (farcasterSDK && farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
                 // Use Farcaster SDK's ethProvider
                 console.log('Sending GM via Farcaster SDK ethProvider');
                 
                 txHash = await provider.request({
                     method: 'eth_sendTransaction',
-                    params: [txParams]
+                    params: [contractTxParams]
                 });
                 
             } else if (farcasterSDK && farcasterSDK.actions && farcasterSDK.actions.sendTransaction) {
@@ -4710,8 +4740,9 @@ async function sendGMTransaction() {
                     chainId: 'eip155:8453', // Base mainnet
                     method: 'eth_sendTransaction',
                     params: {
-                        to: userAddress,
-                        value: '0x1', // 1 wei
+                        to: GM_CONTRACT.address,
+                        value: '0x0',
+                        data: GM_CONTRACT.sayGMSelector
                     }
                 });
                 
@@ -4751,7 +4782,7 @@ async function sendGMTransaction() {
                 
                 txHash = await window.ethereum.request({
                     method: 'eth_sendTransaction',
-                    params: [txParams]
+                    params: [contractTxParams]
                 });
                 
             } else {
