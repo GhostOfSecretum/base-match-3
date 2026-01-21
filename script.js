@@ -624,6 +624,7 @@ const SponsoredTransactions = {
                     });
                 } catch (err1) {
                     log(`Format 1 failed: ${err1.message}`);
+                    log(`Full error: ${JSON.stringify({code: err1.code, data: err1.data, details: err1.details})}`);
                     
                     // Format 2: Try without version
                     try {
@@ -5294,6 +5295,9 @@ async function runGMDebugCheck() {
         if (sdk.wallet) {
             DebugLogger.logGM(`wallet keys: ${Object.keys(sdk.wallet).join(', ')}`);
         }
+        if (sdk.experimental) {
+            DebugLogger.logGM(`experimental keys: ${Object.keys(sdk.experimental).join(', ')}`);
+        }
     }
     
     // Check window.ethereum
@@ -5303,6 +5307,7 @@ async function runGMDebugCheck() {
     DebugLogger.logGM(`isInFarcasterFrame: ${SponsoredTransactions.isInFarcasterFrame()}`);
     
     // Try to get provider and capabilities
+    let userAddress = null;
     try {
         let provider = sdk?.wallet?.ethProvider || window.ethereum;
         if (provider) {
@@ -5311,6 +5316,7 @@ async function runGMDebugCheck() {
             try {
                 const accounts = await provider.request({ method: 'eth_accounts' });
                 DebugLogger.logGM(`Accounts: ${accounts?.length > 0 ? accounts[0].slice(0,10) + '...' : 'None'}`);
+                userAddress = accounts?.[0];
                 
                 if (accounts?.[0]) {
                     const caps = await provider.request({
@@ -5331,6 +5337,49 @@ async function runGMDebugCheck() {
     const sponsorAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
     DebugLogger.logGM(`Sponsorship available: ${sponsorAvailable}`);
     DebugLogger.logGM(`Sponsor type: ${SponsoredTransactions.sponsorType || 'none'}`);
+    
+    // Test Paymaster directly
+    DebugLogger.logGM('=== Testing Paymaster API ===');
+    try {
+        const testResponse = await fetch('/api/paymaster', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'checkSponsorshipEligibility'
+            })
+        });
+        const testData = await testResponse.json();
+        DebugLogger.logGM(`Paymaster eligibility: ${JSON.stringify(testData)}`);
+        
+        // If we have user address, test actual sponsorship
+        if (userAddress) {
+            DebugLogger.logGM('Testing pm_getPaymasterStubData...');
+            const paymasterResponse = await fetch('/api/paymaster', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'getPaymasterData',
+                    userOp: {
+                        sender: userAddress,
+                        nonce: '0x0',
+                        initCode: '0x',
+                        callData: '0x27a80bb0', // sayGM()
+                        callGasLimit: '0x5208',
+                        verificationGasLimit: '0x5208',
+                        preVerificationGas: '0x5208',
+                        maxFeePerGas: '0x0',
+                        maxPriorityFeePerGas: '0x0',
+                        paymasterAndData: '0x',
+                        signature: '0x'
+                    }
+                })
+            });
+            const paymasterData = await paymasterResponse.json();
+            DebugLogger.logGM(`Paymaster response: ${JSON.stringify(paymasterData)}`);
+        }
+    } catch (e) {
+        DebugLogger.logGM(`Paymaster test error: ${e.message}`);
+    }
     
     DebugLogger.logGM('=== Debug Check Complete ===');
 }
