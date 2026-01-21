@@ -167,6 +167,537 @@ const BASE_NETWORK = {
     blockExplorerUrls: ['https://basescan.org']
 };
 
+// ==================== SPONSORED TRANSACTIONS MANAGER ====================
+// Handles gasless transactions via Coinbase CDP Paymaster and Farcaster Frame SDK
+
+const SponsoredTransactions = {
+    // Configuration
+    paymasterApiUrl: '/api/paymaster',
+    isEnabled: true,
+    lastCheckTime: 0,
+    checkInterval: 60000, // Check eligibility every 60 seconds
+    isEligible: null,
+    lastError: null,
+    
+    /**
+     * Get Farcaster SDK instance
+     */
+    getFarcasterSDK() {
+        // Check all possible locations for Farcaster SDK
+        if (typeof window !== 'undefined') {
+            // Farcaster Frame SDK v2 (new)
+            if (window.sdk) return window.sdk;
+            // Frame SDK via frame global
+            if (typeof frame !== 'undefined' && frame.sdk) return frame.sdk;
+            // Legacy locations
+            if (window.__farcasterSDK) return window.__farcasterSDK;
+            if (window.farcaster && window.farcaster.miniapp) return window.farcaster.miniapp;
+        }
+        return null;
+    },
+    
+    /**
+     * Check if we're running inside Farcaster Frame
+     */
+    isInFarcasterFrame() {
+        if (typeof window === 'undefined') return false;
+        
+        // Check various indicators of Farcaster Frame environment
+        const indicators = [
+            window.sdk,
+            typeof frame !== 'undefined' && frame.sdk,
+            window.__farcasterSDK,
+            window.farcaster,
+            // Check if loaded in iframe (common for frames)
+            window.parent !== window,
+            // Check URL params that Farcaster adds
+            new URLSearchParams(window.location.search).has('fid'),
+            // Check for Farcaster-specific context
+            document.referrer.includes('warpcast.com'),
+            document.referrer.includes('farcaster')
+        ];
+        
+        return indicators.some(indicator => !!indicator);
+    },
+    
+    /**
+     * Check if sponsorship is available
+     */
+    async checkSponsorshipAvailable() {
+        // Cache the result for performance
+        const now = Date.now();
+        if (this.isEligible !== null && (now - this.lastCheckTime) < this.checkInterval) {
+            return this.isEligible;
+        }
+        
+        try {
+            // First check if we're in Farcaster Frame - Farcaster sponsors transactions automatically
+            if (this.isInFarcasterFrame()) {
+                console.log('Running in Farcaster Frame - transactions are sponsored by Farcaster');
+                this.isEligible = true;
+                this.lastCheckTime = now;
+                this.sponsorType = 'farcaster';
+                return true;
+            }
+            
+            // Check if Farcaster SDK is available
+            const farcasterSDK = this.getFarcasterSDK();
+            if (farcasterSDK) {
+                console.log('Farcaster SDK detected - sponsorship available via Frame');
+                this.isEligible = true;
+                this.lastCheckTime = now;
+                this.sponsorType = 'farcaster-sdk';
+                return true;
+            }
+            
+            // For non-Farcaster environments, check CDP Paymaster (optional)
+            try {
+                const response = await fetch(this.paymasterApiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: 'checkSponsorshipEligibility' })
+                });
+                
+                const data = await response.json();
+                if (data.success && data.eligible && data.sponsored) {
+                    this.isEligible = true;
+                    this.lastCheckTime = now;
+                    this.sponsorType = 'cdp-paymaster';
+                    console.log('CDP Paymaster sponsorship available');
+                    return true;
+                }
+                this.lastError = data.error || data.reason || null;
+            } catch (e) {
+                console.log('CDP Paymaster check failed:', e.message);
+            }
+            
+            // No sponsorship available
+            this.isEligible = false;
+            this.lastCheckTime = now;
+            this.sponsorType = null;
+            console.log('No sponsorship available, will use regular transactions');
+            return false;
+            
+        } catch (error) {
+            console.log('Sponsorship check failed:', error.message);
+            this.isEligible = false;
+            this.lastCheckTime = now;
+            this.lastError = error.message;
+            return false;
+        }
+    },
+    
+    /**
+     * Check if wallet supports EIP-5792 (wallet_sendCalls)
+     */
+    async checkWalletCapabilities(provider) {
+        try {
+            if (!provider) return { sponsored: false };
+            
+            // Try to get wallet capabilities
+            const capabilities = await provider.request({
+                method: 'wallet_getCapabilities',
+                params: []
+            });
+            
+            console.log('Wallet capabilities:', capabilities);
+            
+            // Check if paymaster is supported for Base (chainId 8453 or 0x2105)
+            const baseCapabilities = capabilities?.['8453'] || capabilities?.['0x2105'] || capabilities?.['eip155:8453'];
+            
+            if (baseCapabilities?.paymasterService?.supported) {
+                return {
+                    sponsored: true,
+                    paymasterService: true,
+                    atomicBatch: baseCapabilities?.atomicBatch?.supported || false
+                };
+            }
+            
+            return { sponsored: false };
+            
+        } catch (error) {
+            // wallet_getCapabilities not supported - fallback to regular transactions
+            console.log('Wallet capabilities not available:', error.message);
+            return { sponsored: false };
+        }
+    },
+    
+    /**
+     * Send a sponsored transaction using wallet_sendCalls (EIP-5792)
+     * This is the preferred method for modern wallets
+     */
+    async sendSponsoredCalls(provider, calls, userAddress) {
+        try {
+            // First, get paymaster configuration from our API
+            const paymasterResponse = await fetch(this.paymasterApiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'sendSponsoredTransaction',
+                    calls: calls
+                })
+            });
+            
+            const paymasterData = await paymasterResponse.json();
+            console.log('Paymaster API response:', paymasterData);
+            
+            if (!paymasterData.success || !paymasterData.sponsored) {
+                throw new Error(paymasterData.error || 'Paymaster service unavailable');
+            }
+            
+            // Build the sendCalls request with paymaster capability
+            const sendCallsParams = {
+                version: '1.0',
+                chainId: '0x2105', // Base mainnet
+                from: userAddress,
+                calls: calls.map(call => ({
+                    to: call.to,
+                    value: call.value || '0x0',
+                    data: call.data || '0x'
+                })),
+                capabilities: {
+                    paymasterService: paymasterData.capabilities.paymasterService
+                }
+            };
+            
+            console.log('Sending sponsored calls via wallet_sendCalls:', sendCallsParams);
+            
+            // Send the transaction using wallet_sendCalls
+            const result = await provider.request({
+                method: 'wallet_sendCalls',
+                params: [sendCallsParams]
+            });
+            
+            console.log('Sponsored transaction result:', result);
+            
+            // The result could be a bundle ID or transaction hash
+            return {
+                success: true,
+                sponsored: true,
+                result: result,
+                txHash: result?.receipts?.[0]?.transactionHash || result
+            };
+            
+        } catch (error) {
+            console.error('Sponsored calls failed:', error);
+            throw error;
+        }
+    },
+    
+    /**
+     * Send via Farcaster Frame SDK with sponsorship
+     */
+    async sendViaFarcasterSDK(txParams, statusCallback) {
+        const farcasterSDK = this.getFarcasterSDK();
+        
+        if (!farcasterSDK) {
+            throw new Error('Farcaster SDK not available');
+        }
+        
+        console.log('Attempting Farcaster Frame SDK transaction...');
+        if (statusCallback) statusCallback('Sending via Farcaster (gasless)...');
+        
+        // Method 1: Try sdk.actions.sendTransaction (Frame SDK v2)
+        if (farcasterSDK.actions && farcasterSDK.actions.sendTransaction) {
+            try {
+                console.log('Using Farcaster SDK actions.sendTransaction');
+                const result = await farcasterSDK.actions.sendTransaction({
+                    chainId: 'eip155:8453',
+                    method: 'eth_sendTransaction',
+                    params: {
+                        to: txParams.to,
+                        value: txParams.value || '0x0',
+                        data: txParams.data || '0x'
+                    }
+                });
+                
+                console.log('Farcaster SDK result:', result);
+                
+                return {
+                    success: true,
+                    sponsored: true, // Farcaster frames sponsor by default
+                    txHash: result?.transactionHash || result?.hash || result
+                };
+            } catch (error) {
+                console.log('Farcaster actions.sendTransaction failed:', error.message);
+            }
+        }
+        
+        // Method 2: Try ethProvider directly
+        if (farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
+            try {
+                console.log('Using Farcaster SDK ethProvider');
+                const txHash = await farcasterSDK.wallet.ethProvider.request({
+                    method: 'eth_sendTransaction',
+                    params: [{
+                        to: txParams.to,
+                        value: txParams.value || '0x0',
+                        data: txParams.data || '0x',
+                        from: txParams.from
+                    }]
+                });
+                
+                return {
+                    success: true,
+                    sponsored: true,
+                    txHash: txHash
+                };
+            } catch (error) {
+                console.log('Farcaster ethProvider failed:', error.message);
+            }
+        }
+        
+        throw new Error('All Farcaster SDK methods failed');
+    },
+    
+    /**
+     * Send a sponsored transaction using UserOperation (ERC-4337)
+     * Fallback for wallets that don't support EIP-5792
+     */
+    async sendSponsoredUserOp(provider, txParams, userAddress) {
+        try {
+            // Build basic UserOperation structure
+            const userOp = {
+                sender: userAddress,
+                nonce: '0x0', // Will be filled by bundler
+                initCode: '0x',
+                callData: this.encodeCallData(txParams),
+                callGasLimit: '0x0',
+                verificationGasLimit: '0x0',
+                preVerificationGas: '0x0',
+                maxFeePerGas: '0x0',
+                maxPriorityFeePerGas: '0x0',
+                paymasterAndData: '0x',
+                signature: '0x'
+            };
+            
+            // Get paymaster data from our API
+            const paymasterResponse = await fetch(this.paymasterApiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'sponsorUserOperation',
+                    userOp: userOp
+                })
+            });
+            
+            const paymasterData = await paymasterResponse.json();
+            
+            if (!paymasterData.success || !paymasterData.sponsored) {
+                throw new Error('Paymaster sponsorship unavailable');
+            }
+            
+            // Update userOp with paymaster data
+            userOp.paymasterAndData = paymasterData.paymasterAndData;
+            
+            // For this simplified version, we'll use eth_sendTransaction with the paymaster handling gas
+            // In a full implementation, you'd use a bundler to submit the UserOperation
+            
+            return {
+                success: true,
+                sponsored: true,
+                userOp: userOp
+            };
+            
+        } catch (error) {
+            console.error('Sponsored UserOp failed:', error);
+            throw error;
+        }
+    },
+    
+    /**
+     * Encode call data for UserOperation
+     */
+    encodeCallData(txParams) {
+        // For simple ETH transfers, callData is empty
+        if (!txParams.data || txParams.data === '0x') {
+            return '0x';
+        }
+        return txParams.data;
+    },
+    
+    /**
+     * Main function to send a sponsored transaction
+     * Tries multiple methods in order of preference
+     */
+    async sendTransaction(provider, txParams, userAddress, statusCallback) {
+        console.log('=== SponsoredTransactions.sendTransaction ===');
+        console.log('txParams:', txParams);
+        console.log('userAddress:', userAddress);
+        console.log('isInFarcasterFrame:', this.isInFarcasterFrame());
+        
+        // Method 1: Try Farcaster SDK first (most reliable for frames)
+        // Farcaster automatically sponsors transactions for Mini Apps
+        const farcasterSDK = this.getFarcasterSDK();
+        if (farcasterSDK || this.isInFarcasterFrame()) {
+            try {
+                if (statusCallback) statusCallback('Sending gasless transaction via Farcaster...');
+                
+                const result = await this.sendViaFarcasterSDK({
+                    ...txParams,
+                    from: userAddress
+                }, statusCallback);
+                
+                if (result.success) {
+                    console.log('Transaction sent via Farcaster SDK (sponsored by Farcaster):', result);
+                    return result;
+                }
+            } catch (error) {
+                console.log('Farcaster SDK method failed:', error.message);
+                // Continue to other methods
+            }
+        }
+        
+        // Method 2: Check wallet capabilities for EIP-5792 (Smart Wallets)
+        if (provider) {
+            try {
+                const capabilities = await this.checkWalletCapabilities(provider);
+                
+                if (capabilities.paymasterService) {
+                    if (statusCallback) statusCallback('Sending gasless transaction...');
+                    
+                    try {
+                        const calls = [{
+                            to: txParams.to,
+                            value: txParams.value || '0x0',
+                            data: txParams.data || '0x'
+                        }];
+                        
+                        const result = await this.sendSponsoredCalls(provider, calls, userAddress);
+                        console.log('Transaction sent via wallet_sendCalls:', result);
+                        return result;
+                        
+                    } catch (error) {
+                        console.log('EIP-5792 wallet_sendCalls failed:', error.message);
+                    }
+                }
+            } catch (e) {
+                console.log('Wallet capabilities check failed:', e.message);
+            }
+        }
+        
+        // Method 3: Check if CDP paymaster sponsorship is available (for contract calls)
+        // Note: CDP Paymaster requires specific contracts to be allowlisted
+        // It won't work for simple ETH transfers like GM
+        const sponsorshipAvailable = await this.checkSponsorshipAvailable();
+        
+        if (sponsorshipAvailable && this.sponsorType === 'cdp-paymaster') {
+            console.log('CDP Paymaster available but requires contract allowlist');
+            // CDP Paymaster only works for allowlisted contract calls
+            // GM transactions (simple transfers) won't be sponsored
+        }
+        
+        // No sponsorship available, return false to trigger fallback to regular transaction
+        console.log('Sponsorship not available for this transaction type');
+        return { sponsored: false };
+    },
+    
+    /**
+     * Get UI badge for sponsored transactions
+     */
+    getSponsoredBadge() {
+        return '<span class="sponsored-badge" title="Gas fees paid by Base Match-3">Gasless</span>';
+    },
+    
+    /**
+     * Update UI indicators to show sponsorship availability
+     */
+    updateUIIndicators() {
+        const gmIndicator = document.getElementById('gmGaslessIndicator');
+        const deployIndicator = document.getElementById('deployGaslessIndicator');
+        
+        if (this.isEligible) {
+            // Show gasless indicators
+            if (gmIndicator) {
+                gmIndicator.style.display = 'block';
+                console.log('GM gasless indicator shown');
+            }
+            if (deployIndicator) {
+                deployIndicator.style.display = 'block';
+                console.log('Deploy gasless indicator shown');
+            }
+        } else {
+            // Hide gasless indicators
+            if (gmIndicator) {
+                gmIndicator.style.display = 'none';
+            }
+            if (deployIndicator) {
+                deployIndicator.style.display = 'none';
+            }
+        }
+    },
+    
+    /**
+     * Debug function to check status
+     */
+    async debugStatus() {
+        console.log('=== SponsoredTransactions Debug ===');
+        console.log('isEnabled:', this.isEnabled);
+        console.log('isEligible:', this.isEligible);
+        console.log('sponsorType:', this.sponsorType);
+        console.log('lastError:', this.lastError);
+        console.log('isInFarcasterFrame:', this.isInFarcasterFrame());
+        console.log('Farcaster SDK:', this.getFarcasterSDK() ? 'Available' : 'Not found');
+        console.log('window.parent !== window:', typeof window !== 'undefined' && window.parent !== window);
+        console.log('document.referrer:', typeof document !== 'undefined' ? document.referrer : 'N/A');
+        
+        // Check API health
+        try {
+            const healthResponse = await fetch(this.paymasterApiUrl);
+            const health = await healthResponse.json();
+            console.log('Paymaster API health:', health);
+        } catch (e) {
+            console.log('Paymaster API health check failed:', e.message);
+        }
+        
+        // Check eligibility
+        const eligible = await this.checkSponsorshipAvailable();
+        console.log('Sponsorship available:', eligible);
+        console.log('Sponsor type:', this.sponsorType);
+        
+        const result = {
+            isEnabled: this.isEnabled,
+            isEligible: this.isEligible,
+            sponsorType: this.sponsorType,
+            lastError: this.lastError,
+            isInFarcasterFrame: this.isInFarcasterFrame(),
+            farcasterSDK: !!this.getFarcasterSDK()
+        };
+        
+        console.log('Debug result:', result);
+        return result;
+    }
+};
+
+// Initialize sponsorship check on load
+(async function initSponsorshipCheck() {
+    // Delay check to not block initial load
+    setTimeout(async () => {
+        const isAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
+        SponsoredTransactions.updateUIIndicators();
+        
+        if (isAvailable) {
+            console.log('Gasless transactions available - UI indicators updated');
+        } else {
+            console.log('Gasless transactions NOT available:', SponsoredTransactions.lastError);
+        }
+    }, 2000);
+    
+    // Also check when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(() => SponsoredTransactions.updateUIIndicators(), 3000);
+        });
+    }
+})();
+
+// Expose debug function globally
+if (typeof window !== 'undefined') {
+    window.debugSponsorship = () => SponsoredTransactions.debugStatus();
+}
+
+// ==================== END SPONSORED TRANSACTIONS MANAGER ====================
+
 class WalletManager {
     constructor() {
         this.provider = null;
@@ -4091,6 +4622,11 @@ async function sendGMTransaction() {
     
     try {
         let txHash = null;
+        let wasSponsored = false;
+        
+        // Get provider and user address first
+        let provider = null;
+        let userAddress = null;
         
         // Try Farcaster SDK first (for miniapp)
         const farcasterSDK = window.__farcasterSDK || 
@@ -4098,129 +4634,133 @@ async function sendGMTransaction() {
                             (window.farcaster && window.farcaster.miniapp);
         
         if (farcasterSDK && farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
-            // Use Farcaster SDK's ethProvider
-            console.log('Sending GM via Farcaster SDK ethProvider');
-            if (gmStatus) gmStatus.textContent = 'Confirm in your wallet...';
-            
-            const provider = farcasterSDK.wallet.ethProvider;
-            
-            // Get user address
+            provider = farcasterSDK.wallet.ethProvider;
             const accounts = await provider.request({ method: 'eth_requestAccounts' });
-            if (!accounts || accounts.length === 0) {
-                throw new Error('No accounts found');
+            userAddress = accounts?.[0];
+        } else if (farcasterSDK && farcasterSDK.context) {
+            try {
+                const ctx = await farcasterSDK.context;
+                userAddress = ctx?.user?.custodyAddress || ctx?.connectedAddress;
+            } catch (e) {
+                console.log('Could not get context:', e);
             }
+        }
+        
+        if (!userAddress && window.ethereum) {
+            provider = window.ethereum;
+            const accounts = await provider.request({ method: 'eth_requestAccounts' });
+            userAddress = accounts?.[0];
+        }
+        
+        if (!userAddress) {
+            throw new Error('No wallet connected. Please connect your wallet first.');
+        }
+        
+        // GM transaction params - send 0 ETH to self with GM message
+        const txParams = {
+            from: userAddress,
+            to: userAddress,
+            value: '0x0', // 0 ETH for sponsored, or 1 wei for regular
+            data: '0x474d' // "GM" in hex
+        };
+        
+        // ===== TRY SPONSORED TRANSACTION FIRST =====
+        if (gmStatus) gmStatus.textContent = 'Checking for gasless transaction...';
+        console.log('Attempting sponsored GM transaction...');
+        
+        try {
+            const sponsorResult = await SponsoredTransactions.sendTransaction(
+                provider,
+                txParams,
+                userAddress,
+                (status) => { if (gmStatus) gmStatus.textContent = status; }
+            );
             
-            const userAddress = accounts[0];
-            
-            // Send simple transaction (minimal ETH to self)
-            // Using minimal value to avoid "insufficient funds" errors with 0 value
-            const txParams = {
-                from: userAddress,
-                to: userAddress, // Send to self
-                value: '0x1', // 1 wei (minimal amount)
-            };
-            
-            txHash = await provider.request({
-                method: 'eth_sendTransaction',
-                params: [txParams]
-            });
-            
-        } else if (farcasterSDK && farcasterSDK.actions && farcasterSDK.actions.sendTransaction) {
-            // Try using Farcaster SDK actions.sendTransaction
-            console.log('Sending GM via Farcaster SDK actions');
+            if (sponsorResult.sponsored && sponsorResult.txHash) {
+                txHash = sponsorResult.txHash;
+                wasSponsored = true;
+                console.log('GM sent via sponsored transaction:', txHash);
+            }
+        } catch (sponsorError) {
+            console.log('Sponsored transaction failed, falling back:', sponsorError.message);
+        }
+        
+        // ===== FALLBACK TO REGULAR TRANSACTION =====
+        if (!txHash) {
+            console.log('Using regular (non-sponsored) transaction');
             if (gmStatus) gmStatus.textContent = 'Confirm in your wallet...';
             
-            // Get user address from context
-            let userAddress = null;
-            if (farcasterSDK.context) {
-                try {
-                    const ctx = await farcasterSDK.context;
-                    userAddress = ctx?.user?.custodyAddress || ctx?.connectedAddress;
-                } catch (e) {
-                    console.log('Could not get context:', e);
-                }
-            }
+            // Update value to 1 wei for regular transaction (to avoid 0-value issues)
+            txParams.value = '0x1';
             
-            if (!userAddress && window.ethereum) {
-                const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-                userAddress = accounts[0];
-            }
-            
-            if (!userAddress) {
-                throw new Error('Could not get wallet address');
-            }
-            
-            // Use sendTransaction action
-            const result = await farcasterSDK.actions.sendTransaction({
-                chainId: 'eip155:8453', // Base mainnet
-                method: 'eth_sendTransaction',
-                params: {
-                    to: userAddress,
-                    value: '0x1', // 1 wei
-                }
-            });
-            
-            txHash = result?.transactionHash || result?.hash || result;
-            
-        } else if (window.ethereum) {
-            // Fallback to window.ethereum
-            console.log('Sending GM via window.ethereum');
-            if (gmStatus) gmStatus.textContent = 'Confirm in your wallet...';
-            
-            // Request accounts
-            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
-            if (!accounts || accounts.length === 0) {
-                throw new Error('No wallet connected');
-            }
-            
-            const userAddress = accounts[0];
-            
-            // Check if on Base network
-            const chainId = await window.ethereum.request({ method: 'eth_chainId' });
-            if (chainId !== '0x2105') {
-                // Try to switch to Base
-                try {
-                    await window.ethereum.request({
-                        method: 'wallet_switchEthereumChain',
-                        params: [{ chainId: '0x2105' }]
-                    });
-                } catch (switchError) {
-                    if (switchError.code === 4902) {
-                        // Add Base network
+            if (farcasterSDK && farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
+                // Use Farcaster SDK's ethProvider
+                console.log('Sending GM via Farcaster SDK ethProvider');
+                
+                txHash = await provider.request({
+                    method: 'eth_sendTransaction',
+                    params: [txParams]
+                });
+                
+            } else if (farcasterSDK && farcasterSDK.actions && farcasterSDK.actions.sendTransaction) {
+                // Try using Farcaster SDK actions.sendTransaction
+                console.log('Sending GM via Farcaster SDK actions');
+                
+                const result = await farcasterSDK.actions.sendTransaction({
+                    chainId: 'eip155:8453', // Base mainnet
+                    method: 'eth_sendTransaction',
+                    params: {
+                        to: userAddress,
+                        value: '0x1', // 1 wei
+                    }
+                });
+                
+                txHash = result?.transactionHash || result?.hash || result;
+                
+            } else if (window.ethereum) {
+                // Fallback to window.ethereum
+                console.log('Sending GM via window.ethereum');
+                
+                // Check if on Base network
+                const chainId = await window.ethereum.request({ method: 'eth_chainId' });
+                if (chainId !== '0x2105') {
+                    // Try to switch to Base
+                    try {
                         await window.ethereum.request({
-                            method: 'wallet_addEthereumChain',
-                            params: [{
-                                chainId: '0x2105',
-                                chainName: 'Base',
-                                nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
-                                rpcUrls: ['https://mainnet.base.org'],
-                                blockExplorerUrls: ['https://basescan.org']
-                            }]
+                            method: 'wallet_switchEthereumChain',
+                            params: [{ chainId: '0x2105' }]
                         });
-                    } else {
-                        throw new Error('Please switch to Base network');
+                    } catch (switchError) {
+                        if (switchError.code === 4902) {
+                            // Add Base network
+                            await window.ethereum.request({
+                                method: 'wallet_addEthereumChain',
+                                params: [{
+                                    chainId: '0x2105',
+                                    chainName: 'Base',
+                                    nativeCurrency: { name: 'Ethereum', symbol: 'ETH', decimals: 18 },
+                                    rpcUrls: ['https://mainnet.base.org'],
+                                    blockExplorerUrls: ['https://basescan.org']
+                                }]
+                            });
+                        } else {
+                            throw new Error('Please switch to Base network');
+                        }
                     }
                 }
+                
+                txHash = await window.ethereum.request({
+                    method: 'eth_sendTransaction',
+                    params: [txParams]
+                });
+                
+            } else {
+                throw new Error('No wallet found. Please use a Web3 browser or connect a wallet.');
             }
-            
-            // Send simple transaction (1 wei to self)
-            const txParams = {
-                from: userAddress,
-                to: userAddress, // Send to self
-                value: '0x1', // 1 wei
-            };
-            
-            txHash = await window.ethereum.request({
-                method: 'eth_sendTransaction',
-                params: [txParams]
-            });
-            
-        } else {
-            throw new Error('No wallet found. Please use a Web3 browser or connect a wallet.');
         }
         
         if (txHash) {
-            console.log('GM transaction sent:', txHash);
+            console.log('GM transaction sent:', txHash, wasSponsored ? '(sponsored)' : '(regular)');
             
             // Update GM data
             const gmData = getGMData();
@@ -4243,7 +4783,8 @@ async function sendGMTransaction() {
                 gmCount: (gmData.gmCount || 0) + 1,
                 lastGMDate: today,
                 lastTxHash: txHash,
-                streak: newStreak
+                streak: newStreak,
+                wasSponsored: wasSponsored
             });
             
             // Also update the game's day streak
@@ -4258,7 +4799,8 @@ async function sendGMTransaction() {
             gmButton.classList.add('success');
             
             if (gmStatus) {
-                gmStatus.innerHTML = `GM sent successfully! <a href="https://basescan.org/tx/${txHash}" target="_blank" class="gm-tx-link">View ↗</a>`;
+                const sponsoredBadge = wasSponsored ? '<span class="sponsored-badge">Gasless</span> ' : '';
+                gmStatus.innerHTML = `${sponsoredBadge}GM sent successfully! <a href="https://basescan.org/tx/${txHash}" target="_blank" class="gm-tx-link">View ↗</a>`;
                 gmStatus.className = 'gm-status success';
             }
             
@@ -4403,11 +4945,12 @@ function getDeploymentHistory() {
 }
 
 // Save deployment to history
-function saveDeploymentToHistory(address) {
+function saveDeploymentToHistory(address, wasSponsored = false) {
     const history = getDeploymentHistory();
     history.unshift({
         address: address,
-        date: new Date().toISOString()
+        date: new Date().toISOString(),
+        sponsored: wasSponsored
     });
     // Keep only last 10 deployments
     if (history.length > 10) {
@@ -4427,9 +4970,11 @@ function showDeploymentHistory() {
             const date = new Date(item.date);
             const dateStr = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             const shortAddress = item.address.slice(0, 8) + '...' + item.address.slice(-6);
+            const sponsoredBadge = item.sponsored ? '<span class="sponsored-badge-small">Gasless</span>' : '';
             return `
                 <div class="history-item">
                     <a href="https://basescan.org/address/${item.address}" target="_blank">${shortAddress}</a>
+                    ${sponsoredBadge}
                     <span class="history-date">${dateStr}</span>
                 </div>
             `;
@@ -4464,20 +5009,37 @@ function resetDeployModal() {
 }
 
 // Show deploy result
-function showDeployResult(contractAddress) {
+function showDeployResult(contractAddress, wasSponsored = false) {
     const deployResult = document.getElementById('deployResult');
     const addressLink = document.getElementById('contractAddressLink');
     const viewOnBasescanBtn = document.getElementById('viewOnBasescanBtn');
+    const deployAnotherBtn = document.getElementById('deployAnotherBtn');
     const deployBtn = document.getElementById('deployContractBtn');
+    const resultHeader = deployResult?.querySelector('.result-header');
     
     if (deployResult && addressLink) {
         addressLink.textContent = contractAddress;
         addressLink.href = `https://basescan.org/address/${contractAddress}`;
         deployResult.style.display = 'block';
+        
+        // Update header with sponsored badge if applicable
+        if (resultHeader) {
+            if (wasSponsored) {
+                resultHeader.innerHTML = '<span class="sponsored-badge">Gasless</span> Contract Deployed!';
+            } else {
+                resultHeader.textContent = 'Contract Deployed!';
+            }
+        }
     }
     
+    // Ensure buttons are visible
     if (viewOnBasescanBtn) {
         viewOnBasescanBtn.href = `https://basescan.org/address/${contractAddress}`;
+        viewOnBasescanBtn.style.display = 'inline-flex';
+    }
+    
+    if (deployAnotherBtn) {
+        deployAnotherBtn.style.display = 'inline-flex';
     }
     
     if (deployBtn) {
@@ -4493,6 +5055,8 @@ function resetForNewDeploy() {
     const deployStatus = document.getElementById('deployStatus');
     const deployResult = document.getElementById('deployResult');
     const deployBtn = document.getElementById('deployContractBtn');
+    const deployGaslessIndicator = document.getElementById('deployGaslessIndicator');
+    const resultHeader = deployResult?.querySelector('.result-header');
     
     if (deployStatus) {
         deployStatus.textContent = '';
@@ -4503,11 +5067,22 @@ function resetForNewDeploy() {
         deployResult.style.display = 'none';
     }
     
+    // Reset result header to default text
+    if (resultHeader) {
+        resultHeader.textContent = 'Contract Deployed!';
+    }
+    
     if (deployBtn) {
         deployBtn.style.display = 'flex';
         deployBtn.disabled = false;
         deployBtn.classList.remove('loading');
-        deployBtn.innerHTML = '<span>Deploy to Base</span>';
+        
+        // Restore button with gasless indicator if sponsorship is available
+        if (SponsoredTransactions.isEligible && deployGaslessIndicator) {
+            deployBtn.innerHTML = '<span>Deploy to Base</span><span id="deployGaslessIndicator" class="btn-gasless-indicator">Gasless</span>';
+        } else {
+            deployBtn.innerHTML = '<span>Deploy to Base</span>';
+        }
     }
 }
 
@@ -4551,6 +5126,8 @@ async function deployContract() {
         deployStatus.textContent = 'Preparing deployment...';
         deployStatus.className = 'deploy-status';
     }
+    
+    let wasSponsored = false;
     
     try {
         // Check for ethers.js with retry
@@ -4613,6 +5190,8 @@ async function deployContract() {
         
         let provider;
         let signer;
+        let rawProvider; // For sponsored transactions
+        let userAddress;
         
         if (farcasterSDK && farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
             // Use Farcaster SDK's ethProvider
@@ -4620,10 +5199,12 @@ async function deployContract() {
             if (deployStatus) deployStatus.textContent = 'Connecting wallet...';
             
             const ethProvider = farcasterSDK.wallet.ethProvider;
+            rawProvider = ethProvider;
             provider = new ethers.providers.Web3Provider(ethProvider);
             
             // Request accounts
-            await ethProvider.request({ method: 'eth_requestAccounts' });
+            const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
+            userAddress = accounts[0];
             signer = provider.getSigner();
             
         } else if (window.ethereum) {
@@ -4631,8 +5212,10 @@ async function deployContract() {
             console.log('Deploying via window.ethereum');
             if (deployStatus) deployStatus.textContent = 'Connecting wallet...';
             
+            rawProvider = window.ethereum;
             provider = new ethers.providers.Web3Provider(window.ethereum);
-            await provider.send('eth_requestAccounts', []);
+            const accounts = await provider.send('eth_requestAccounts', []);
+            userAddress = accounts[0];
             signer = provider.getSigner();
             
         } else {
@@ -4679,33 +5262,124 @@ async function deployContract() {
             signer = provider.getSigner();
         }
         
-        if (deployStatus) deployStatus.textContent = 'Confirm deployment in wallet...';
+        // ===== TRY SPONSORED DEPLOYMENT FIRST =====
+        if (deployStatus) deployStatus.textContent = 'Checking for gasless deployment...';
+        console.log('Attempting sponsored contract deployment...');
         
-        // Create contract factory
-        const factory = new ethers.ContractFactory(SIMPLE_STORAGE_ABI, SIMPLE_STORAGE_BYTECODE, signer);
+        let contractAddress = null;
         
-        // Deploy contract
-        console.log('Deploying contract...');
-        const contract = await factory.deploy();
+        try {
+            // Check if sponsorship is available
+            const sponsorshipAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
+            
+            if (sponsorshipAvailable && rawProvider) {
+                // Check wallet capabilities for sponsored transactions
+                const capabilities = await SponsoredTransactions.checkWalletCapabilities(rawProvider);
+                
+                if (capabilities.paymasterService) {
+                    if (deployStatus) deployStatus.textContent = 'Sending gasless deployment...';
+                    
+                    // Build the deployment transaction
+                    const factory = new ethers.ContractFactory(SIMPLE_STORAGE_ABI, SIMPLE_STORAGE_BYTECODE, signer);
+                    const deployTx = factory.getDeployTransaction();
+                    
+                    // Try sponsored deployment via wallet_sendCalls
+                    const calls = [{
+                        to: null, // null "to" means contract creation
+                        value: '0x0',
+                        data: deployTx.data
+                    }];
+                    
+                    const sponsorResult = await SponsoredTransactions.sendSponsoredCalls(
+                        rawProvider,
+                        calls,
+                        userAddress
+                    );
+                    
+                    if (sponsorResult.sponsored && sponsorResult.txHash) {
+                        wasSponsored = true;
+                        console.log('Sponsored deployment transaction:', sponsorResult.txHash);
+                        
+                        if (deployStatus) deployStatus.textContent = 'Waiting for confirmation...';
+                        
+                        // Wait for transaction receipt to get contract address
+                        const receipt = await provider.waitForTransaction(sponsorResult.txHash);
+                        contractAddress = receipt.contractAddress;
+                        
+                        console.log('Sponsored contract deployed at:', contractAddress);
+                    }
+                }
+            }
+        } catch (sponsorError) {
+            console.log('Sponsored deployment failed, falling back:', sponsorError.message);
+        }
         
-        if (deployStatus) deployStatus.textContent = 'Waiting for confirmation...';
+        // ===== FALLBACK TO REGULAR DEPLOYMENT =====
+        if (!contractAddress) {
+            console.log('Using regular (non-sponsored) deployment');
+            if (deployStatus) deployStatus.textContent = 'Confirm deployment in wallet...';
+            
+            // Create contract factory
+            const factory = new ethers.ContractFactory(SIMPLE_STORAGE_ABI, SIMPLE_STORAGE_BYTECODE, signer);
+            
+            // Deploy contract
+            console.log('Deploying contract...');
+            const contract = await factory.deploy();
+            
+            console.log('Deploy transaction hash:', contract.deployTransaction.hash);
+            if (deployStatus) deployStatus.textContent = 'Waiting for confirmation...';
+            
+            // Wait for deployment with timeout
+            const deployedContract = await contract.deployed();
+            
+            // Verify the contract was actually deployed
+            const deployTxHash = contract.deployTransaction.hash;
+            console.log('Transaction hash:', deployTxHash);
+            
+            // Get transaction receipt to verify
+            const receipt = await provider.getTransactionReceipt(deployTxHash);
+            console.log('Transaction receipt:', receipt);
+            
+            if (!receipt) {
+                throw new Error('Transaction not found. Please check your wallet.');
+            }
+            
+            if (receipt.status === 0) {
+                throw new Error('Transaction failed on-chain. Check BaseScan for details.');
+            }
+            
+            // Use address from receipt (more reliable)
+            contractAddress = receipt.contractAddress || deployedContract.address;
+            console.log('Contract deployed at:', contractAddress);
+            console.log('Block number:', receipt.blockNumber);
+            console.log('Gas used:', receipt.gasUsed.toString());
+            
+            // Verify contract code exists
+            const code = await provider.getCode(contractAddress);
+            if (code === '0x' || code === '0x0') {
+                console.warn('Warning: No code at contract address. Contract may not be deployed.');
+            } else {
+                console.log('Contract code verified, length:', code.length);
+            }
+        }
         
-        // Wait for deployment
-        await contract.deployed();
+        if (!contractAddress) {
+            throw new Error('Failed to get contract address');
+        }
         
-        console.log('Contract deployed at:', contract.address);
-        deployedContractAddress = contract.address;
+        deployedContractAddress = contractAddress;
         
-        // Save to deployment history
-        saveDeploymentToHistory(contract.address);
+        // Save to deployment history with sponsorship info
+        saveDeploymentToHistory(contractAddress, wasSponsored);
         
-        // Show success
+        // Show success with sponsorship badge
         if (deployStatus) {
-            deployStatus.textContent = 'Contract deployed successfully!';
+            const sponsoredBadge = wasSponsored ? '<span class="sponsored-badge">Gasless</span> ' : '';
+            deployStatus.innerHTML = `${sponsoredBadge}Contract deployed successfully!`;
             deployStatus.className = 'deploy-status success';
         }
         
-        showDeployResult(contract.address);
+        showDeployResult(contractAddress, wasSponsored);
         
     } catch (error) {
         console.error('Deploy error:', error);

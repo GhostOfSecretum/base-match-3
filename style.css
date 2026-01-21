@@ -2321,6 +2321,104 @@ body.light-theme .history-item .history-date {
     color: var(--base-blue);
 }
 
+/* ==================== SPONSORED TRANSACTION BADGES ==================== */
+
+.sponsored-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: linear-gradient(135deg, #00d26a 0%, #00a854 100%);
+    color: #ffffff;
+    font-size: 0.75em;
+    font-weight: 700;
+    padding: 4px 10px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 8px rgba(0, 210, 106, 0.4);
+    animation: sponsoredPulse 2s ease-in-out infinite;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+
+.sponsored-badge::before {
+    content: "⚡";
+    font-size: 0.9em;
+}
+
+.sponsored-badge-small {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    background: linear-gradient(135deg, #00d26a 0%, #00a854 100%);
+    color: #ffffff;
+    font-size: 0.65em;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+    box-shadow: 0 1px 4px rgba(0, 210, 106, 0.3);
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+.sponsored-badge-small::before {
+    content: "⚡";
+    font-size: 0.8em;
+}
+
+@keyframes sponsoredPulse {
+    0%, 100% {
+        box-shadow: 0 2px 8px rgba(0, 210, 106, 0.4);
+    }
+    50% {
+        box-shadow: 0 2px 16px rgba(0, 210, 106, 0.7);
+    }
+}
+
+/* Sponsored badge in GM status */
+.gm-status .sponsored-badge {
+    margin-right: 8px;
+}
+
+/* Sponsored badge in deploy result header */
+.result-header .sponsored-badge {
+    font-size: 0.6em;
+    margin-right: 10px;
+}
+
+/* Sponsored indicator in history */
+.history-item .sponsored-badge-small {
+    margin-left: auto;
+    margin-right: 8px;
+}
+
+/* Light theme adjustments for sponsored badges */
+body.light-theme .sponsored-badge,
+body.light-theme .sponsored-badge-small {
+    background: linear-gradient(135deg, #00c462 0%, #009a4a 100%);
+    box-shadow: 0 2px 8px rgba(0, 180, 90, 0.5);
+}
+
+/* Gasless indicator on buttons */
+.btn-gasless-indicator {
+    position: absolute;
+    top: -8px;
+    right: -8px;
+    background: linear-gradient(135deg, #00d26a 0%, #00a854 100%);
+    color: #ffffff;
+    font-size: 0.6em;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 8px;
+    text-transform: uppercase;
+    box-shadow: 0 2px 6px rgba(0, 210, 106, 0.4);
+    z-index: 10;
+}
+
+/* ==================== END SPONSORED TRANSACTION BADGES ==================== */
+
 .deploy-result {
     background: rgba(0, 82, 255, 0.1);
     border: 1px solid rgba(0, 82, 255, 0.4);

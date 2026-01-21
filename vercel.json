@@ -32,9 +32,14 @@
         },
         {
           "key": "Access-Control-Allow-Headers",
-          "value": "Content-Type"
+          "value": "Content-Type, Authorization"
         }
       ]
     }
-  ]
+  ],
+  "functions": {
+    "api/paymaster.js": {
+      "maxDuration": 30
+    }
+  }
 }

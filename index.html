@@ -1037,9 +1037,10 @@
                             <div class="streak-label-large">GM Streak</div>
                         </div>
                         <div class="gm-button-container">
-                            <button id="gmButton" class="btn btn-gm">
+                            <button id="gmButton" class="btn btn-gm" style="position: relative;">
                                 <span class="gm-icon">☀️</span>
                                 <span>Say GM</span>
+                                <span id="gmGaslessIndicator" class="btn-gasless-indicator" style="display: none;">Gasless</span>
                             </button>
                             <div id="gmStatus" class="gm-status"></div>
                             <div id="gmLastSaid" class="gm-last-said"></div>
@@ -1094,8 +1095,9 @@ contract SimpleStorage {
                             </div>
                         </div>
                         <div class="deploy-button-container">
-                            <button id="deployContractBtn" class="btn btn-deploy-action">
+                            <button id="deployContractBtn" class="btn btn-deploy-action" style="position: relative;">
                                 <span>Deploy to Base</span>
+                                <span id="deployGaslessIndicator" class="btn-gasless-indicator" style="display: none;">Gasless</span>
                             </button>
                             <div id="deployStatus" class="deploy-status"></div>
                         </div>
