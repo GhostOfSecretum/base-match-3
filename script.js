@@ -470,8 +470,8 @@ const SponsoredTransactions = {
     },
     
     /**
-     * Send via Farcaster Frame SDK with sponsorship
-     * Base Mini Apps automatically sponsor transactions for users
+     * Send via Farcaster Frame SDK / Base Mini App with sponsorship
+     * Base App automatically provides paymaster capabilities for sponsored transactions
      */
     async sendViaFarcasterSDK(txParams, statusCallback) {
         const farcasterSDK = this.getFarcasterSDK();
@@ -480,95 +480,163 @@ const SponsoredTransactions = {
             throw new Error('Farcaster SDK not available');
         }
         
-        console.log('Attempting Farcaster Frame SDK transaction...');
+        console.log('=== sendViaFarcasterSDK ===');
         console.log('SDK keys:', Object.keys(farcasterSDK));
-        if (statusCallback) statusCallback('Sending via Base Mini App (gasless)...');
+        if (statusCallback) statusCallback('Connecting to Base Account...');
         
-        // Method 1: Use sdk.wallet.ethProvider (recommended for Base Mini Apps)
-        // This is an EIP-1193 provider that Base/Farcaster injects
-        if (farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
-            try {
-                console.log('Using Farcaster SDK wallet.ethProvider');
-                const ethProvider = farcasterSDK.wallet.ethProvider;
+        // Get the Ethereum provider from SDK
+        let ethProvider = null;
+        
+        if (farcasterSDK.wallet?.ethProvider) {
+            ethProvider = farcasterSDK.wallet.ethProvider;
+            console.log('Got ethProvider from sdk.wallet.ethProvider');
+        } else if (farcasterSDK.wallet?.getEthereumProvider) {
+            ethProvider = await farcasterSDK.wallet.getEthereumProvider();
+            console.log('Got ethProvider from sdk.wallet.getEthereumProvider()');
+        } else if (window.ethereum) {
+            ethProvider = window.ethereum;
+            console.log('Fallback to window.ethereum');
+        }
+        
+        if (!ethProvider) {
+            throw new Error('No Ethereum provider available');
+        }
+        
+        // Step 1: Get wallet capabilities to check for paymaster support
+        console.log('Checking wallet capabilities...');
+        if (statusCallback) statusCallback('Checking sponsorship...');
+        
+        let capabilities = null;
+        let paymasterUrl = null;
+        
+        try {
+            capabilities = await ethProvider.request({
+                method: 'wallet_getCapabilities',
+                params: [txParams.from]
+            });
+            
+            console.log('wallet_getCapabilities response:', JSON.stringify(capabilities, null, 2));
+            
+            // Check for paymaster on Base (chainId 8453)
+            const baseChainId = '8453';
+            const baseCapabilities = capabilities?.[baseChainId] || 
+                                    capabilities?.['0x2105'] || 
+                                    capabilities?.['eip155:8453'];
+            
+            console.log('Base capabilities:', baseCapabilities);
+            
+            if (baseCapabilities?.paymasterService) {
+                console.log('paymasterService found:', baseCapabilities.paymasterService);
                 
-                // First try wallet_sendCalls for sponsored transactions (EIP-5792)
-                try {
-                    const capabilities = await ethProvider.request({
-                        method: 'wallet_getCapabilities',
-                        params: [txParams.from]
-                    });
-                    
-                    console.log('Farcaster wallet capabilities:', capabilities);
-                    
-                    // Check if paymasterService is supported on Base
-                    const baseCapabilities = capabilities?.['8453'] || capabilities?.['0x2105'] || capabilities?.['eip155:8453'];
-                    
-                    if (baseCapabilities?.paymasterService?.supported) {
-                        console.log('Using wallet_sendCalls with paymaster');
-                        
-                        const result = await ethProvider.request({
-                            method: 'wallet_sendCalls',
-                            params: [{
-                                chainId: '0x2105',
-                                from: txParams.from,
-                                calls: [{
-                                    to: txParams.to,
-                                    value: txParams.value || '0x0',
-                                    data: txParams.data || '0x'
-                                }],
-                                capabilities: {
-                                    paymasterService: {
-                                        url: baseCapabilities.paymasterService.url || true
-                                    }
-                                }
-                            }]
-                        });
-                        
-                        console.log('wallet_sendCalls result:', result);
-                        
-                        let txHash = result;
-                        if (typeof result === 'object') {
-                            txHash = result.receipts?.[0]?.transactionHash || result.hash || result;
-                        }
-                        
-                        return {
-                            success: true,
-                            sponsored: true,
-                            txHash: txHash
-                        };
-                    }
-                } catch (capError) {
-                    console.log('wallet_getCapabilities not available:', capError.message);
+                if (baseCapabilities.paymasterService.supported) {
+                    // Base App provides the paymaster URL
+                    paymasterUrl = baseCapabilities.paymasterService.url;
+                    console.log('Paymaster URL from capabilities:', paymasterUrl);
+                }
+            }
+        } catch (capError) {
+            console.log('wallet_getCapabilities failed:', capError.message);
+            // Continue without capabilities - will try regular transaction
+        }
+        
+        // Step 2: Try wallet_sendCalls with paymaster if available
+        if (paymasterUrl || capabilities) {
+            try {
+                console.log('Attempting wallet_sendCalls with paymaster...');
+                if (statusCallback) statusCallback('Sending gasless transaction...');
+                
+                const calls = [{
+                    to: txParams.to,
+                    value: txParams.value || '0x0',
+                    data: txParams.data || '0x'
+                }];
+                
+                // Build capabilities object
+                const txCapabilities = {};
+                if (paymasterUrl) {
+                    txCapabilities.paymasterService = { url: paymasterUrl };
+                } else {
+                    // Let Base App use its default paymaster
+                    txCapabilities.paymasterService = true;
                 }
                 
-                // Fallback: Use standard eth_sendTransaction
-                console.log('Using eth_sendTransaction via Farcaster ethProvider');
-                const txHash = await ethProvider.request({
-                    method: 'eth_sendTransaction',
-                    params: [{
-                        to: txParams.to,
-                        value: txParams.value || '0x0',
-                        data: txParams.data || '0x',
-                        from: txParams.from
-                    }]
+                const sendCallsParams = {
+                    version: '1.0',
+                    chainId: '0x2105', // Base mainnet
+                    from: txParams.from,
+                    calls: calls,
+                    capabilities: txCapabilities
+                };
+                
+                console.log('wallet_sendCalls params:', JSON.stringify(sendCallsParams, null, 2));
+                
+                const result = await ethProvider.request({
+                    method: 'wallet_sendCalls',
+                    params: [sendCallsParams]
                 });
+                
+                console.log('wallet_sendCalls result:', result);
+                
+                // Parse result - could be bundle ID or tx hash
+                let txHash = result;
+                if (typeof result === 'string' && result.length === 66) {
+                    txHash = result;
+                } else if (typeof result === 'object') {
+                    txHash = result.receipts?.[0]?.transactionHash || result.hash || result.id;
+                    
+                    // If we got a bundle ID, wait for receipt
+                    if (result.id && !txHash) {
+                        txHash = await this.waitForBundleReceipt(ethProvider, result.id);
+                    }
+                }
                 
                 return {
                     success: true,
-                    sponsored: true, // Farcaster Mini Apps often sponsor
+                    sponsored: true,
                     txHash: txHash
                 };
-            } catch (error) {
-                console.log('Farcaster ethProvider failed:', error.message);
+                
+            } catch (sendCallsError) {
+                console.log('wallet_sendCalls failed:', sendCallsError.message);
+                console.log('Full error:', sendCallsError);
+                // Continue to fallback
             }
         }
         
-        // Method 2: Try sdk.actions.sendTransaction (older Frame SDK format)
-        if (farcasterSDK.actions && farcasterSDK.actions.sendTransaction) {
+        // Step 3: Fallback to eth_sendTransaction
+        console.log('Falling back to eth_sendTransaction...');
+        if (statusCallback) statusCallback('Confirm in wallet...');
+        
+        try {
+            const txHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                    to: txParams.to,
+                    value: txParams.value || '0x0',
+                    data: txParams.data || '0x',
+                    from: txParams.from
+                }]
+            });
+            
+            console.log('eth_sendTransaction result:', txHash);
+            
+            return {
+                success: true,
+                sponsored: false, // Regular transaction
+                txHash: txHash
+            };
+        } catch (txError) {
+            console.log('eth_sendTransaction failed:', txError.message);
+        }
+        
+        // Step 4: Try sdk.actions.sendTransaction as last resort
+        if (farcasterSDK.actions?.sendTransaction) {
             try {
-                console.log('Using Farcaster SDK actions.sendTransaction');
+                console.log('Trying sdk.actions.sendTransaction...');
+                if (statusCallback) statusCallback('Sending via Farcaster...');
+                
                 const result = await farcasterSDK.actions.sendTransaction({
-                    chainId: 'eip155:8453', // Base mainnet in CAIP-2 format
+                    chainId: 'eip155:8453',
                     method: 'eth_sendTransaction',
                     params: {
                         to: txParams.to,
@@ -577,46 +645,19 @@ const SponsoredTransactions = {
                     }
                 });
                 
-                console.log('Farcaster SDK actions result:', result);
+                console.log('actions.sendTransaction result:', result);
                 
                 return {
                     success: true,
-                    sponsored: true,
+                    sponsored: false,
                     txHash: result?.transactionHash || result?.hash || result
                 };
-            } catch (error) {
-                console.log('Farcaster actions.sendTransaction failed:', error.message);
+            } catch (actionsError) {
+                console.log('actions.sendTransaction failed:', actionsError.message);
             }
         }
         
-        // Method 3: Direct provider from context
-        if (farcasterSDK.context && typeof farcasterSDK.context.then === 'undefined') {
-            try {
-                const ctx = farcasterSDK.context;
-                if (ctx.client && ctx.client.ethProvider) {
-                    console.log('Using context.client.ethProvider');
-                    const txHash = await ctx.client.ethProvider.request({
-                        method: 'eth_sendTransaction',
-                        params: [{
-                            to: txParams.to,
-                            value: txParams.value || '0x0',
-                            data: txParams.data || '0x',
-                            from: txParams.from
-                        }]
-                    });
-                    
-                    return {
-                        success: true,
-                        sponsored: true,
-                        txHash: txHash
-                    };
-                }
-            } catch (error) {
-                console.log('Context ethProvider failed:', error.message);
-            }
-        }
-        
-        throw new Error('All Farcaster SDK transaction methods failed');
+        throw new Error('All transaction methods failed');
     },
     
     /**
