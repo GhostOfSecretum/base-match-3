@@ -70,10 +70,17 @@ const SplashScreenManager = {
             setTimeout(() => {
                 console.log('SplashScreenManager: showing next screen');
                 
-                // Всегда скрываем gameContainer при переходе с splash
+                // Проверяем, не запущена ли уже игра (пользователь мог нажать New Game)
                 const gameContainer = document.getElementById('gameContainer');
-                if (gameContainer) {
+                const startMenu = document.getElementById('startMenu');
+                
+                // Скрываем gameContainer ТОЛЬКО если игра еще не запущена (меню видно)
+                // Это предотвращает баг, когда splash screen скрывает уже запущенную игру
+                if (gameContainer && startMenu && startMenu.style.display !== 'none') {
                     gameContainer.style.display = 'none';
+                    console.log('gameContainer hidden (game not started yet)');
+                } else {
+                    console.log('gameContainer NOT hidden (game already running or menu hidden)');
                 }
                 
                 // Показываем onboarding если нужно (он перекроет меню своим z-index)
@@ -252,10 +259,12 @@ const OnboardingManager = {
             this.screen.style.display = 'none';
             console.log('Onboarding screen hidden, menu should be visible now');
             
-            // Убеждаемся что gameContainer скрыт
+            // Скрываем gameContainer ТОЛЬКО если игра еще не запущена
             const gameContainer = document.getElementById('gameContainer');
-            if (gameContainer) {
+            const startMenu = document.getElementById('startMenu');
+            if (gameContainer && startMenu && startMenu.style.display !== 'none') {
                 gameContainer.style.display = 'none';
+                console.log('gameContainer hidden from onboarding (game not started)');
             }
         }
     }
@@ -4065,8 +4074,10 @@ class MatchThreePro {
         // Не вызываем полный init() чтобы избежать дублирования обработчиков событий
         // Просто создаем новую доску и обновляем UI
         this.createBoard();
-        this.render();
         this.removeInitialMatches();
+        // Рендерим доску ПОСЛЕ удаления начальных совпадений,
+        // чтобы визуальное представление соответствовало данным
+        this.render();
         this.updateUI();
     }
 
