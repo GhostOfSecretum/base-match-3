@@ -478,403 +478,94 @@ const SponsoredTransactions = {
     },
     
     /**
-     * Send via Farcaster Frame SDK / Base Mini App with sponsorship
-     * Base App automatically provides paymaster capabilities for sponsored transactions
+     * Send transaction via Base Mini App - user pays gas (no sponsorship)
      */
     async sendViaFarcasterSDK(txParams, statusCallback) {
         const log = (msg) => {
-            console.log('[SDK]', msg);
+            console.log('[TX]', msg);
             if (window.DebugLogger) {
                 window.DebugLogger.logGM(msg);
                 window.DebugLogger.logDeploy(msg);
             }
         };
         
+        log('=== sendTransaction (user pays gas) ===');
+        if (statusCallback) statusCallback('Connecting to wallet...');
+        
+        // Get Ethereum provider
+        let ethProvider = null;
         const farcasterSDK = this.getFarcasterSDK();
         
-        if (!farcasterSDK) {
-            log('ERROR: Farcaster SDK not available');
-            throw new Error('Farcaster SDK not available');
-        }
-        
-        log('=== sendViaFarcasterSDK ===');
-        log(`SDK keys: ${Object.keys(farcasterSDK).join(', ')}`);
-        log(`actions exists: ${!!farcasterSDK.actions}`);
-        log(`actions type: ${typeof farcasterSDK.actions}`);
-        if (farcasterSDK.actions) {
-            log(`actions keys: ${Object.keys(farcasterSDK.actions).join(', ')}`);
-            log(`sendTransaction exists: ${!!farcasterSDK.actions.sendTransaction}`);
-        }
-        if (statusCallback) statusCallback('Connecting to Base Account...');
-        
-        // ========== PRIORITY 1: Try sdk.wallet.ethProvider with eth_sendTransaction ==========
-        // This is the PRIMARY method for Farcaster Mini Apps - transactions are sponsored by Warpcast
-        log('Checking for wallet.ethProvider...');
-        
-        let ethProviderFromSDK = null;
-        if (farcasterSDK.wallet?.ethProvider) {
-            ethProviderFromSDK = farcasterSDK.wallet.ethProvider;
-        } else if (farcasterSDK.wallet?.getEthereumProvider) {
-            ethProviderFromSDK = await farcasterSDK.wallet.getEthereumProvider();
-        }
-        
-        if (ethProviderFromSDK) {
-            try {
-                log('>>> USING sdk.wallet.ethProvider.request (PRIMARY METHOD) <<<');
-                if (statusCallback) statusCallback('Sending gasless transaction via Warpcast...');
-                
-                // Get accounts first
-                const accounts = await ethProviderFromSDK.request({ method: 'eth_accounts' });
-                const fromAddress = accounts?.[0] || txParams.from;
-                log(`From address: ${fromAddress}`);
-                
-                // Format according to Farcaster Frame SDK v2 - eth_sendTransaction
-                const txRequest = {
-                    from: fromAddress,
-                    to: txParams.to,
-                    value: txParams.value || '0x0',
-                    data: txParams.data || '0x',
-                    chainId: '0x2105' // Base mainnet hex
-                };
-                
-                log(`TX Request: ${JSON.stringify(txRequest)}`);
-                
-                const result = await ethProviderFromSDK.request({
-                    method: 'eth_sendTransaction',
-                    params: [txRequest]
-                });
-                
-                log(`TX Result: ${JSON.stringify(result)}`);
-                
-                // Result is the transaction hash
-                if (result && typeof result === 'string') {
-                    log(`SUCCESS! Tx hash: ${result}`);
-                    return {
-                        success: true,
-                        sponsored: true, // Warpcast sponsors transactions in Mini Apps
-                        txHash: result
-                    };
-                } else {
-                    log('Unexpected result format, continuing...');
-                }
-            } catch (ethProviderError) {
-                log(`wallet.ethProvider ERROR: ${ethProviderError.message}`);
-                log(`Error code: ${ethProviderError.code}, data: ${JSON.stringify(ethProviderError.data)}`);
-                // Don't throw - try actions.sendTransaction next
-            }
-        }
-        
-        // ========== PRIORITY 2: Try sdk.actions.sendTransaction ==========
-        // Alternative method for Farcaster Mini Apps
-        log('Checking for actions.sendTransaction...');
-        
-        if (farcasterSDK.actions && typeof farcasterSDK.actions.sendTransaction === 'function') {
-            try {
-                log('>>> USING sdk.actions.sendTransaction <<<');
-                if (statusCallback) statusCallback('Sending gasless transaction...');
-                
-                // Format according to Farcaster Frame v2 docs - CAIP-2 chainId
-                const txRequest = {
-                    chainId: 'eip155:8453', // Base mainnet in CAIP-2 format
-                    to: txParams.to,
-                    value: txParams.value || '0x0',
-                    data: txParams.data || '0x'
-                };
-                
-                log(`TX Request: ${JSON.stringify(txRequest)}`);
-                
-                const result = await farcasterSDK.actions.sendTransaction(txRequest);
-                
-                log(`TX Result: ${JSON.stringify(result)}`);
-                
-                // Parse result - could be hash string or object
-                let txHash = null;
-                if (typeof result === 'string') {
-                    txHash = result;
-                } else if (result) {
-                    txHash = result.transactionHash || result.receipt?.transactionHash || result.hash;
-                }
-                
-                if (txHash) {
-                    log(`SUCCESS! Gasless tx hash: ${txHash}`);
-                    return {
-                        success: true,
-                        sponsored: true,
-                        txHash: txHash
-                    };
-                } else {
-                    log('No txHash in result, continuing...');
-                }
-            } catch (actionsError) {
-                log(`actions.sendTransaction FAILED: ${actionsError.message}`);
-                log(`Error code: ${actionsError.code}, data: ${JSON.stringify(actionsError.data)}`);
-                // Don't throw - try wallet_sendCalls next
-            }
-        } else {
-            log('actions.sendTransaction NOT AVAILABLE - trying wallet_sendCalls');
-        }
-        
-        // Get the Ethereum provider from SDK
-        let ethProvider = null;
-        
-        if (farcasterSDK.wallet?.ethProvider) {
+        if (farcasterSDK?.wallet?.ethProvider) {
             ethProvider = farcasterSDK.wallet.ethProvider;
-            log('Got ethProvider from sdk.wallet.ethProvider');
-        } else if (farcasterSDK.wallet?.getEthereumProvider) {
+            log('Using sdk.wallet.ethProvider');
+        } else if (farcasterSDK?.wallet?.getEthereumProvider) {
             ethProvider = await farcasterSDK.wallet.getEthereumProvider();
-            log('Got ethProvider from sdk.wallet.getEthereumProvider()');
+            log('Using sdk.wallet.getEthereumProvider()');
         } else if (window.ethereum) {
             ethProvider = window.ethereum;
-            log('Fallback to window.ethereum');
+            log('Using window.ethereum');
         }
         
         if (!ethProvider) {
             log('ERROR: No Ethereum provider available');
-            throw new Error('No Ethereum provider available');
+            throw new Error('No wallet found. Please connect your wallet.');
         }
         
-        // Step 1: Get wallet capabilities to check for paymaster support
-        log('Checking wallet capabilities...');
-        if (statusCallback) statusCallback('Checking sponsorship...');
+        // Get accounts
+        let fromAddress = txParams.from;
+        if (!fromAddress) {
+            try {
+                const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
+                fromAddress = accounts?.[0];
+                log(`Got account: ${fromAddress}`);
+            } catch (e) {
+                log(`eth_requestAccounts error: ${e.message}`);
+                throw new Error('Please connect your wallet first.');
+            }
+        }
         
-        let capabilities = null;
-        let paymasterUrl = null;
+        if (!fromAddress) {
+            throw new Error('No wallet address available.');
+        }
+        
+        // Send transaction - user pays gas
+        if (statusCallback) statusCallback('Please confirm transaction...');
+        
+        const txRequest = {
+            from: fromAddress,
+            to: txParams.to,
+            value: txParams.value || '0x0',
+            data: txParams.data || '0x'
+        };
+        
+        log(`TX Request: ${JSON.stringify(txRequest)}`);
         
         try {
-            capabilities = await ethProvider.request({
-                method: 'wallet_getCapabilities',
-                params: [txParams.from]
+            const txHash = await ethProvider.request({
+                method: 'eth_sendTransaction',
+                params: [txRequest]
             });
             
-            log(`wallet_getCapabilities response: ${JSON.stringify(capabilities)}`);
+            log(`SUCCESS! TX Hash: ${txHash}`);
             
-            // Check for paymaster on Base (chainId 8453)
-            const baseChainId = '8453';
-            const baseCapabilities = capabilities?.[baseChainId] || 
-                                    capabilities?.['0x2105'] || 
-                                    capabilities?.['eip155:8453'];
+            return {
+                success: true,
+                sponsored: false, // User paid gas
+                txHash: txHash
+            };
+        } catch (txError) {
+            log(`eth_sendTransaction ERROR: ${txError.message}`);
             
-            log(`Base capabilities: ${JSON.stringify(baseCapabilities)}`);
-            
-            if (baseCapabilities?.paymasterService) {
-                log(`paymasterService: ${JSON.stringify(baseCapabilities.paymasterService)}`);
-                
-                if (baseCapabilities.paymasterService.supported) {
-                    // Base App provides the paymaster URL
-                    paymasterUrl = baseCapabilities.paymasterService.url;
-                    log(`Paymaster URL: ${paymasterUrl}`);
-                }
+            // User-friendly error messages
+            if (txError.message?.includes('reject') || txError.message?.includes('denied')) {
+                throw new Error('Transaction cancelled.');
+            } else if (txError.message?.includes('insufficient')) {
+                throw new Error('Insufficient ETH for gas. Please add ETH to your wallet.');
             } else {
-                log('No paymasterService in capabilities');
-            }
-        } catch (capError) {
-            log(`wallet_getCapabilities error: ${capError.message}`);
-            // Continue without capabilities - will try regular transaction
-        }
-        
-        // Step 2: Try wallet_sendCalls with CDP Paymaster URL for Base Mini App
-        const baseCapabilities = capabilities?.['0x2105'] || capabilities?.['8453'];
-        if (baseCapabilities?.paymasterService?.supported) {
-            try {
-                log('paymasterService is supported - getting CDP Paymaster URL...');
-                if (statusCallback) statusCallback('Preparing gasless transaction...');
-                
-                // Get paymaster URL from our API
-                let paymasterUrl = null;
-                try {
-                    const paymasterResponse = await fetch('/api/paymaster', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: 'sendSponsoredTransaction' })
-                    });
-                    const paymasterData = await paymasterResponse.json();
-                    log(`Paymaster API response: ${JSON.stringify(paymasterData)}`);
-                    
-                    if (paymasterData.success && paymasterData.paymasterServiceUrl) {
-                        paymasterUrl = paymasterData.paymasterServiceUrl;
-                        log(`Got CDP Paymaster URL`);
-                    }
-                } catch (apiErr) {
-                    log(`Paymaster API error: ${apiErr.message}`);
-                }
-                
-                if (statusCallback) statusCallback('Sending gasless transaction...');
-                
-                const calls = [{
-                    to: txParams.to,
-                    value: txParams.value || '0x0',
-                    data: txParams.data || '0x'
-                }];
-                
-                log(`Calls: ${JSON.stringify(calls)}`);
-                log(`Paymaster URL: ${paymasterUrl ? 'configured' : 'not available'}`);
-                
-                let result;
-                let lastError = null;
-                
-                // Format 1: wallet_sendCalls with CDP Paymaster URL
-                if (paymasterUrl) {
-                    try {
-                        log('Trying Format 1: wallet_sendCalls with CDP Paymaster URL...');
-                        result = await ethProvider.request({
-                            method: 'wallet_sendCalls',
-                            params: [{
-                                version: '1.0',
-                                chainId: '0x2105',
-                                from: txParams.from,
-                                calls: calls,
-                                capabilities: {
-                                    paymasterService: {
-                                        url: paymasterUrl
-                                    }
-                                }
-                            }]
-                        });
-                        log(`Format 1 success: ${JSON.stringify(result)}`);
-                    } catch (err1) {
-                        log(`Format 1 failed: ${err1.message}`);
-                        lastError = err1;
-                    }
-                }
-                
-                // Format 2: Without version, with paymaster URL
-                if (!result && paymasterUrl) {
-                    try {
-                        log('Trying Format 2: without version, with paymaster URL...');
-                        result = await ethProvider.request({
-                            method: 'wallet_sendCalls',
-                            params: [{
-                                chainId: '0x2105',
-                                from: txParams.from,
-                                calls: calls,
-                                capabilities: {
-                                    paymasterService: {
-                                        url: paymasterUrl
-                                    }
-                                }
-                            }]
-                        });
-                        log(`Format 2 success: ${JSON.stringify(result)}`);
-                    } catch (err2) {
-                        log(`Format 2 failed: ${err2.message}`);
-                        lastError = lastError || err2;
-                    }
-                }
-                
-                // Format 3: Simple wallet_sendCalls without paymaster (fallback)
-                if (!result) {
-                    try {
-                        log('Trying Format 3: simple wallet_sendCalls...');
-                        result = await ethProvider.request({
-                            method: 'wallet_sendCalls',
-                            params: [{
-                                version: '1.0',
-                                chainId: '0x2105',
-                                from: txParams.from,
-                                calls: calls
-                            }]
-                        });
-                        log(`Format 3 success: ${JSON.stringify(result)}`);
-                    } catch (err3) {
-                        log(`Format 3 failed: ${err3.message}`);
-                        if (lastError) throw lastError;
-                        throw err3;
-                    }
-                }
-                
-                log(`wallet_sendCalls result: ${JSON.stringify(result)}`);
-                
-                // Parse result - could be bundle ID or tx hash
-                let txHash = result;
-                if (typeof result === 'string' && result.length === 66) {
-                    txHash = result;
-                } else if (typeof result === 'object') {
-                    txHash = result.receipts?.[0]?.transactionHash || result.hash || result.id;
-                    
-                    // If we got a bundle ID, wait for receipt
-                    if (result.id && !txHash) {
-                        log(`Got bundle ID: ${result.id}, waiting for receipt...`);
-                        txHash = await this.waitForBundleReceipt(ethProvider, result.id);
-                    }
-                }
-                
-                log(`SUCCESS: Sponsored tx hash: ${txHash}`);
-                return {
-                    success: true,
-                    sponsored: true,
-                    txHash: txHash
-                };
-                
-            } catch (sendCallsError) {
-                log(`wallet_sendCalls ERROR: ${sendCallsError.message}`);
-                // Continue to try other methods
+                throw new Error('Transaction failed: ' + txError.message);
             }
         }
-        
-        // Step 3: Try sdk.wallet.sendTransaction (Base Mini App native method)
-        if (farcasterSDK.wallet?.sendTransaction) {
-            try {
-                log('Trying sdk.wallet.sendTransaction (native Mini App method)...');
-                if (statusCallback) statusCallback('Sending via Base Mini App...');
-                
-                const result = await farcasterSDK.wallet.sendTransaction({
-                    chainId: 8453, // Base mainnet as number
-                    to: txParams.to,
-                    value: txParams.value || '0x0',
-                    data: txParams.data || '0x'
-                });
-                
-                log(`sdk.wallet.sendTransaction result: ${JSON.stringify(result)}`);
-                
-                const txHash = result?.transactionHash || result?.hash || result;
-                return {
-                    success: true,
-                    sponsored: true, // Mini App transactions are sponsored
-                    txHash: txHash
-                };
-            } catch (walletError) {
-                log(`sdk.wallet.sendTransaction ERROR: ${walletError.message}`);
-            }
-        }
-        
-        // Step 4: Final fallback - eth_sendTransaction via ethProvider
-        // Base App may still sponsor this
-        if (ethProvider) {
-            try {
-                log('Trying eth_sendTransaction via ethProvider (final fallback)...');
-                if (statusCallback) statusCallback('Sending transaction...');
-                
-                const txRequest = {
-                    from: txParams.from,
-                    to: txParams.to,
-                    value: txParams.value || '0x0',
-                    data: txParams.data || '0x'
-                };
-                
-                log(`eth_sendTransaction request: ${JSON.stringify(txRequest)}`);
-                
-                const txHash = await ethProvider.request({
-                    method: 'eth_sendTransaction',
-                    params: [txRequest]
-                });
-                
-                log(`eth_sendTransaction result: ${txHash}`);
-                
-                if (txHash && typeof txHash === 'string') {
-                    return {
-                        success: true,
-                        sponsored: true, // Base App sponsors transactions in Mini Apps
-                        txHash: txHash
-                    };
-                }
-            } catch (ethError) {
-                log(`eth_sendTransaction ERROR: ${ethError.message}`);
-            }
-        }
-        
-        // All methods failed
-        log('ERROR: All transaction methods failed');
-        throw new Error('Transaction failed. Please try again.');
     },
     
     /**
@@ -944,90 +635,29 @@ const SponsoredTransactions = {
     },
     
     /**
-     * Main function to send a sponsored transaction
-     * Tries multiple methods in order of preference
+     * Main function to send a transaction (user pays gas)
      */
     async sendTransaction(provider, txParams, userAddress, statusCallback) {
-        console.log('=== SponsoredTransactions.sendTransaction ===');
+        console.log('=== sendTransaction (user pays gas) ===');
         console.log('txParams:', txParams);
         console.log('userAddress:', userAddress);
-        console.log('isInFarcasterFrame:', this.isInFarcasterFrame());
         
-        // Method 1: Try Farcaster SDK first (most reliable for frames)
-        // Farcaster automatically sponsors transactions for Mini Apps
-        const farcasterSDK = this.getFarcasterSDK();
-        if (farcasterSDK || this.isInFarcasterFrame()) {
-            try {
-                if (statusCallback) statusCallback('Sending gasless transaction via Farcaster...');
-                
-                const result = await this.sendViaFarcasterSDK({
-                    ...txParams,
-                    from: userAddress
-                }, statusCallback);
-                
-                if (result.success) {
-                    console.log('Transaction sent via Farcaster SDK (sponsored by Farcaster):', result);
-                    return result;
-                }
-            } catch (error) {
-                console.log('Farcaster SDK method failed:', error.message);
-                // Continue to other methods
-            }
-        }
-        
-        // Method 2: Check wallet capabilities for EIP-5792 (Smart Wallets)
-        if (provider) {
-            try {
-                const capabilities = await this.checkWalletCapabilities(provider);
-                
-                if (capabilities.paymasterService) {
-                    if (statusCallback) statusCallback('Sending gasless transaction...');
-                    
-                    try {
-                        const calls = [{
-                            to: txParams.to,
-                            value: txParams.value || '0x0',
-                            data: txParams.data || '0x'
-                        }];
-                        
-                        const result = await this.sendSponsoredCalls(provider, calls, userAddress);
-                        console.log('Transaction sent via wallet_sendCalls:', result);
-                        return result;
-                        
-                    } catch (error) {
-                        console.log('EIP-5792 wallet_sendCalls failed:', error.message);
-                    }
-                }
-            } catch (e) {
-                console.log('Wallet capabilities check failed:', e.message);
-            }
-        }
-        
-        // Method 3: Check if CDP paymaster sponsorship is available (for contract calls)
-        // Note: CDP Paymaster requires specific contracts to be allowlisted
-        // It won't work for simple ETH transfers like GM
-        const sponsorshipAvailable = await this.checkSponsorshipAvailable();
-        
-        if (sponsorshipAvailable && this.sponsorType === 'cdp-paymaster') {
-            console.log('CDP Paymaster available but requires contract allowlist');
-            // CDP Paymaster only works for allowlisted contract calls
-            // GM transactions (simple transfers) won't be sponsored
-        }
-        
-        // No sponsorship available, return false to trigger fallback to regular transaction
-        console.log('Sponsorship not available for this transaction type');
-        return { sponsored: false };
+        // Use sendViaFarcasterSDK which now does simple eth_sendTransaction
+        return await this.sendViaFarcasterSDK({
+            ...txParams,
+            from: userAddress
+        }, statusCallback);
     },
     
     /**
-     * Get UI badge for sponsored transactions
+     * Get UI badge for transactions
      */
     getSponsoredBadge() {
-        return '<span class="sponsored-badge" title="Gas fees paid by Base Match-3">Gasless</span>';
+        return '<span class="sponsored-badge" title="User pays gas fees">Paid</span>';
     },
     
     /**
-     * Update UI indicators to show sponsorship availability
+     * Update UI indicators - transactions are now paid by user
      */
     updateUIIndicators() {
         const gmIndicator = document.getElementById('gmGaslessIndicator');
@@ -1035,47 +665,20 @@ const SponsoredTransactions = {
         const gmButton = document.getElementById('gmButton');
         const deployBtn = document.getElementById('deployContractBtn');
         
-        // Check if we're in a sponsored environment
-        const isSponsored = this.isEligible || this.isInFarcasterFrame() || !!this.getFarcasterSDK();
+        // Hide gasless indicators since transactions are now paid
+        if (gmIndicator) {
+            gmIndicator.style.display = 'none';
+        }
+        if (deployIndicator) {
+            deployIndicator.style.display = 'none';
+        }
         
-        console.log('Updating UI indicators - isSponsored:', isSponsored, 'sponsorType:', this.sponsorType);
-        
-        if (isSponsored) {
-            // Show gasless indicators
-            if (gmIndicator) {
-                gmIndicator.style.display = 'inline-block';
-                gmIndicator.textContent = 'Gasless';
-                console.log('GM gasless indicator shown');
-            }
-            if (deployIndicator) {
-                deployIndicator.style.display = 'inline-block';
-                deployIndicator.textContent = 'Gasless';
-                console.log('Deploy gasless indicator shown');
-            }
-            
-            // Add visual hint to buttons
-            if (gmButton) {
-                gmButton.title = 'Send gasless GM transaction on Base';
-            }
-            if (deployBtn) {
-                deployBtn.title = 'Deploy contract with gasless transaction';
-            }
-        } else {
-            // Hide gasless indicators
-            if (gmIndicator) {
-                gmIndicator.style.display = 'none';
-            }
-            if (deployIndicator) {
-                deployIndicator.style.display = 'none';
-            }
-            
-            // Update button titles
-            if (gmButton) {
-                gmButton.title = 'Send GM transaction on Base';
-            }
-            if (deployBtn) {
-                deployBtn.title = 'Deploy contract on Base';
-            }
+        // Update button titles
+        if (gmButton) {
+            gmButton.title = 'Send GM transaction on Base (requires ETH for gas)';
+        }
+        if (deployBtn) {
+            deployBtn.title = 'Deploy contract on Base (requires ETH for gas)';
         }
     },
     
@@ -5099,7 +4702,7 @@ async function sendGMTransaction() {
     gmButton.classList.add('loading');
     gmButton.innerHTML = '<span class="gm-icon">⏳</span><span>Sending...</span>';
     if (gmStatus) {
-        gmStatus.textContent = 'Preparing gasless transaction...';
+        gmStatus.textContent = 'Preparing transaction...';
         gmStatus.className = 'gm-status';
     }
     
@@ -5191,9 +4794,9 @@ async function sendGMTransaction() {
             }
         }
         
-        // ===== TRY SPONSORED TRANSACTION =====
-        if (gmStatus) gmStatus.textContent = 'Sending gasless GM on Base...';
-        console.log('Attempting sponsored GM transaction via contract...');
+        // ===== SEND TRANSACTION =====
+        if (gmStatus) gmStatus.textContent = 'Sending GM on Base...';
+        console.log('Sending GM transaction...');
         
         try {
             const sponsorResult = await SponsoredTransactions.sendTransaction(
@@ -5224,7 +4827,7 @@ async function sendGMTransaction() {
             } else if (errorMsg.includes('provider')) {
                 userMessage = 'Wallet connection issue. Please refresh and try again.';
             } else {
-                userMessage = 'Gasless transaction failed. Please try again.';
+                userMessage = 'Transaction failed. Please try again.';
             }
             
             throw new Error(userMessage);
