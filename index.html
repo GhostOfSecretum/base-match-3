@@ -793,11 +793,11 @@
                     <button id="menuLeaderboardBtn" class="btn btn-menu btn-primary">
                         <span>Leaderboard</span>
                     </button>
-                    <button id="menuDayStreakBtn" class="btn btn-menu btn-primary">
-                        <span>GM Streak</span>
+                    <button id="menuGMBtn" class="btn btn-menu btn-primary">
+                        <span>Say GM</span>
                     </button>
                     <button id="menuDeployBtn" class="btn btn-menu btn-primary">
-                        <span>Deploy one click on Base</span>
+                        <span>Deploy Contract</span>
                     </button>
                 </div>
             </div>
@@ -1024,114 +1024,49 @@
             </div>
         </div>
 
-        <div id="dayStreakModal" class="modal">
+        <div id="gmModal" class="modal">
             <div class="modal-backdrop"></div>
             <div class="modal-content">
                 <div class="modal-header">
-                    <h2>GM Streak</h2>
+                    <h2>Say GM on Base</h2>
                 </div>
                 <div class="modal-body">
-                    <div class="streak-content">
-                        <div class="streak-display-large">
-                            <div class="streak-value-large" id="streakValueLarge">0</div>
-                            <div class="streak-label-large">GM Streak</div>
-                        </div>
-                        <div class="gm-button-container">
-                            <button id="gmButton" class="btn btn-gm" style="position: relative;">
-                                <span class="gm-icon">☀️</span>
-                                <span>Say GM</span>
-                                <span id="gmGaslessIndicator" class="btn-gasless-indicator" style="display: none;">Gasless</span>
-                            </button>
-                            <div id="gmStatus" class="gm-status"></div>
-                            <div id="gmLastSaid" class="gm-last-said"></div>
-                        </div>
-                        <p class="streak-description">Send a GM transaction on Base to increase your streak!</p>
+                    <div class="gm-content" style="text-align: center; padding: 20px;">
+                        <div class="gm-icon-large" style="font-size: 64px; margin-bottom: 20px;">☀️</div>
+                        <p style="margin-bottom: 20px; color: #888;">Send a GM transaction on Base network.<br>Requires ETH for gas fees.</p>
+                        <button id="gmSendBtn" class="btn btn-primary btn-large" style="font-size: 18px; padding: 15px 40px;">
+                            Say GM
+                        </button>
+                        <div id="gmStatus" style="margin-top: 15px; min-height: 24px;"></div>
                     </div>
                 </div>
-                <div id="gmDebugPanel" class="debug-panel-inline" style="display: none; margin-top: 15px; background: rgba(0,0,0,0.8); border: 1px solid #0f0; border-radius: 8px; padding: 10px; max-height: 150px; overflow-y: auto;">
-                    <div style="color: #0f0; font-family: monospace; font-size: 11px; white-space: pre-wrap;" id="gmDebugContent">Debug logs will appear here...</div>
-                </div>
                 <div class="modal-footer">
-                    <button id="gmDebugBtn" class="btn btn-secondary" style="margin-right: 10px;">🔧 Debug</button>
-                    <button id="resetGMBtn" class="btn btn-secondary" style="margin-right: 10px;">🔄 Reset</button>
-                    <button id="closeDayStreakBtn" class="btn btn-primary">Close</button>
+                    <button id="closeGMBtn" class="btn btn-primary">Close</button>
                 </div>
             </div>
         </div>
 
         <div id="deployModal" class="modal">
             <div class="modal-backdrop"></div>
-            <div class="modal-content deploy-modal">
+            <div class="modal-content">
                 <div class="modal-header">
                     <h2>Deploy Contract</h2>
                 </div>
                 <div class="modal-body">
-                    <div class="deploy-content">
-                        <div class="deploy-info">
-                            <p class="deploy-description">Deploy a simple storage smart contract on Base network with one click!</p>
-                            <div class="contract-preview">
-                                <div class="contract-preview-header">
-                                    <span class="contract-icon"></span>
-                                    <span>SimpleStorage.sol</span>
-                                </div>
-                                <pre class="contract-code"><code>// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
-
-contract SimpleStorage {
-    uint256 public storedValue;
-    address public owner;
-    
-    event ValueChanged(uint256 newValue);
-    
-    constructor() {
-        owner = msg.sender;
-        storedValue = 0;
-    }
-    
-    function setValue(uint256 _value) public {
-        storedValue = _value;
-        emit ValueChanged(_value);
-    }
-    
-    function getValue() public view returns (uint256) {
-        return storedValue;
-    }
-}</code></pre>
-                            </div>
-                        </div>
-                        <div class="deploy-button-container">
-                            <button id="deployContractBtn" class="btn btn-deploy-action" style="position: relative;">
-                                <span>Deploy to Base</span>
-                                <span id="deployGaslessIndicator" class="btn-gasless-indicator" style="display: none;">Gasless</span>
-                            </button>
-                            <div id="deployStatus" class="deploy-status"></div>
-                        </div>
-                        <div id="deployResult" class="deploy-result" style="display: none;">
-                            <div class="result-header">Contract Deployed!</div>
-                            <div class="result-address">
-                                <span class="result-label">Contract Address:</span>
-                                <a id="contractAddressLink" class="contract-address-link" href="" target="_blank"></a>
-                            </div>
-                            <div class="result-actions">
-                                <a id="viewOnBasescanBtn" class="btn btn-secondary btn-small" href="" target="_blank">
-                                    <span>View on BaseScan</span>
-                                </a>
-                                <button id="deployAnotherBtn" class="btn btn-primary btn-small">
-                                    <span>Deploy Another</span>
-                                </button>
-                            </div>
-                        </div>
-                        <div id="deployHistory" class="deploy-history" style="display: none;">
-                            <div class="history-header">Previously Deployed:</div>
-                            <div id="historyList" class="history-list"></div>
-                        </div>
-                        <div id="deployDebugPanel" class="debug-panel-inline" style="display: none; margin-top: 15px; background: rgba(0,0,0,0.8); border: 1px solid #0f0; border-radius: 8px; padding: 10px; max-height: 150px; overflow-y: auto;">
-                            <div style="color: #0f0; font-family: monospace; font-size: 11px; white-space: pre-wrap;" id="deployDebugContent">Debug logs will appear here...</div>
+                    <div class="deploy-content" style="text-align: center; padding: 20px;">
+                        <div class="deploy-icon-large" style="font-size: 64px; margin-bottom: 20px;">📄</div>
+                        <p style="margin-bottom: 20px; color: #888;">Deploy a SimpleStorage contract on Base.<br>Requires ETH for gas fees.</p>
+                        <button id="deployBtn" class="btn btn-primary btn-large" style="font-size: 18px; padding: 15px 40px;">
+                            Deploy Contract
+                        </button>
+                        <div id="deployStatus" style="margin-top: 15px; min-height: 24px;"></div>
+                        <div id="deployResult" style="display: none; margin-top: 20px; padding: 15px; background: rgba(0,255,0,0.1); border-radius: 8px;">
+                            <p style="color: #4ade80; margin-bottom: 10px;">Contract Deployed!</p>
+                            <a id="deployTxLink" href="" target="_blank" style="color: #0052ff;">View on BaseScan</a>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer">
-                    <button id="deployDebugBtn" class="btn btn-secondary" style="margin-right: 10px;">🔧 Debug</button>
                     <button id="closeDeployBtn" class="btn btn-primary">Close</button>
                 </div>
             </div>

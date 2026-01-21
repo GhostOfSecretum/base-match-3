@@ -4100,16 +4100,16 @@ function initStartMenu() {
     const menuRulesBtn = document.getElementById('menuRulesBtn');
     const menuSettingsBtn = document.getElementById('menuSettingsBtn');
     const menuLeaderboardBtn = document.getElementById('menuLeaderboardBtn');
-    const menuDayStreakBtn = document.getElementById('menuDayStreakBtn');
+    const menuGMBtn = document.getElementById('menuGMBtn');
     const menuDeployBtn = document.getElementById('menuDeployBtn');
     const menuProfileBtn = document.getElementById('menuProfileBtn');
     const settingsModal = document.getElementById('settingsModal');
-    const dayStreakModal = document.getElementById('dayStreakModal');
+    const gmModal = document.getElementById('gmModal');
     const rulesModal = document.getElementById('rulesModal');
     const deployModal = document.getElementById('deployModal');
     const profileModal = document.getElementById('profileModal');
     const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-    const closeDayStreakBtn = document.getElementById('closeDayStreakBtn');
+    const closeGMBtn = document.getElementById('closeGMBtn');
     const closeRulesBtn = document.getElementById('closeRulesBtn');
     const closeDeployBtn = document.getElementById('closeDeployBtn');
     const closeProfileBtn = document.getElementById('closeProfileBtn');
@@ -4260,40 +4260,28 @@ function initStartMenu() {
         console.warn('Leaderboard button not found');
     }
 
-    // GM Streak - открываем информацию о серии дней
-    if (menuDayStreakBtn && dayStreakModal) {
-        menuDayStreakBtn.addEventListener('click', (e) => {
+    // Say GM - открываем модалку GM
+    if (menuGMBtn && gmModal) {
+        menuGMBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('GM Streak button clicked');
-            updateDayStreakDisplay();
-            updateGMButtonState();
-            dayStreakModal.classList.add('show');
+            console.log('Say GM button clicked');
+            gmModal.classList.add('show');
         });
-        console.log('GM Streak button handler attached');
-    } else {
-        console.warn('GM Streak button or modal not found', { menuDayStreakBtn, dayStreakModal });
+        console.log('Say GM button handler attached');
     }
 
-    if (closeDayStreakBtn && dayStreakModal) {
-        closeDayStreakBtn.addEventListener('click', () => {
-            dayStreakModal.classList.remove('show');
+    if (closeGMBtn && gmModal) {
+        closeGMBtn.addEventListener('click', () => {
+            gmModal.classList.remove('show');
         });
     }
-
-    // Reset GM button for testing
-    const resetGMBtn = document.getElementById('resetGMBtn');
-    if (resetGMBtn) {
-        resetGMBtn.addEventListener('click', () => {
-            const gmData = JSON.parse(localStorage.getItem('gmData') || '{}');
-            gmData.lastGMDate = null;
-            localStorage.setItem('gmData', JSON.stringify(gmData));
-            updateGMButtonState();
-            const gmStatus = document.getElementById('gmStatus');
-            if (gmStatus) {
-                gmStatus.textContent = 'GM reset! You can say GM again.';
-                gmStatus.style.color = '#4ade80';
-            }
+    
+    // GM Send button
+    const gmSendBtn = document.getElementById('gmSendBtn');
+    if (gmSendBtn) {
+        gmSendBtn.addEventListener('click', () => {
+            sendSimpleGM();
         });
     }
 
@@ -4303,12 +4291,22 @@ function initStartMenu() {
             e.preventDefault();
             e.stopPropagation();
             console.log('Deploy Contract button clicked');
-            resetDeployModal();
+            // Reset status
+            const deployStatus = document.getElementById('deployStatus');
+            const deployResult = document.getElementById('deployResult');
+            if (deployStatus) deployStatus.textContent = '';
+            if (deployResult) deployResult.style.display = 'none';
             deployModal.classList.add('show');
         });
         console.log('Deploy Contract button handler attached');
-    } else {
-        console.warn('Deploy Contract button or modal not found', { menuDeployBtn, deployModal });
+    }
+    
+    // Deploy button
+    const deployBtn = document.getElementById('deployBtn');
+    if (deployBtn) {
+        deployBtn.addEventListener('click', () => {
+            sendSimpleDeploy();
+        });
     }
 
     // Profile - открываем профиль игрока
@@ -5854,6 +5852,160 @@ async function initializeGame() {
         setTimeout(initMenuWhenReady, 10);
     }
 })();
+
+// ==================== SIMPLE GM FUNCTION ====================
+async function sendSimpleGM() {
+    const gmStatus = document.getElementById('gmStatus');
+    const gmSendBtn = document.getElementById('gmSendBtn');
+    
+    if (gmSendBtn) {
+        gmSendBtn.disabled = true;
+        gmSendBtn.textContent = 'Sending...';
+    }
+    if (gmStatus) gmStatus.textContent = 'Connecting to wallet...';
+    
+    try {
+        // Get provider
+        let provider = null;
+        const sdk = window.sdk || (typeof frame !== 'undefined' && frame.sdk) || window.__farcasterSDK;
+        
+        if (sdk?.wallet?.ethProvider) {
+            provider = sdk.wallet.ethProvider;
+        } else if (window.ethereum) {
+            provider = window.ethereum;
+        }
+        
+        if (!provider) {
+            throw new Error('No wallet found');
+        }
+        
+        // Get account
+        if (gmStatus) gmStatus.textContent = 'Getting account...';
+        const accounts = await provider.request({ method: 'eth_requestAccounts' });
+        const from = accounts[0];
+        
+        if (!from) {
+            throw new Error('No account connected');
+        }
+        
+        // Send transaction to GM contract
+        if (gmStatus) gmStatus.textContent = 'Please confirm transaction...';
+        
+        const txHash = await provider.request({
+            method: 'eth_sendTransaction',
+            params: [{
+                from: from,
+                to: '0x56Fa8D9d0Ba5C17350163D8F632f734996F4944A', // GM Contract
+                value: '0x0',
+                data: '0x41cf91d1' // sayGM()
+            }]
+        });
+        
+        console.log('GM TX sent:', txHash);
+        
+        if (gmStatus) {
+            gmStatus.innerHTML = `GM sent! <a href="https://basescan.org/tx/${txHash}" target="_blank" style="color: #0052ff;">View TX</a>`;
+            gmStatus.style.color = '#4ade80';
+        }
+        if (gmSendBtn) {
+            gmSendBtn.textContent = 'GM Sent!';
+            gmSendBtn.style.background = '#4ade80';
+        }
+        
+    } catch (error) {
+        console.error('GM error:', error);
+        if (gmStatus) {
+            gmStatus.textContent = error.message || 'Transaction failed';
+            gmStatus.style.color = '#ef4444';
+        }
+        if (gmSendBtn) {
+            gmSendBtn.disabled = false;
+            gmSendBtn.textContent = 'Say GM';
+        }
+    }
+}
+
+// ==================== SIMPLE DEPLOY FUNCTION ====================
+// Uses SIMPLE_STORAGE_BYTECODE defined earlier in the file
+
+async function sendSimpleDeploy() {
+    const deployStatus = document.getElementById('deployStatus');
+    const deployResult = document.getElementById('deployResult');
+    const deployBtn = document.getElementById('deployBtn');
+    const deployTxLink = document.getElementById('deployTxLink');
+    
+    if (deployBtn) {
+        deployBtn.disabled = true;
+        deployBtn.textContent = 'Deploying...';
+    }
+    if (deployStatus) deployStatus.textContent = 'Connecting to wallet...';
+    if (deployResult) deployResult.style.display = 'none';
+    
+    try {
+        // Get provider
+        let provider = null;
+        const sdk = window.sdk || (typeof frame !== 'undefined' && frame.sdk) || window.__farcasterSDK;
+        
+        if (sdk?.wallet?.ethProvider) {
+            provider = sdk.wallet.ethProvider;
+        } else if (window.ethereum) {
+            provider = window.ethereum;
+        }
+        
+        if (!provider) {
+            throw new Error('No wallet found');
+        }
+        
+        // Get account
+        if (deployStatus) deployStatus.textContent = 'Getting account...';
+        const accounts = await provider.request({ method: 'eth_requestAccounts' });
+        const from = accounts[0];
+        
+        if (!from) {
+            throw new Error('No account connected');
+        }
+        
+        // Deploy contract
+        if (deployStatus) deployStatus.textContent = 'Please confirm transaction...';
+        
+        const txHash = await provider.request({
+            method: 'eth_sendTransaction',
+            params: [{
+                from: from,
+                data: SIMPLE_STORAGE_BYTECODE
+            }]
+        });
+        
+        console.log('Deploy TX sent:', txHash);
+        
+        if (deployStatus) {
+            deployStatus.textContent = 'Contract deploying...';
+            deployStatus.style.color = '#4ade80';
+        }
+        
+        if (deployResult && deployTxLink) {
+            deployTxLink.href = `https://basescan.org/tx/${txHash}`;
+            deployTxLink.textContent = `TX: ${txHash.slice(0, 10)}...${txHash.slice(-8)}`;
+            deployResult.style.display = 'block';
+        }
+        
+        if (deployBtn) {
+            deployBtn.textContent = 'Deployed!';
+            deployBtn.style.background = '#4ade80';
+        }
+        
+    } catch (error) {
+        console.error('Deploy error:', error);
+        if (deployStatus) {
+            deployStatus.textContent = error.message || 'Deploy failed';
+            deployStatus.style.color = '#ef4444';
+        }
+        if (deployBtn) {
+            deployBtn.disabled = false;
+            deployBtn.textContent = 'Deploy Contract';
+        }
+    }
+}
 
 // Запускаем игру при загрузке DOM
 // Используем несколько способов для максимальной совместимости
