@@ -552,8 +552,43 @@ const SponsoredTransactions = {
         }
         
         // Step 2: Try wallet_sendCalls with paymaster if available
-        if (paymasterUrl || capabilities) {
+        const baseCapabilities = capabilities?.['0x2105'] || capabilities?.['8453'];
+        if (baseCapabilities?.paymasterService?.supported) {
             try {
+                log('paymasterService is supported, getting URL...');
+                if (statusCallback) statusCallback('Getting paymaster...');
+                
+                // If no URL from capabilities, get it from our API
+                if (!paymasterUrl) {
+                    try {
+                        log('Fetching paymaster URL from API...');
+                        const paymasterResponse = await fetch(this.paymasterApiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'sendSponsoredTransaction',
+                                calls: [{ to: txParams.to, data: txParams.data }]
+                            })
+                        });
+                        const paymasterData = await paymasterResponse.json();
+                        log(`Paymaster API response: ${JSON.stringify(paymasterData)}`);
+                        
+                        if (paymasterData.success && paymasterData.paymasterServiceUrl) {
+                            paymasterUrl = paymasterData.paymasterServiceUrl;
+                            log(`Got paymaster URL from API: ${paymasterUrl?.substring(0, 50)}...`);
+                        } else {
+                            log(`Paymaster API error: ${paymasterData.error || 'No URL returned'}`);
+                        }
+                    } catch (apiError) {
+                        log(`Paymaster API fetch error: ${apiError.message}`);
+                    }
+                }
+                
+                if (!paymasterUrl) {
+                    log('ERROR: No paymaster URL available, cannot sponsor');
+                    throw new Error('No paymaster URL available');
+                }
+                
                 log('Attempting wallet_sendCalls with paymaster...');
                 if (statusCallback) statusCallback('Sending gasless transaction...');
                 
@@ -563,16 +598,11 @@ const SponsoredTransactions = {
                     data: txParams.data || '0x'
                 }];
                 
-                // Build capabilities object
-                const txCapabilities = {};
-                if (paymasterUrl) {
-                    txCapabilities.paymasterService = { url: paymasterUrl };
-                    log(`Using paymaster URL: ${paymasterUrl}`);
-                } else {
-                    // Let Base App use its default paymaster
-                    txCapabilities.paymasterService = true;
-                    log('Using default paymaster (true)');
-                }
+                // Build capabilities object with URL
+                const txCapabilities = {
+                    paymasterService: { url: paymasterUrl }
+                };
+                log(`Using paymaster URL: ${paymasterUrl?.substring(0, 50)}...`);
                 
                 const sendCallsParams = {
                     version: '1.0',
