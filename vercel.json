@@ -40,6 +40,9 @@
   "functions": {
     "api/paymaster.js": {
       "maxDuration": 30
+    },
+    "api/leaderboard.js": {
+      "maxDuration": 10
     }
   }
 }

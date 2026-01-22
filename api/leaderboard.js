@@ -1,7 +1,14 @@
 // API endpoint для общего лидерборда
-// Использует Vercel KV для персистентного хранения данных
+// Использует Upstash Redis для персистентного хранения данных
+// 
+// НАСТРОЙКА:
+// 1. Перейдите на https://vercel.com/marketplace/category/storage
+// 2. Найдите "Upstash" и нажмите "Add Integration"
+// 3. Подключите к вашему проекту
+// 4. Переменные окружения добавятся автоматически
+// 5. Переразверните проект
 
-import { kv } from '@vercel/kv';
+import { Redis } from '@upstash/redis';
 
 const LEADERBOARD_KEY = 'leaderboard:results';
 const MAX_RESULTS = 1000;
@@ -9,6 +16,38 @@ const MAX_RESULTS = 1000;
 function formatAddress(address) {
   if (!address) return 'Guest';
   return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}
+
+// Проверяем, настроен ли Redis
+function isRedisConfigured() {
+  // Поддерживаем разные форматы переменных окружения от Upstash
+  const url = process.env.UPSTASH_REDIS_REST_KV_REST_API_URL || 
+              process.env.UPSTASH_REDIS_REST_URL || 
+              process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN || 
+                process.env.UPSTASH_REDIS_REST_TOKEN || 
+                process.env.KV_REST_API_TOKEN;
+  return !!(url && token);
+}
+
+// Создаем клиент Redis
+function getRedisClient() {
+  // Поддерживаем разные форматы переменных окружения от Upstash
+  const url = process.env.UPSTASH_REDIS_REST_KV_REST_API_URL || 
+              process.env.UPSTASH_REDIS_REST_URL || 
+              process.env.KV_REST_API_URL;
+  const token = process.env.UPSTASH_REDIS_REST_KV_REST_API_TOKEN || 
+                process.env.UPSTASH_REDIS_REST_TOKEN || 
+                process.env.KV_REST_API_TOKEN;
+  
+  if (!url || !token) {
+    return null;
+  }
+  
+  return new Redis({
+    url: url,
+    token: token,
+  });
 }
 
 export default async function handler(req, res) {
@@ -22,13 +61,54 @@ export default async function handler(req, res) {
     return res.status(200).end();
   }
 
+  // Проверяем конфигурацию Redis
+  if (!isRedisConfigured()) {
+    console.error('Redis не настроен! Отсутствуют переменные окружения');
+    console.error('Инструкции по настройке:');
+    console.error('1. Перейдите на https://vercel.com/marketplace');
+    console.error('2. Найдите Upstash и добавьте интеграцию');
+    console.error('3. Подключите к проекту');
+    console.error('4. Переразверните проект');
+    
+    return res.status(503).json({
+      success: false,
+      error: 'Leaderboard storage is not configured. Please set up Upstash Redis.',
+      setup_instructions: {
+        step1: 'Go to https://vercel.com/marketplace',
+        step2: 'Search for "Upstash" and click "Add Integration"',
+        step3: 'Connect it to your Vercel project',
+        step4: 'Redeploy your project'
+      }
+    });
+  }
+  
+  const redis = getRedisClient();
+  if (!redis) {
+    return res.status(503).json({
+      success: false,
+      error: 'Failed to initialize Redis client'
+    });
+  }
+
   try {
     // GET - получить лидерборд
     if (req.method === 'GET') {
       const { filter = 'all', limit = 20 } = req.query;
       
-      // Получаем данные из KV
-      let leaderboardData = await kv.get(LEADERBOARD_KEY) || [];
+      // Получаем данные из Redis
+      let leaderboardData;
+      try {
+        leaderboardData = await redis.get(LEADERBOARD_KEY) || [];
+      } catch (redisError) {
+        console.error('Redis read error:', redisError);
+        leaderboardData = [];
+      }
+      
+      // Убеждаемся, что это массив
+      if (!Array.isArray(leaderboardData)) {
+        console.warn('Leaderboard data is not an array, resetting');
+        leaderboardData = [];
+      }
       
       let filtered = [...leaderboardData];
       const now = new Date();
@@ -98,8 +178,19 @@ export default async function handler(req, res) {
         timestamp: Date.now()
       };
       
-      // Получаем текущие данные из KV
-      let leaderboardData = await kv.get(LEADERBOARD_KEY) || [];
+      // Получаем текущие данные из Redis
+      let leaderboardData;
+      try {
+        leaderboardData = await redis.get(LEADERBOARD_KEY) || [];
+      } catch (redisError) {
+        console.error('Redis read error:', redisError);
+        leaderboardData = [];
+      }
+      
+      // Убеждаемся, что это массив
+      if (!Array.isArray(leaderboardData)) {
+        leaderboardData = [];
+      }
       
       leaderboardData.push(result);
       
@@ -109,8 +200,17 @@ export default async function handler(req, res) {
         leaderboardData = leaderboardData.slice(0, MAX_RESULTS);
       }
       
-      // Сохраняем обратно в KV
-      await kv.set(LEADERBOARD_KEY, leaderboardData);
+      // Сохраняем обратно в Redis
+      try {
+        await redis.set(LEADERBOARD_KEY, leaderboardData);
+        console.log('Leaderboard saved successfully, total records:', leaderboardData.length);
+      } catch (redisError) {
+        console.error('Redis write error:', redisError);
+        return res.status(500).json({
+          success: false,
+          error: 'Failed to save to leaderboard storage'
+        });
+      }
       
       return res.status(200).json({
         success: true,
@@ -127,7 +227,8 @@ export default async function handler(req, res) {
     console.error('Leaderboard API error:', error);
     return res.status(500).json({
       success: false,
-      error: 'Internal server error'
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
   }
 }

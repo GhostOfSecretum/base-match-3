@@ -1653,22 +1653,32 @@ class LeaderboardManager {
         }
 
         this.isLoading = true;
+        this.lastError = null;
 
         try {
             const response = await fetch(`${this.apiUrl}?filter=${filter}&limit=${limit}`);
+            const data = await response.json();
+            
+            // Проверяем специфичные ошибки от сервера
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                if (response.status === 503 && data.setup_instructions) {
+                    // KV не настроен
+                    this.lastError = 'storage_not_configured';
+                    console.error('Leaderboard storage not configured. Please set up Vercel KV.');
+                    console.error('Instructions:', data.setup_instructions);
+                }
+                throw new Error(data.error || `HTTP error! status: ${response.status}`);
             }
 
-            const data = await response.json();
             if (data.success && data.results) {
                 this.leaderboard = data.results;
                 this.lastFetchTime = now;
                 this.totalPlayers = data.totalPlayers || 0;
                 this.totalGames = data.totalGames || 0;
+                this.lastError = null;
                 return data.results;
             } else {
-                throw new Error('Invalid response format');
+                throw new Error(data.error || 'Invalid response format');
             }
         } catch (error) {
             console.error('Error fetching leaderboard:', error);
@@ -1677,6 +1687,11 @@ class LeaderboardManager {
         } finally {
             this.isLoading = false;
         }
+    }
+    
+    // Получить последнюю ошибку
+    getLastError() {
+        return this.lastError;
     }
 
     // Добавить результат на сервер
@@ -1739,23 +1754,31 @@ class LeaderboardManager {
                 })
             });
 
+            const data = await response.json();
+            
+            // Проверяем ошибку конфигурации хранилища
             if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
+                if (response.status === 503 && data.setup_instructions) {
+                    this.lastError = 'storage_not_configured';
+                    console.error('Leaderboard storage not configured:', data.error);
+                }
+                throw new Error(data.error || `HTTP error! status: ${response.status}`);
             }
 
-            const data = await response.json();
             if (data.success && data.result) {
                 // Добавляем результат в локальный кеш
                 this.leaderboard.push(data.result);
                 // Сбрасываем время кеша, чтобы обновить данные при следующем запросе
                 this.lastFetchTime = 0;
+                this.lastError = null;
+                console.log('Result saved to leaderboard successfully');
                 return data.result;
             } else {
                 throw new Error(data.error || 'Failed to save result');
             }
         } catch (error) {
             console.error('Error adding result to leaderboard:', error);
-            // В случае ошибки создаем локальный результат
+            // В случае ошибки создаем локальный результат (только для текущей сессии)
             const result = {
                 id: Date.now() + Math.random(),
                 walletAddress: walletAddress,
@@ -1764,7 +1787,8 @@ class LeaderboardManager {
                 maxCombo: maxCombo,
                 won: won,
                 date: new Date().toISOString(),
-                timestamp: Date.now()
+                timestamp: Date.now(),
+                _local: true // Помечаем как локальный результат
             };
             this.leaderboard.push(result);
             return result;
@@ -3959,6 +3983,25 @@ class MatchThreePro {
         try {
             // Получаем топ результаты с сервера
             const topResults = await this.leaderboard.fetchLeaderboard(filter, 20);
+            
+            // Проверяем ошибку конфигурации
+            const lastError = this.leaderboard.getLastError();
+            if (lastError === 'storage_not_configured') {
+                list.innerHTML = `
+                    <div class="leaderboard-empty">
+                        <div style="font-size: 24px; margin-bottom: 10px;">⚠️</div>
+                        <div style="font-weight: 600; margin-bottom: 8px;">Leaderboard Storage Not Configured</div>
+                        <div style="font-size: 12px; opacity: 0.7; line-height: 1.5;">
+                            To enable the global leaderboard, connect Upstash Redis via Vercel Marketplace.
+                            <br><br>
+                            See LEADERBOARD_SETUP.md for instructions.
+                        </div>
+                    </div>
+                `;
+                totalPlayers.textContent = '0';
+                totalGames.textContent = '0';
+                return;
+            }
 
             // Отображаем статистику
             totalPlayers.textContent = this.leaderboard.getTotalPlayers();
@@ -4048,7 +4091,22 @@ class MatchThreePro {
             }).join('');
         } catch (error) {
             console.error('Error loading leaderboard:', error);
-            list.innerHTML = '<div class="leaderboard-empty">Error loading leaderboard. Please try again later.</div>';
+            
+            // Проверяем тип ошибки
+            const lastError = this.leaderboard.getLastError();
+            if (lastError === 'storage_not_configured') {
+                list.innerHTML = `
+                    <div class="leaderboard-empty">
+                        <div style="font-size: 24px; margin-bottom: 10px;">⚠️</div>
+                        <div style="font-weight: 600; margin-bottom: 8px;">Leaderboard Storage Not Configured</div>
+                        <div style="font-size: 12px; opacity: 0.7; line-height: 1.5;">
+                            Connect Upstash Redis via Vercel Marketplace to enable the global leaderboard.
+                        </div>
+                    </div>
+                `;
+            } else {
+                list.innerHTML = '<div class="leaderboard-empty">Error loading leaderboard. Please try again later.</div>';
+            }
         }
     }
 
