@@ -4057,16 +4057,26 @@ class MatchThreePro {
                 Math.abs(new Date(r.date).getTime() - Date.now()) < 5000; // 5 секунд окно
         });
 
+        // Определяем статус сохранения
+        let saveStatus = '';
+        if (!savedResult) {
+            saveStatus = ' ⚠️ Score not saved';
+        } else if (savedResult._local) {
+            saveStatus = ' ⚠️ Saved locally only';
+        } else {
+            saveStatus = ' ✅ Score saved!';
+        }
+
         if (won) {
             title.textContent = 'Congratulations!';
             message.textContent = isTopResult
-                ? 'You reached the level goal and set a new high score! 🏆'
-                : 'You reached the level goal! Great game!';
+                ? 'You reached the level goal and set a new high score! 🏆' + saveStatus
+                : 'You reached the level goal! Great game!' + saveStatus;
             // Воспроизводим звук победы
             this.soundManager.playWinSound();
         } else {
             title.textContent = 'Game Over!';
-            message.textContent = `You needed ${(this.targetScore - this.score).toLocaleString()} more points. Try again!`;
+            message.textContent = `You needed ${(this.targetScore - this.score).toLocaleString()} more points.` + saveStatus;
             if (isTopResult) {
                 message.textContent += ' Great score! 🎯';
             }
