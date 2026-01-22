@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.7';
+const APP_VERSION = '1.0.8';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -3064,7 +3064,11 @@ class MatchThreePro {
     }
 
     handleCellClick(row, col) {
-        if (this.isProcessing) return;
+        // Блокируем клики если игра закончилась или обрабатывается
+        if (this.isProcessing || this.isGameEnded || this.moves <= 0) {
+            console.log('Click blocked:', { isProcessing: this.isProcessing, isGameEnded: this.isGameEnded, moves: this.moves });
+            return;
+        }
 
         if (this.selectedCell === null) {
             this.selectedCell = { row, col };
@@ -3112,6 +3116,12 @@ class MatchThreePro {
         const matches = this.findAllMatches();
 
         if (matches.length > 0) {
+            // Проверяем, не закончилась ли уже игра
+            if (this.isGameEnded || this.moves <= 0) {
+                console.log('Game already ended or no moves left, ignoring');
+                return;
+            }
+            
             this.moves--;
             this.selectedCell = null;
             this.combo = 1;
