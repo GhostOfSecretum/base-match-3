@@ -1056,8 +1056,26 @@
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer" style="flex-wrap: wrap; gap: 10px;">
+                    <button id="debugBtn" class="btn" style="background: rgba(255,193,7,0.2); color: #ffc107;">Debug</button>
                     <button id="closeSettingsBtn" class="btn btn-primary">Close</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="debugModal" class="modal">
+            <div class="modal-backdrop"></div>
+            <div class="modal-content" style="max-width: 90%; max-height: 80vh;">
+                <div class="modal-header">
+                    <h2>Debug logs</h2>
+                </div>
+                <div class="modal-body" style="text-align: left;">
+                    <pre id="debugLogsContent" style="background: #111; padding: 12px; border-radius: 8px; font-size: 11px; overflow: auto; max-height: 50vh; white-space: pre-wrap; word-break: break-all;"></pre>
+                    <p id="debugGameEndInfo" style="font-size: 12px; color: #888; margin-top: 10px;"></p>
+                </div>
+                <div class="modal-footer" style="flex-wrap: wrap; gap: 10px;">
+                    <button id="debugCopyBtn" class="btn btn-primary">Copy logs</button>
+                    <button id="debugCloseBtn" class="btn">Close</button>
                 </div>
             </div>
         </div>

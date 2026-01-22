@@ -4024,10 +4024,15 @@ class MatchThreePro {
         // Защита от повторного вызова
         if (this.isGameEnded) {
             console.log('endGame already called, skipping');
+            if (typeof debugLog === 'function') debugLog('endGame skip: already ended');
             return;
         }
         this.isGameEnded = true;
         console.log('=== endGame STARTED ===');
+        if (typeof debugLog === 'function') debugLog(`endGame START won=${won} score=${this.score} moves=${this.moves}`);
+
+        // Debug: храним состояние для кнопки Debug
+        window.__gameEndDebug = { step: 'start', won, score: this.score, maxCombo: this.maxCombo, error: null };
         
         // Обновляем day streak после игры
         if (typeof updateDayStreakAfterGame === 'function') {
@@ -4036,11 +4041,8 @@ class MatchThreePro {
 
         // Сохраняем статистику игр для профиля
         try {
-            // Увеличиваем счетчик игр
             const gamesPlayed = parseInt(localStorage.getItem('gamesPlayed') || '0') + 1;
             localStorage.setItem('gamesPlayed', gamesPlayed.toString());
-
-            // Обновляем лучший комбо
             const currentBestCombo = parseInt(localStorage.getItem('bestCombo') || '0');
             if (this.maxCombo > currentBestCombo) {
                 localStorage.setItem('bestCombo', this.maxCombo.toString());
@@ -4049,165 +4051,112 @@ class MatchThreePro {
             console.log('Error saving game stats:', e.message);
         }
 
-        // Логируем статус подключения для диагностики
-        console.log('=== END GAME DEBUG v1.0.7 ===');
-        console.log('walletManager.isConnected():', this.walletManager.isConnected());
-        console.log('walletManager.account:', this.walletManager.account);
-        console.log('window.__farcasterContext:', window.__farcasterContext);
-        console.log('Score:', this.score, 'MaxCombo:', this.maxCombo, 'Won:', won);
-        
-        // Получаем адрес из любого доступного источника
-        let playerAddress = null;
-        
-        // 1. Из walletManager
-        if (this.walletManager.isConnected()) {
-            playerAddress = this.walletManager.getAccount();
-            console.log('Got address from walletManager:', playerAddress);
-        }
-        
-        // 2. Из Farcaster контекста
-        if (!playerAddress && window.__farcasterContext?.user) {
-            playerAddress = window.__farcasterContext.user.verifiedAddresses?.ethAddresses?.[0] ||
-                           window.__farcasterContext.user.custodyAddress;
-            console.log('Got address from Farcaster context:', playerAddress);
-            
-            // Подключаем через walletManager для совместимости
-            if (playerAddress) {
-                await this.walletManager.connectViaBaseAccount(playerAddress);
-            }
-        }
-        
-        // 3. Из SDK напрямую
-        if (!playerAddress) {
-            try {
-                const sdk = window.sdk || window.__farcasterSDK || (typeof frame !== 'undefined' ? frame.sdk : null);
-                if (sdk?.context?.user) {
-                    playerAddress = sdk.context.user.verifiedAddresses?.ethAddresses?.[0] ||
-                                   sdk.context.user.custodyAddress;
-                    console.log('Got address from SDK:', playerAddress);
-                    if (playerAddress) {
-                        await this.walletManager.connectViaBaseAccount(playerAddress);
-                    }
-                }
-            } catch (e) {
-                console.log('SDK context error:', e);
-            }
-        }
-        
-        console.log('Final playerAddress:', playerAddress);
-        
-        // Если нет адреса - показываем сообщение
-        if (!playerAddress) {
-            console.log('NO ADDRESS FOUND - result will NOT be saved');
-            const modal = document.getElementById('gameOverModal');
-            const title = document.getElementById('gameOverTitle');
-            const message = document.getElementById('gameOverMessage');
-            const finalScore = document.getElementById('finalScore');
-            const finalCombo = document.getElementById('finalCombo');
-
-            finalScore.textContent = this.score.toLocaleString();
-            finalCombo.textContent = this.maxCombo;
-
-            title.textContent = won ? 'Congratulations!' : 'Game Over!';
-            message.textContent = won
-                ? 'You won! ⚠️ No wallet detected - score not saved'
-                : `Game Over! ⚠️ No wallet detected - score not saved`;
-
-            if (won) {
-                this.soundManager.playWinSound();
-            } else {
-                this.soundManager.playLoseSound();
-            }
-
-            modal.classList.add('show');
-            return;
-        }
-
-        // Сохраняем результат в лидерборд (асинхронно)
-        console.log('Wallet IS connected - saving result...');
-        console.log('Account:', this.walletManager.account);
-        
-        let savedResult = null;
-        try {
-            savedResult = await this.leaderboard.addResult(this.score, this.maxCombo, won);
-            console.log('Saved result:', savedResult);
-            
-            if (!savedResult) {
-                console.error('ERROR: savedResult is null/undefined');
-            } else if (savedResult._local) {
-                console.warn('WARNING: Result saved locally only (API error)');
-            } else {
-                console.log('SUCCESS: Result saved to server');
-            }
-        } catch (saveError) {
-            console.error('ERROR saving result:', saveError);
-        }
-
         const modal = document.getElementById('gameOverModal');
-        const title = document.getElementById('gameOverTitle');
-        const message = document.getElementById('gameOverMessage');
-        const finalScore = document.getElementById('finalScore');
-        const finalCombo = document.getElementById('finalCombo');
+        const titleEl = document.getElementById('gameOverTitle');
+        const messageEl = document.getElementById('gameOverMessage');
+        const finalScoreEl = document.getElementById('finalScore');
+        const finalComboEl = document.getElementById('finalCombo');
 
-        finalScore.textContent = this.score.toLocaleString();
-        finalCombo.textContent = this.maxCombo;
+        const showModal = (title, message) => {
+            finalScoreEl.textContent = this.score.toLocaleString();
+            finalComboEl.textContent = this.maxCombo;
+            titleEl.textContent = title;
+            messageEl.textContent = message;
+            if (won) this.soundManager.playWinSound();
+            else this.soundManager.playLoseSound();
+            modal.classList.add('show');
+            modal.style.display = 'flex';
+            if (typeof debugLog === 'function') debugLog('Game Over modal SHOWN');
+            window.__gameEndDebug = { ...window.__gameEndDebug, step: 'modal_shown', modalHasShow: modal.classList.contains('show') };
+            setTimeout(() => {
+                if (!modal.classList.contains('show')) {
+                    modal.classList.add('show');
+                    modal.style.display = 'flex';
+                }
+            }, 100);
+        };
 
-        // Проверяем, попал ли результат в топ (обновляем данные с сервера)
-        const currentAddress = this.walletManager.getAccount().toLowerCase();
-        const topResults = await this.leaderboard.fetchLeaderboard('all', 10);
-        const isTopResult = savedResult && topResults.some(r => {
-            const resultAddress = (r.walletAddress || r.playerName || '').toLowerCase();
-            return r.score === this.score &&
-                resultAddress === currentAddress &&
-                Math.abs(new Date(r.date).getTime() - Date.now()) < 5000; // 5 секунд окно
-        });
-
-        // Определяем статус сохранения
-        let saveStatus = '';
-        if (!savedResult) {
-            saveStatus = ' ⚠️ Score not saved';
-        } else if (savedResult._local) {
-            saveStatus = ' ⚠️ Saved locally only';
-        } else {
-            saveStatus = ' ✅ Score saved!';
-        }
-
-        if (won) {
-            title.textContent = 'Congratulations!';
-            message.textContent = isTopResult
-                ? 'You reached the level goal and set a new high score! 🏆' + saveStatus
-                : 'You reached the level goal! Great game!' + saveStatus;
-            // Воспроизводим звук победы
-            this.soundManager.playWinSound();
-        } else {
-            title.textContent = 'Game Over!';
-            message.textContent = `You needed ${(this.targetScore - this.score).toLocaleString()} more points.` + saveStatus;
-            if (isTopResult) {
-                message.textContent += ' Great score! 🎯';
+        try {
+            window.__gameEndDebug.step = 'get_address';
+            let playerAddress = null;
+            if (this.walletManager.isConnected()) {
+                playerAddress = this.walletManager.getAccount();
             }
-            // Воспроизводим звук проигрыша
-            this.soundManager.playLoseSound();
-        }
-
-        // Принудительно показываем модальное окно
-        console.log('=== SHOWING GAME OVER MODAL ===');
-        console.log('Modal element:', modal);
-        modal.classList.add('show');
-        modal.style.display = 'flex';
-        
-        // Дополнительная проверка - если модалка не видна, принудительно показываем
-        setTimeout(() => {
-            if (!modal.classList.contains('show')) {
-                console.log('Modal not showing, forcing display');
-                modal.classList.add('show');
-                modal.style.display = 'flex';
+            if (!playerAddress && window.__farcasterContext?.user) {
+                playerAddress = window.__farcasterContext.user.verifiedAddresses?.ethAddresses?.[0] ||
+                               window.__farcasterContext.user.custodyAddress;
+                if (playerAddress) await this.walletManager.connectViaBaseAccount(playerAddress);
             }
-            console.log('Modal state:', {
-                hasShow: modal.classList.contains('show'),
-                display: modal.style.display,
-                visible: modal.offsetParent !== null
+            if (!playerAddress) {
+                try {
+                    const sdk = window.sdk || window.__farcasterSDK || (typeof frame !== 'undefined' ? frame.sdk : null);
+                    if (sdk?.context?.user) {
+                        playerAddress = sdk.context.user.verifiedAddresses?.ethAddresses?.[0] || sdk.context.user.custodyAddress;
+                        if (playerAddress) await this.walletManager.connectViaBaseAccount(playerAddress);
+                    }
+                } catch (e) { console.log('SDK context error:', e); }
+            }
+
+            if (!playerAddress) {
+                window.__gameEndDebug.step = 'no_address';
+                showModal(
+                    won ? 'Congratulations!' : 'Game Over!',
+                    won ? 'You won! ⚠️ No wallet detected - score not saved' : 'Game Over! ⚠️ No wallet detected - score not saved'
+                );
+                return;
+            }
+
+            window.__gameEndDebug.step = 'saving';
+            let savedResult = null;
+            try {
+                savedResult = await this.leaderboard.addResult(this.score, this.maxCombo, won);
+            } catch (saveError) {
+                console.error('ERROR saving result:', saveError);
+                window.__gameEndDebug.error = 'addResult: ' + (saveError?.message || String(saveError));
+                if (typeof debugLog === 'function') debugLog('endGame addResult error: ' + (saveError?.message || saveError));
+            }
+
+            let topResults = [];
+            try {
+                topResults = await this.leaderboard.fetchLeaderboard('all', 10);
+            } catch (fetchErr) {
+                console.error('ERROR fetching leaderboard:', fetchErr);
+                if (!window.__gameEndDebug.error) window.__gameEndDebug.error = 'fetchLeaderboard: ' + (fetchErr?.message || String(fetchErr));
+            }
+
+            const currentAddress = this.walletManager.getAccount().toLowerCase();
+            const isTopResult = savedResult && topResults.some(r => {
+                const resultAddress = (r.walletAddress || r.playerName || '').toLowerCase();
+                return r.score === this.score && resultAddress === currentAddress &&
+                    Math.abs(new Date(r.date).getTime() - Date.now()) < 5000;
             });
-        }, 100);
+
+            let saveStatus = '';
+            if (!savedResult) saveStatus = ' ⚠️ Score not saved';
+            else if (savedResult._local) saveStatus = ' ⚠️ Saved locally only';
+            else saveStatus = ' ✅ Score saved!';
+
+            const finalTitle = won ? 'Congratulations!' : 'Game Over!';
+            let finalMessage;
+            if (won) {
+                finalMessage = isTopResult
+                    ? 'You reached the level goal and set a new high score! 🏆' + saveStatus
+                    : 'You reached the level goal! Great game!' + saveStatus;
+            } else {
+                finalMessage = `You needed ${(this.targetScore - this.score).toLocaleString()} more points.` + saveStatus;
+                if (isTopResult) finalMessage += ' Great score! 🎯';
+            }
+            window.__gameEndDebug.step = 'show_modal';
+            showModal(finalTitle, finalMessage);
+        } catch (e) {
+            console.error('endGame unexpected error:', e);
+            window.__gameEndDebug.error = (window.__gameEndDebug?.error || '') + ' unexpected: ' + (e?.message || String(e));
+            if (typeof debugLog === 'function') debugLog('endGame ERROR: ' + (e?.message || e));
+            showModal(
+                won ? 'Congratulations!' : 'Game Over!',
+                (won ? 'You won!' : 'Game Over!') + ' Score could not be saved. Check Debug logs.'
+            );
+        }
     }
 
     async showLeaderboard(filter = 'all') {
@@ -4382,24 +4331,24 @@ class MatchThreePro {
 
     async newGame() {
         console.log('=== newGame() CALLED ===');
-        console.log('Previous isGameEnded:', this.isGameEnded);
+        const gameOverModal = document.getElementById('gameOverModal');
+        if (gameOverModal) {
+            gameOverModal.classList.remove('show');
+            gameOverModal.style.display = ''; // убираем инлайн display:flex из endGame
+        }
         
+        console.log('Previous isGameEnded:', this.isGameEnded);
         this.score = 0;
         this.moves = 15;
         this.combo = 1;
         this.maxCombo = 1;
         this.selectedCell = null;
         this.isProcessing = false;
-        this.isGameEnded = false; // Сбрасываем флаг окончания игры
+        this.isGameEnded = false;
         
-        // Сбрасываем кэш лидерборда
-        if (this.leaderboard) {
-            this.leaderboard.lastFetchTime = 0;
-        }
+        if (this.leaderboard) this.leaderboard.lastFetchTime = 0;
         
         console.log('=== NEW GAME STARTED ===');
-        console.log('isGameEnded reset to:', this.isGameEnded);
-        document.getElementById('gameOverModal').classList.remove('show');
         
         // Не вызываем полный init() чтобы избежать дублирования обработчиков событий
         // Просто создаем новую доску и обновляем UI
@@ -4665,6 +4614,12 @@ function initStartMenu() {
     const deployModal = document.getElementById('deployModal');
     const profileModal = document.getElementById('profileModal');
     const closeSettingsBtn = document.getElementById('closeSettingsBtn');
+    const debugBtn = document.getElementById('debugBtn');
+    const debugModal = document.getElementById('debugModal');
+    const debugLogsContent = document.getElementById('debugLogsContent');
+    const debugGameEndInfo = document.getElementById('debugGameEndInfo');
+    const debugCopyBtn = document.getElementById('debugCopyBtn');
+    const debugCloseBtn = document.getElementById('debugCloseBtn');
     const closeGMBtn = document.getElementById('closeGMBtn');
     const closeRulesBtn = document.getElementById('closeRulesBtn');
     const closeDeployBtn = document.getElementById('closeDeployBtn');
@@ -4764,6 +4719,40 @@ function initStartMenu() {
         closeSettingsBtn.addEventListener('click', () => {
             settingsModal.classList.remove('show');
         });
+    }
+
+    function openDebugModal() {
+        const logs = (window.__debugLogs || []).slice(-200).join('\n');
+        if (debugLogsContent) debugLogsContent.textContent = logs || '(no logs yet)';
+        const ged = window.__gameEndDebug || {};
+        const info = `Game end: step=${ged.step || '-'} won=${ged.won ?? '-'} score=${ged.score ?? '-'} maxCombo=${ged.maxCombo ?? '-'} error=${ged.error || 'none'}`;
+        if (debugGameEndInfo) debugGameEndInfo.textContent = info;
+        if (debugModal) debugModal.classList.add('show');
+    }
+
+    function copyDebugLogs() {
+        const logs = (window.__debugLogs || []).join('\n');
+        const ged = window.__gameEndDebug || {};
+        const blob = logs + '\n\n--- gameEndDebug ---\n' + JSON.stringify(ged, null, 2);
+        navigator.clipboard.writeText(blob).then(() => {
+            if (debugCopyBtn) debugCopyBtn.textContent = 'Copied!';
+            setTimeout(() => { if (debugCopyBtn) debugCopyBtn.textContent = 'Copy logs'; }, 2000);
+        }).catch(() => {
+            if (debugCopyBtn) debugCopyBtn.textContent = 'Copy failed';
+            setTimeout(() => { if (debugCopyBtn) debugCopyBtn.textContent = 'Copy logs'; }, 2000);
+        });
+    }
+
+    if (debugBtn) {
+        debugBtn.addEventListener('click', () => { openDebugModal(); });
+    }
+    if (debugCopyBtn) debugCopyBtn.addEventListener('click', () => { copyDebugLogs(); });
+    if (debugCloseBtn && debugModal) {
+        debugCloseBtn.addEventListener('click', () => { debugModal.classList.remove('show'); });
+    }
+    if (debugModal) {
+        const dbgBackdrop = debugModal.querySelector('.modal-backdrop');
+        if (dbgBackdrop) dbgBackdrop.addEventListener('click', () => { debugModal.classList.remove('show'); });
     }
 
     // Theme toggle handlers
