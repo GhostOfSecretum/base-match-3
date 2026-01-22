@@ -2916,11 +2916,13 @@ class MatchThreePro {
             const finalY = touch.clientY;
 
             // Находим ячейку под точкой касания
-            const target = document.elementFromPoint(finalX, finalY);
+            const elementUnderPoint = document.elementFromPoint(finalX, finalY);
+            // Используем closest для поиска ячейки, т.к. elementFromPoint может вернуть внутренний элемент (img, logo-container)
+            const target = elementUnderPoint ? elementUnderPoint.closest('.cell') : null;
             let targetRow = startRow; // По умолчанию используем начальную ячейку
             let targetCol = startCol;
 
-            if (target && target.classList.contains('cell')) {
+            if (target) {
                 targetRow = parseInt(target.dataset.row);
                 targetCol = parseInt(target.dataset.col);
             } else if (this.isDragging) {
@@ -3000,11 +3002,12 @@ class MatchThreePro {
                     return; // Не обрабатываем drag для кнопок
                 }
 
-                // Находим ячейку под курсором
+                // Находим ячейку под курсором (используем closest для внутренних элементов)
                 const elementUnderPoint = document.elementFromPoint(e.clientX, e.clientY);
-                if (elementUnderPoint && elementUnderPoint.classList.contains('cell')) {
-                    const row = parseInt(elementUnderPoint.dataset.row);
-                    const col = parseInt(elementUnderPoint.dataset.col);
+                const cellUnderPoint = elementUnderPoint ? elementUnderPoint.closest('.cell') : null;
+                if (cellUnderPoint) {
+                    const row = parseInt(cellUnderPoint.dataset.row);
+                    const col = parseInt(cellUnderPoint.dataset.col);
                     this.handleDragEnd(e, row, col);
                 } else {
                     // Если отпустили вне ячейки, отменяем перетаскивание
@@ -3031,6 +3034,14 @@ class MatchThreePro {
         if (!this.soundManager.initialized) {
             this.soundManager.activate();
         }
+
+        // Снимаем выделение с предыдущей ячейки если была
+        if (this.selectedCell) {
+            this.highlightCell(this.selectedCell.row, this.selectedCell.col, false);
+        }
+        
+        // Очищаем все "зависшие" выделения
+        this.cleanupOrphanedSelections();
 
         // Сбрасываем предыдущее состояние
         this.resetDrag();
@@ -3147,20 +3158,38 @@ class MatchThreePro {
             clearTimeout(this.selectionCleanupTimer);
         }
         
-        // Через 3 секунды проверяем, нет ли "зависших" выделенных ячеек
+        // Через 1.5 секунды проверяем, нет ли "зависших" выделенных ячеек
         this.selectionCleanupTimer = setTimeout(() => {
-            // Если нет активного перетаскивания и нет обработки, очищаем все выделения
-            if (!this.dragStartCell && !this.isProcessing) {
-                const selectedCells = document.querySelectorAll('.cell.selected');
-                if (selectedCells.length > 0 && this.selectedCell === null) {
-                    // Есть выделенные ячейки в DOM, но selectedCell = null - это баг
-                    selectedCells.forEach(cell => {
-                        cell.classList.remove('selected');
-                    });
-                    console.log('Cleaned up orphaned selected cells:', selectedCells.length);
-                }
+            this.cleanupOrphanedSelections();
+        }, 1500);
+    }
+    
+    // Немедленно очищает все "зависшие" выделения
+    cleanupOrphanedSelections() {
+        // Если идёт перетаскивание или обработка, не трогаем
+        if (this.dragStartCell || this.isProcessing) return;
+        
+        const selectedCells = document.querySelectorAll('.cell.selected');
+        if (selectedCells.length === 0) return;
+        
+        // Если selectedCell === null, но есть выделенные ячейки - это баг
+        if (this.selectedCell === null) {
+            selectedCells.forEach(cell => {
+                cell.classList.remove('selected');
+            });
+            console.log('Cleaned up orphaned selected cells (no selectedCell):', selectedCells.length);
+            return;
+        }
+        
+        // Проверяем что выделенная ячейка соответствует selectedCell
+        const expectedKey = `${this.selectedCell.row}-${this.selectedCell.col}`;
+        selectedCells.forEach(cell => {
+            const cellKey = `${cell.dataset.row}-${cell.dataset.col}`;
+            if (cellKey !== expectedKey) {
+                cell.classList.remove('selected');
+                console.log('Cleaned up wrong selected cell:', cellKey, 'expected:', expectedKey);
             }
-        }, 3000);
+        });
     }
 
     handleCellClick(row, col) {
