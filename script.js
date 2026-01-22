@@ -284,10 +284,6 @@ function debugLog(msg) {
     if (!window.__debugLogs) window.__debugLogs = [];
     window.__debugLogs.push(`[${time}] ${msg}`);
     console.log(msg);
-    const debugContent = document.getElementById('debugContent');
-    if (debugContent) {
-        debugContent.innerHTML = window.__debugLogs.slice(-20).join('<br>');
-    }
 }
 
 // Ранняя инициализация темы для предотвращения мерцания
@@ -5113,23 +5109,6 @@ function initGMButton() {
         updateGMButtonState();
         console.log('GM button initialized');
     }
-    
-    // Initialize GM Debug button
-    const gmDebugBtn = document.getElementById('gmDebugBtn');
-    const gmDebugPanel = document.getElementById('gmDebugPanel');
-    if (gmDebugBtn && gmDebugPanel) {
-        gmDebugBtn.addEventListener('click', () => {
-            if (gmDebugPanel.style.display === 'none') {
-                gmDebugPanel.style.display = 'block';
-                gmDebugBtn.textContent = '🔧 Hide Debug';
-                // Run debug check
-                runGMDebugCheck();
-            } else {
-                gmDebugPanel.style.display = 'none';
-                gmDebugBtn.textContent = '🔧 Debug';
-            }
-        });
-    }
 }
 
 // Run debug check for GM
@@ -5494,8 +5473,6 @@ function resetForNewDeploy() {
 function initDeployContract() {
     const deployBtn = document.getElementById('deployContractBtn');
     const deployAnotherBtn = document.getElementById('deployAnotherBtn');
-    const deployDebugBtn = document.getElementById('deployDebugBtn');
-    const deployDebugPanel = document.getElementById('deployDebugPanel');
     
     if (deployBtn) {
         deployBtn.addEventListener('click', async (e) => {
@@ -5515,21 +5492,6 @@ function initDeployContract() {
             resetForNewDeploy();
         });
         console.log('Deploy another button initialized');
-    }
-    
-    // Initialize Deploy Debug button
-    if (deployDebugBtn && deployDebugPanel) {
-        deployDebugBtn.addEventListener('click', () => {
-            if (deployDebugPanel.style.display === 'none') {
-                deployDebugPanel.style.display = 'block';
-                deployDebugBtn.textContent = '🔧 Hide Debug';
-                // Run debug check
-                runDeployDebugCheck();
-            } else {
-                deployDebugPanel.style.display = 'none';
-                deployDebugBtn.textContent = '🔧 Debug';
-            }
-        });
     }
 }
 
