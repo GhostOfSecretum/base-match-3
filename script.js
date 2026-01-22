@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.19';
+const APP_VERSION = '1.0.20';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -3682,14 +3682,7 @@ class MatchThreePro {
             }
         });
 
-        // Создаем специальные фигуры на доске и показываем их
-        if (specialCells.length > 0) {
-            specialCells.forEach(({ row, col, special }) => {
-                this.board[row][col].special = special;
-                this.updateCell(row, col); // Обновляем только измененные ячейки
-            });
-            await this.sleep(50); // Минимальная задержка для показа специальных фигур
-        }
+        // Специальные фигуры обрабатываются без визуального отображения
 
         // Подсчитываем очки с учетом комбо и бонусов за T/L-образные фигуры
         let totalMatched = 0;
@@ -3717,13 +3710,6 @@ class MatchThreePro {
         const scoreGain = (baseScore + tShapeBonusScore + lShapeBonusScore) * comboMultiplier;
         this.score += scoreGain;
 
-        // Показываем специальные сообщения для T/L-образных фигур
-        if (tShapeBonus > 0) {
-            this.showSpecialPopup('T-SHAPE BONUS!', tShapeBonusScore * comboMultiplier);
-        }
-        if (lShapeBonus > 0) {
-            this.showSpecialPopup('L-SHAPE BONUS!', lShapeBonusScore * comboMultiplier);
-        }
 
         // Показываем очки
         this.showScorePopup(scoreGain);
@@ -3762,33 +3748,21 @@ class MatchThreePro {
             cellsToRemove.add(key);
 
             if (special === this.SPECIAL_TYPES.BOMB) {
-                // Бомба взрывает область 3x3
-                this.soundManager.playBombSound();
+                // Бомба взрывает область 3x3 (без звука и визуальных эффектов)
                 for (let r = Math.max(0, row - 1); r <= Math.min(this.boardSize - 1, row + 1); r++) {
                     for (let c = Math.max(0, col - 1); c <= Math.min(this.boardSize - 1, col + 1); c++) {
                         cellsToRemove.add(`${r}-${c}`);
-                        if (r !== row || c !== col) {
-                            setTimeout(() => this.createExplosionParticles(r, c), 100);
-                        }
                     }
                 }
             } else if (special === this.SPECIAL_TYPES.ROCKET_H) {
-                // Горизонтальная ракета удаляет всю строку
-                this.soundManager.playRocketSound();
+                // Горизонтальная ракета удаляет всю строку (без звука и визуальных эффектов)
                 for (let c = 0; c < this.boardSize; c++) {
                     cellsToRemove.add(`${row}-${c}`);
-                    if (c !== col) {
-                        setTimeout(() => this.createExplosionParticles(row, c), 50 * Math.abs(c - col));
-                    }
                 }
             } else if (special === this.SPECIAL_TYPES.ROCKET_V) {
-                // Вертикальная ракета удаляет весь столбец
-                this.soundManager.playRocketSound();
+                // Вертикальная ракета удаляет весь столбец (без звука и визуальных эффектов)
                 for (let r = 0; r < this.boardSize; r++) {
                     cellsToRemove.add(`${r}-${col}`);
-                    if (r !== row) {
-                        setTimeout(() => this.createExplosionParticles(r, col), 50 * Math.abs(r - row));
-                    }
                 }
             }
         });
