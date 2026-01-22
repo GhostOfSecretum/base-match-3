@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.20';
+const APP_VERSION = '1.0.21';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -3710,6 +3710,10 @@ class MatchThreePro {
         const scoreGain = (baseScore + tShapeBonusScore + lShapeBonusScore) * comboMultiplier;
         this.score += scoreGain;
 
+        // Показываем комбо (только надпись, без звука)
+        if (this.combo > 1) {
+            this.showCombo(this.combo);
+        }
 
         // Показываем очки
         this.showScorePopup(scoreGain);
@@ -3852,9 +3856,6 @@ class MatchThreePro {
         const comboDisplay = document.getElementById('comboDisplay');
         comboDisplay.textContent = `COMBO x${combo}!`;
         comboDisplay.classList.add('show');
-
-        // Воспроизводим звук комбо
-        this.soundManager.playComboSound(combo);
 
         setTimeout(() => {
             comboDisplay.classList.remove('show');
