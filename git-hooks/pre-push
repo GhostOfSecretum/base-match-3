@@ -15,8 +15,8 @@ if ! command -v node &> /dev/null; then
 fi
 
 # Проверяем, что скрипт обновления версии существует
-if [ ! -f "update-version.js" ]; then
-    echo "⚠️  update-version.js not found. Skipping version update."
+if [ ! -f "update-version.cjs" ]; then
+    echo "⚠️  update-version.cjs not found. Skipping version update."
     exit 0
 fi
 
@@ -24,7 +24,7 @@ fi
 git stash push -m "pre-push-version-update-stash" script.js package.json api/leaderboard.js 2>/dev/null || true
 
 # Запускаем скрипт обновления версии
-if node update-version.js; then
+if node update-version.cjs; then
     # Проверяем, были ли изменения в версии
     if ! git diff --quiet --exit-code script.js package.json api/leaderboard.js 2>/dev/null; then
         echo "📝 Version files have been updated. Adding to commit..."
