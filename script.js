@@ -1703,6 +1703,10 @@ class LeaderboardManager {
                 this.totalPlayers = data.totalPlayers || 0;
                 this.totalGames = data.totalGames || 0;
                 this.lastError = null;
+                // Обновляем high score из leaderboard
+                if (window.game && typeof window.game.updateHighScoreFromLeaderboard === 'function') {
+                    window.game.updateHighScoreFromLeaderboard();
+                }
                 return data.results;
             } else {
                 throw new Error(data.error || 'Invalid response format');
@@ -2256,6 +2260,7 @@ class MatchThreePro {
         this.isProcessing = false;
         this.isGameEnded = false;
         this.targetScore = 5000;
+        this.highScore = this.loadHighScore();
         this.particles = [];
         this.walletManager = new WalletManager();
         this.leaderboard = new LeaderboardManager(this.walletManager);
@@ -2324,6 +2329,58 @@ class MatchThreePro {
         // Генерируем случайное имя вида "Player1234"
         const randomNum = Math.floor(Math.random() * 10000);
         return `Player${randomNum}`;
+    }
+
+    loadHighScore() {
+        try {
+            // Пытаемся загрузить из localStorage
+            const savedHighScore = parseInt(localStorage.getItem('highScore') || '0');
+            return savedHighScore || 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    saveHighScore(score) {
+        try {
+            if (score > this.highScore) {
+                this.highScore = score;
+                localStorage.setItem('highScore', score.toString());
+            }
+        } catch (e) {
+            console.log('Error saving high score:', e.message);
+        }
+    }
+
+    updateHighScoreFromLeaderboard() {
+        try {
+            const playerName = window.__userName || localStorage.getItem('playerDisplayName') || 'Player';
+            const playerAddress = window.__userAddress || (this.walletManager && this.walletManager.account);
+            
+            if (!this.leaderboard || !this.leaderboard.leaderboard) {
+                return;
+            }
+            
+            let maxScore = this.highScore || 0;
+            const allResults = this.leaderboard.leaderboard || [];
+            
+            allResults.forEach(entry => {
+                const entryName = entry.playerName || entry.name || '';
+                const entryAddress = (entry.walletAddress || entry.address || '').toLowerCase();
+                const currentAddress = playerAddress ? playerAddress.toLowerCase() : '';
+                
+                if ((entryName === playerName || entryAddress === currentAddress) && entry.score > maxScore) {
+                    maxScore = entry.score;
+                }
+            });
+            
+            if (maxScore > this.highScore) {
+                this.highScore = maxScore;
+                localStorage.setItem('highScore', maxScore.toString());
+            }
+        } catch (e) {
+            console.log('Error updating high score from leaderboard:', e.message);
+        }
     }
 
     async init() {
@@ -4110,10 +4167,14 @@ class MatchThreePro {
             let savedResult = null;
             try {
                 savedResult = await this.leaderboard.addResult(this.score, this.maxCombo, won);
+                // Обновляем high score после сохранения результата
+                this.saveHighScore(this.score);
             } catch (saveError) {
                 console.error('ERROR saving result:', saveError);
                 window.__gameEndDebug.error = 'addResult: ' + (saveError?.message || String(saveError));
                 if (typeof debugLog === 'function') debugLog('endGame addResult error: ' + (saveError?.message || saveError));
+                // Даже если сохранение на сервер не удалось, сохраняем локально
+                this.saveHighScore(this.score);
             }
 
             let topResults = [];
@@ -4179,6 +4240,9 @@ class MatchThreePro {
         try {
             // Получаем топ результаты с сервера
             const topResults = await this.leaderboard.fetchLeaderboard(filter, 20);
+            
+            // Обновляем high score из загруженных результатов
+            this.updateHighScoreFromLeaderboard();
             
             // Проверяем ошибку конфигурации
             const lastError = this.leaderboard.getLastError();
@@ -4877,10 +4941,14 @@ function initStartMenu() {
 
     // Profile - открываем профиль игрока
     if (menuProfileBtn && profileModal) {
-        menuProfileBtn.addEventListener('click', (e) => {
+        menuProfileBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
             console.log('Profile button clicked');
+            // Обновляем high score из leaderboard перед показом профиля
+            if (window.game && typeof window.game.updateHighScoreFromLeaderboard === 'function') {
+                window.game.updateHighScoreFromLeaderboard();
+            }
             updateProfileDisplay();
             profileModal.classList.add('show');
         });
@@ -4930,27 +4998,47 @@ function initStartMenu() {
             }
         }
 
-        // High Score из localStorage
+        // High Score
         if (profileHighScore) {
             try {
-                const scores = JSON.parse(localStorage.getItem('leaderboard') || '[]');
-                const playerName = window.__userName || localStorage.getItem('playerDisplayName') || 'Player';
-                const playerAddress = window.__userAddress || (window.walletManager && window.walletManager.account);
-                
                 let highScore = 0;
-                scores.forEach(entry => {
-                    if ((entry.name === playerName || entry.address === playerAddress) && entry.score > highScore) {
-                        highScore = entry.score;
-                    }
-                });
                 
-                // Также проверяем текущий рекорд из игры
-                if (window.game && window.game.highScore > highScore) {
+                // 1. Проверяем high score из игры (самый актуальный)
+                if (window.game && window.game.highScore) {
                     highScore = window.game.highScore;
+                }
+                
+                // 2. Проверяем сохраненный high score из localStorage
+                const savedHighScore = parseInt(localStorage.getItem('highScore') || '0');
+                if (savedHighScore > highScore) {
+                    highScore = savedHighScore;
+                }
+                
+                // 3. Пытаемся найти лучший результат из leaderboard
+                if (window.game && window.game.leaderboard) {
+                    try {
+                        const playerName = window.__userName || localStorage.getItem('playerDisplayName') || 'Player';
+                        const playerAddress = window.__userAddress || (window.walletManager && window.walletManager.account);
+                        
+                        // Получаем все результаты из leaderboard
+                        const allResults = window.game.leaderboard.leaderboard || [];
+                        allResults.forEach(entry => {
+                            const entryName = entry.playerName || entry.name || '';
+                            const entryAddress = (entry.walletAddress || entry.address || '').toLowerCase();
+                            const currentAddress = playerAddress ? playerAddress.toLowerCase() : '';
+                            
+                            if ((entryName === playerName || entryAddress === currentAddress) && entry.score > highScore) {
+                                highScore = entry.score;
+                            }
+                        });
+                    } catch (e) {
+                        console.log('Error checking leaderboard for high score:', e.message);
+                    }
                 }
                 
                 profileHighScore.textContent = highScore.toLocaleString();
             } catch (e) {
+                console.error('Error updating profile high score:', e);
                 profileHighScore.textContent = '0';
             }
         }
