@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.9';
+const APP_VERSION = '1.0.10';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -3070,11 +3070,13 @@ class MatchThreePro {
             return;
         }
         
-        // Если ходы закончились, сразу завершаем игру
-        if (this.moves <= 0 && !this.isGameEnded) {
+        // Если ходы закончились, сразу завершаем игру и блокируем все клики
+        if (this.moves <= 0) {
             console.log('No moves left, ending game now');
-            this.endGame(this.score >= this.targetScore);
-            return;
+            if (!this.isGameEnded) {
+                this.endGame(this.score >= this.targetScore);
+            }
+            return; // Блокируем все дальнейшие действия
         }
 
         if (this.selectedCell === null) {
@@ -3109,6 +3111,17 @@ class MatchThreePro {
     }
 
     async swapCells(row1, col1, row2, col2) {
+        // Блокируем свапы если игра закончилась или ходы = 0
+        if (this.isGameEnded || this.moves <= 0) {
+            console.log('Swap blocked - game ended or no moves:', { isGameEnded: this.isGameEnded, moves: this.moves });
+            // Возвращаем ячейки на место если они были выделены
+            if (this.selectedCell) {
+                this.highlightCell(this.selectedCell.row, this.selectedCell.col, false);
+                this.selectedCell = null;
+            }
+            return;
+        }
+        
         // Воспроизводим звук свапа
         this.soundManager.playSwapSound();
 
@@ -3958,6 +3971,12 @@ class MatchThreePro {
         // Обновляем прогресс цели
         const progress = Math.min((this.score / this.targetScore) * 100, 100);
         document.getElementById('scoreProgress').style.width = progress + '%';
+        
+        // Если ходы закончились, сразу проверяем окончание игры
+        if (this.moves <= 0 && !this.isGameEnded) {
+            console.log('Moves reached 0 in updateUI, checking game over');
+            this.checkGameOver();
+        }
     }
 
     checkGameOver() {
