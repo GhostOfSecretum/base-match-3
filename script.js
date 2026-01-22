@@ -1737,7 +1737,26 @@ class LeaderboardManager {
         // Никогда не отправляем адрес - только имя или "Player"
         const displayName = playerName || 'Player';
         
-        console.log('Sending result to leaderboard:', { walletAddress, playerName: displayName, score, maxCombo, won });
+        // Получаем аватар из разных источников
+        let avatar = null;
+        
+        // 1. Из WalletManager
+        if (this.walletManager && this.walletManager.avatar) {
+            avatar = this.walletManager.avatar;
+        }
+        
+        // 2. Из Farcaster контекста
+        if (!avatar && window.__farcasterContext?.user) {
+            avatar = window.__farcasterContext.user.pfpUrl || 
+                     window.__farcasterContext.user.avatarUrl;
+        }
+        
+        // 3. Из window.__userAvatar
+        if (!avatar && window.__userAvatar) {
+            avatar = window.__userAvatar;
+        }
+        
+        console.log('Sending result to leaderboard:', { walletAddress, playerName: displayName, avatar, score, maxCombo, won });
 
         try {
             const response = await fetch(this.apiUrl, {
@@ -1747,7 +1766,8 @@ class LeaderboardManager {
                 },
                 body: JSON.stringify({
                     walletAddress: walletAddress,
-                    playerName: displayName, // Имя аккаунта Base app вместо адреса
+                    playerName: displayName,
+                    avatar: avatar,
                     score: score,
                     maxCombo: maxCombo || 1,
                     won: won || false
@@ -1783,6 +1803,7 @@ class LeaderboardManager {
                 id: Date.now() + Math.random(),
                 walletAddress: walletAddress,
                 playerName: displayName,
+                avatar: avatar,
                 score: score,
                 maxCombo: maxCombo,
                 won: won,
@@ -4089,11 +4110,28 @@ class MatchThreePro {
                 
                 // Проверяем, является ли это текущий игрок по адресу кошелька
                 const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
+                
+                // Получаем аватар - либо из результата, либо текущего игрока
+                let avatarUrl = result.avatar;
+                if (isCurrentPlayer && !avatarUrl) {
+                    avatarUrl = this.walletManager?.avatar || 
+                                window.__farcasterContext?.user?.pfpUrl ||
+                                window.__userAvatar;
+                }
+                
+                // Генерируем HTML для аватара
+                const avatarHtml = avatarUrl 
+                    ? `<img src="${this.escapeHtml(avatarUrl)}" alt="" class="player-avatar" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
+                       <div class="player-avatar-placeholder" style="display:none;">👤</div>`
+                    : `<div class="player-avatar-placeholder">👤</div>`;
 
                 return `
                     <div class="leaderboard-item ${isCurrentPlayer ? 'current-player' : ''}">
                         <div class="leaderboard-rank">
                             ${medal || `<span class="rank-number">${index + 1}</span>`}
+                        </div>
+                        <div class="leaderboard-avatar">
+                            ${avatarHtml}
                         </div>
                         <div class="leaderboard-player">
                             <div class="player-name-row">

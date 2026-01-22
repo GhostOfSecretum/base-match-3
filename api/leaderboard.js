@@ -145,7 +145,7 @@ export default async function handler(req, res) {
     
     // POST - добавить результат
     if (req.method === 'POST') {
-      const { walletAddress, playerName, score, maxCombo, won } = req.body;
+      const { walletAddress, playerName, avatar, score, maxCombo, won } = req.body;
       
       // Адрес кошелька обязателен
       if (!walletAddress) {
@@ -165,12 +165,13 @@ export default async function handler(req, res) {
       // Используем переданный playerName для отображения, или форматируем адрес
       const displayName = playerName && playerName.trim() !== '' ? playerName.trim() : formatAddress(walletAddress);
       
-      console.log('Leaderboard API: Saving result', { walletAddress, playerName: displayName, score });
+      console.log('Leaderboard API: Saving result', { walletAddress, playerName: displayName, avatar: avatar ? 'yes' : 'no', score });
       
       const result = {
         id: Date.now() + Math.random(),
         walletAddress: walletAddress.toLowerCase(),
         playerName: displayName,
+        avatar: avatar || null,
         score: score,
         maxCombo: maxCombo || 1,
         won: won || false,
