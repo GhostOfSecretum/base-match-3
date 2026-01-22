@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.18';
+const APP_VERSION = '1.0.19';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -3723,11 +3723,6 @@ class MatchThreePro {
         }
         if (lShapeBonus > 0) {
             this.showSpecialPopup('L-SHAPE BONUS!', lShapeBonusScore * comboMultiplier);
-        }
-
-        // Показываем комбо
-        if (this.combo > 1) {
-            this.showCombo(this.combo);
         }
 
         // Показываем очки
