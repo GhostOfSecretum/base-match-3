@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.22';
+const APP_VERSION = '1.0.23';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -4720,7 +4720,6 @@ function initStartMenu() {
     const deployModal = document.getElementById('deployModal');
     const profileModal = document.getElementById('profileModal');
     const closeSettingsBtn = document.getElementById('closeSettingsBtn');
-    const debugBtn = document.getElementById('debugBtn');
     const debugModal = document.getElementById('debugModal');
     const debugLogsContent = document.getElementById('debugLogsContent');
     const debugGameEndInfo = document.getElementById('debugGameEndInfo');
@@ -4849,9 +4848,6 @@ function initStartMenu() {
         });
     }
 
-    if (debugBtn) {
-        debugBtn.addEventListener('click', () => { openDebugModal(); });
-    }
     if (debugCopyBtn) debugCopyBtn.addEventListener('click', () => { copyDebugLogs(); });
     if (debugCloseBtn && debugModal) {
         debugCloseBtn.addEventListener('click', () => { debugModal.classList.remove('show'); });
