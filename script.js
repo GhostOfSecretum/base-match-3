@@ -3894,8 +3894,26 @@ class MatchThreePro {
             console.log('Error saving game stats:', e.message);
         }
 
+        // Логируем статус подключения для диагностики
+        console.log('=== END GAME DEBUG ===');
+        console.log('walletManager.isConnected():', this.walletManager.isConnected());
+        console.log('walletManager.account:', this.walletManager.account);
+        console.log('window.__farcasterContext:', window.__farcasterContext);
+        console.log('Score:', this.score, 'MaxCombo:', this.maxCombo, 'Won:', won);
+        
         // Проверяем, подключен ли кошелек перед сохранением
+        // Также проверяем контекст Farcaster как запасной вариант
+        const farcasterAddress = window.__farcasterContext?.user?.verifiedAddresses?.ethAddresses?.[0] ||
+                                 window.__farcasterContext?.user?.custodyAddress;
+        
+        if (!this.walletManager.isConnected() && farcasterAddress) {
+            // Есть адрес из Farcaster контекста - подключаем
+            console.log('Connecting via Farcaster context address:', farcasterAddress);
+            await this.walletManager.connectViaBaseAccount(farcasterAddress);
+        }
+        
         if (!this.walletManager.isConnected()) {
+            console.log('Wallet NOT connected - result will NOT be saved');
             const modal = document.getElementById('gameOverModal');
             const title = document.getElementById('gameOverTitle');
             const message = document.getElementById('gameOverMessage');
@@ -3922,7 +3940,10 @@ class MatchThreePro {
         }
 
         // Сохраняем результат в лидерборд (асинхронно)
+        console.log('Wallet IS connected - saving result...');
+        console.log('Account:', this.walletManager.account);
         const savedResult = await this.leaderboard.addResult(this.score, this.maxCombo, won);
+        console.log('Saved result:', savedResult);
 
         const modal = document.getElementById('gameOverModal');
         const title = document.getElementById('gameOverTitle');
