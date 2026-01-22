@@ -978,19 +978,22 @@ body::before {
     z-index: 2;
 }
 
-.cell:hover::after {
-    width: 150%;
-    height: 150%;
-}
+/* Hover эффекты только для устройств с мышью (не touch) */
+@media (hover: hover) and (pointer: fine) {
+    .cell:hover::after {
+        width: 150%;
+        height: 150%;
+    }
 
-.cell:hover {
-    transform: scale(1.08) translateY(-2px);
-    border-color: rgba(255, 255, 255, 0.4);
-    box-shadow: 
-        inset 0 1px 0 rgba(255, 255, 255, 0.2),
-        0 4px 15px rgba(0, 0, 0, 0.4),
-        0 0 20px rgba(255, 255, 255, 0.1);
-    z-index: 10;
+    .cell:hover {
+        transform: scale(1.08) translateY(-2px);
+        border-color: rgba(255, 255, 255, 0.4);
+        box-shadow: 
+            inset 0 1px 0 rgba(255, 255, 255, 0.2),
+            0 4px 15px rgba(0, 0, 0, 0.4),
+            0 0 20px rgba(255, 255, 255, 0.1);
+        z-index: 10;
+    }
 }
 
 .cell.selected {
@@ -1749,8 +1752,17 @@ body::before {
         will-change: transform;
     }
     
+    /* Отключаем hover на мобильных - он "залипает" после touch */
     .cell:hover {
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+        transform: none;
+        border-color: rgba(255, 255, 255, 0.2);
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        z-index: auto;
+    }
+    
+    .cell:hover::after {
+        width: 0;
+        height: 0;
     }
     
     .cell.selected {
