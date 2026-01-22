@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.10';
+const APP_VERSION = '1.0.11';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -3112,12 +3112,27 @@ class MatchThreePro {
 
     async swapCells(row1, col1, row2, col2) {
         // Блокируем свапы если игра закончилась или ходы = 0
-        if (this.isGameEnded || this.moves <= 0) {
-            console.log('Swap blocked - game ended or no moves:', { isGameEnded: this.isGameEnded, moves: this.moves });
+        if (this.isGameEnded) {
+            console.log('Swap blocked - game ended');
             // Возвращаем ячейки на место если они были выделены
             if (this.selectedCell) {
                 this.highlightCell(this.selectedCell.row, this.selectedCell.col, false);
                 this.selectedCell = null;
+            }
+            return;
+        }
+        
+        // Если ходы = 0, завершаем игру СРАЗУ
+        if (this.moves <= 0) {
+            console.log('Swap blocked - no moves left, ending game NOW');
+            // Возвращаем ячейки на место
+            if (this.selectedCell) {
+                this.highlightCell(this.selectedCell.row, this.selectedCell.col, false);
+                this.selectedCell = null;
+            }
+            // Немедленно завершаем игру
+            if (!this.isGameEnded) {
+                this.endGame(this.score >= this.targetScore);
             }
             return;
         }
@@ -3149,12 +3164,14 @@ class MatchThreePro {
             this.updateUI();
             
             // Проверяем окончание игры СРАЗУ после уменьшения ходов
-            if (this.moves <= 0 && this.score < this.targetScore) {
-                console.log('No moves left! Ending game...');
+            if (this.moves <= 0) {
+                console.log('No moves left! Ending game after matches...');
                 // Даём анимации матчей завершиться, потом заканчиваем игру
                 await this.processMatches(matches);
+                // Принудительно завершаем игру
                 if (!this.isGameEnded) {
-                    this.endGame(false);
+                    console.log('Forcing game end now');
+                    this.endGame(this.score >= this.targetScore);
                 }
                 return;
             }
@@ -3972,10 +3989,11 @@ class MatchThreePro {
         const progress = Math.min((this.score / this.targetScore) * 100, 100);
         document.getElementById('scoreProgress').style.width = progress + '%';
         
-        // Если ходы закончились, сразу проверяем окончание игры
+        // Если ходы закончились, СРАЗУ завершаем игру (не ждём следующего действия)
         if (this.moves <= 0 && !this.isGameEnded) {
-            console.log('Moves reached 0 in updateUI, checking game over');
-            this.checkGameOver();
+            console.log('Moves reached 0 in updateUI, ending game IMMEDIATELY');
+            // Завершаем игру немедленно, не ждём
+            this.endGame(this.score >= this.targetScore);
         }
     }
 
@@ -4171,7 +4189,25 @@ class MatchThreePro {
             this.soundManager.playLoseSound();
         }
 
+        // Принудительно показываем модальное окно
+        console.log('=== SHOWING GAME OVER MODAL ===');
+        console.log('Modal element:', modal);
         modal.classList.add('show');
+        modal.style.display = 'flex';
+        
+        // Дополнительная проверка - если модалка не видна, принудительно показываем
+        setTimeout(() => {
+            if (!modal.classList.contains('show')) {
+                console.log('Modal not showing, forcing display');
+                modal.classList.add('show');
+                modal.style.display = 'flex';
+            }
+            console.log('Modal state:', {
+                hasShow: modal.classList.contains('show'),
+                display: modal.style.display,
+                visible: modal.offsetParent !== null
+            });
+        }, 100);
     }
 
     async showLeaderboard(filter = 'all') {
