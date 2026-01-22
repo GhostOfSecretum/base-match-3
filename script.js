@@ -1,6 +1,16 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-console.log('=== SCRIPT.JS STARTING ===');
+const APP_VERSION = '1.0.6';
+console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
+
+// Показываем версию на экране для отладки (временно)
+setTimeout(() => {
+    const versionDiv = document.createElement('div');
+    versionDiv.id = 'debug-version';
+    versionDiv.style.cssText = 'position:fixed;bottom:5px;right:5px;background:rgba(0,0,0,0.7);color:#0f0;padding:4px 8px;font-size:10px;z-index:99999;border-radius:4px;';
+    versionDiv.textContent = 'v' + APP_VERSION;
+    document.body.appendChild(versionDiv);
+}, 1000);
 
 // ==================== SPLASH SCREEN MANAGER ====================
 const SplashScreenManager = {

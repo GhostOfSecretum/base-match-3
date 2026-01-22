@@ -12,6 +12,7 @@ import { Redis } from '@upstash/redis';
 
 const LEADERBOARD_KEY = 'leaderboard:results';
 const MAX_RESULTS = 1000;
+const API_VERSION = '1.0.6';
 
 function formatAddress(address) {
   if (!address) return 'Guest';
@@ -137,6 +138,7 @@ export default async function handler(req, res) {
       
       return res.status(200).json({
         success: true,
+        version: API_VERSION,
         results: sorted,
         totalPlayers: uniqueAddresses.size,
         totalGames: leaderboardData.length
