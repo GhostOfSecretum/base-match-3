@@ -2231,6 +2231,7 @@ class MatchThreePro {
         this.combo = 1;
         this.maxCombo = 1;
         this.isProcessing = false;
+        this.isGameEnded = false;
         this.targetScore = 5000;
         this.particles = [];
         this.walletManager = new WalletManager();
@@ -3911,12 +3912,23 @@ class MatchThreePro {
         const won = this.score >= this.targetScore;
         const lost = this.moves <= 0 && this.score < this.targetScore;
 
+        console.log('checkGameOver:', { score: this.score, targetScore: this.targetScore, moves: this.moves, won, lost });
+
         if (won || lost) {
+            console.log('GAME OVER! Calling endGame with won =', won);
             this.endGame(won);
         }
     }
 
     async endGame(won) {
+        // Защита от повторного вызова
+        if (this.isGameEnded) {
+            console.log('endGame already called, skipping');
+            return;
+        }
+        this.isGameEnded = true;
+        console.log('=== endGame STARTED ===');
+        
         // Обновляем day streak после игры
         if (typeof updateDayStreakAfterGame === 'function') {
             updateDayStreakAfterGame();
@@ -4218,6 +4230,8 @@ class MatchThreePro {
         this.maxCombo = 1;
         this.selectedCell = null;
         this.isProcessing = false;
+        this.isGameEnded = false; // Сбрасываем флаг окончания игры
+        console.log('=== NEW GAME STARTED ===');
         document.getElementById('gameOverModal').classList.remove('show');
         
         // Не вызываем полный init() чтобы избежать дублирования обработчиков событий
