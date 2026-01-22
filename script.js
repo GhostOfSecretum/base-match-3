@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.6';
+const APP_VERSION = '1.0.7';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -3984,25 +3984,55 @@ class MatchThreePro {
         }
 
         // Логируем статус подключения для диагностики
-        console.log('=== END GAME DEBUG ===');
+        console.log('=== END GAME DEBUG v1.0.7 ===');
         console.log('walletManager.isConnected():', this.walletManager.isConnected());
         console.log('walletManager.account:', this.walletManager.account);
         console.log('window.__farcasterContext:', window.__farcasterContext);
         console.log('Score:', this.score, 'MaxCombo:', this.maxCombo, 'Won:', won);
         
-        // Проверяем, подключен ли кошелек перед сохранением
-        // Также проверяем контекст Farcaster как запасной вариант
-        const farcasterAddress = window.__farcasterContext?.user?.verifiedAddresses?.ethAddresses?.[0] ||
-                                 window.__farcasterContext?.user?.custodyAddress;
+        // Получаем адрес из любого доступного источника
+        let playerAddress = null;
         
-        if (!this.walletManager.isConnected() && farcasterAddress) {
-            // Есть адрес из Farcaster контекста - подключаем
-            console.log('Connecting via Farcaster context address:', farcasterAddress);
-            await this.walletManager.connectViaBaseAccount(farcasterAddress);
+        // 1. Из walletManager
+        if (this.walletManager.isConnected()) {
+            playerAddress = this.walletManager.getAccount();
+            console.log('Got address from walletManager:', playerAddress);
         }
         
-        if (!this.walletManager.isConnected()) {
-            console.log('Wallet NOT connected - result will NOT be saved');
+        // 2. Из Farcaster контекста
+        if (!playerAddress && window.__farcasterContext?.user) {
+            playerAddress = window.__farcasterContext.user.verifiedAddresses?.ethAddresses?.[0] ||
+                           window.__farcasterContext.user.custodyAddress;
+            console.log('Got address from Farcaster context:', playerAddress);
+            
+            // Подключаем через walletManager для совместимости
+            if (playerAddress) {
+                await this.walletManager.connectViaBaseAccount(playerAddress);
+            }
+        }
+        
+        // 3. Из SDK напрямую
+        if (!playerAddress) {
+            try {
+                const sdk = window.sdk || window.__farcasterSDK || (typeof frame !== 'undefined' ? frame.sdk : null);
+                if (sdk?.context?.user) {
+                    playerAddress = sdk.context.user.verifiedAddresses?.ethAddresses?.[0] ||
+                                   sdk.context.user.custodyAddress;
+                    console.log('Got address from SDK:', playerAddress);
+                    if (playerAddress) {
+                        await this.walletManager.connectViaBaseAccount(playerAddress);
+                    }
+                }
+            } catch (e) {
+                console.log('SDK context error:', e);
+            }
+        }
+        
+        console.log('Final playerAddress:', playerAddress);
+        
+        // Если нет адреса - показываем сообщение
+        if (!playerAddress) {
+            console.log('NO ADDRESS FOUND - result will NOT be saved');
             const modal = document.getElementById('gameOverModal');
             const title = document.getElementById('gameOverTitle');
             const message = document.getElementById('gameOverMessage');
@@ -4012,12 +4042,11 @@ class MatchThreePro {
             finalScore.textContent = this.score.toLocaleString();
             finalCombo.textContent = this.maxCombo;
 
-            title.textContent = 'Game Over!';
+            title.textContent = won ? 'Congratulations!' : 'Game Over!';
             message.textContent = won
-                ? 'You won! Connect your wallet to save your score to the leaderboard. 🎮'
-                : `Game Over! Connect your wallet to save your score to the leaderboard.`;
+                ? 'You won! ⚠️ No wallet detected - score not saved'
+                : `Game Over! ⚠️ No wallet detected - score not saved`;
 
-            // Воспроизводим звуки даже если кошелек не подключен
             if (won) {
                 this.soundManager.playWinSound();
             } else {
