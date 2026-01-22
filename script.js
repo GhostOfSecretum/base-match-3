@@ -1778,25 +1778,32 @@ class LeaderboardManager {
             avatar = window.__userAvatar;
         }
         
-        console.log('Sending result to leaderboard:', { walletAddress, playerName: displayName, avatar, score, maxCombo, won });
+        const requestBody = {
+            walletAddress: walletAddress,
+            playerName: displayName,
+            avatar: avatar,
+            score: score,
+            maxCombo: maxCombo || 1,
+            won: won || false
+        };
+        
+        console.log('=== SENDING TO LEADERBOARD API ===');
+        console.log('URL:', this.apiUrl);
+        console.log('Body:', JSON.stringify(requestBody));
 
         try {
+            console.log('Fetching...');
             const response = await fetch(this.apiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({
-                    walletAddress: walletAddress,
-                    playerName: displayName,
-                    avatar: avatar,
-                    score: score,
-                    maxCombo: maxCombo || 1,
-                    won: won || false
-                })
+                body: JSON.stringify(requestBody)
             });
 
+            console.log('Response status:', response.status);
             const data = await response.json();
+            console.log('Response data:', data);
             
             // Проверяем ошибку конфигурации хранилища
             if (!response.ok) {
@@ -1813,13 +1820,18 @@ class LeaderboardManager {
                 // Сбрасываем время кеша, чтобы обновить данные при следующем запросе
                 this.lastFetchTime = 0;
                 this.lastError = null;
-                console.log('Result saved to leaderboard successfully');
+                console.log('=== RESULT SAVED SUCCESSFULLY ===');
+                console.log('Saved result ID:', data.result.id);
                 return data.result;
             } else {
+                console.error('=== SAVE FAILED ===');
+                console.error('Response:', data);
                 throw new Error(data.error || 'Failed to save result');
             }
         } catch (error) {
-            console.error('Error adding result to leaderboard:', error);
+            console.error('=== CATCH ERROR ===');
+            console.error('Error:', error.message);
+            console.error('Full error:', error);
             // В случае ошибки создаем локальный результат (только для текущей сессии)
             const result = {
                 id: Date.now() + Math.random(),
@@ -1834,6 +1846,7 @@ class LeaderboardManager {
                 _local: true // Помечаем как локальный результат
             };
             this.leaderboard.push(result);
+            console.log('Created local result instead:', result);
             return result;
         }
     }
@@ -3912,9 +3925,20 @@ class MatchThreePro {
         const won = this.score >= this.targetScore;
         const lost = this.moves <= 0 && this.score < this.targetScore;
 
-        console.log('checkGameOver:', { score: this.score, targetScore: this.targetScore, moves: this.moves, won, lost });
+        console.log('checkGameOver:', { 
+            score: this.score, 
+            targetScore: this.targetScore, 
+            moves: this.moves, 
+            won, 
+            lost,
+            isGameEnded: this.isGameEnded 
+        });
 
         if (won || lost) {
+            if (this.isGameEnded) {
+                console.log('Game already ended, skipping endGame call');
+                return;
+            }
             console.log('GAME OVER! Calling endGame with won =', won);
             this.endGame(won);
         }
@@ -4224,6 +4248,9 @@ class MatchThreePro {
     }
 
     async newGame() {
+        console.log('=== newGame() CALLED ===');
+        console.log('Previous isGameEnded:', this.isGameEnded);
+        
         this.score = 0;
         this.moves = 15;
         this.combo = 1;
@@ -4231,7 +4258,14 @@ class MatchThreePro {
         this.selectedCell = null;
         this.isProcessing = false;
         this.isGameEnded = false; // Сбрасываем флаг окончания игры
+        
+        // Сбрасываем кэш лидерборда
+        if (this.leaderboard) {
+            this.leaderboard.lastFetchTime = 0;
+        }
+        
         console.log('=== NEW GAME STARTED ===');
+        console.log('isGameEnded reset to:', this.isGameEnded);
         document.getElementById('gameOverModal').classList.remove('show');
         
         // Не вызываем полный init() чтобы избежать дублирования обработчиков событий
