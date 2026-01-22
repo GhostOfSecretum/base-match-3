@@ -1602,9 +1602,26 @@ class LeaderboardManager {
 
     getPlayerIdentifier() {
         // Используем адрес кошелька, если подключен
+        console.log('getPlayerIdentifier called');
+        console.log('  walletManager exists:', !!this.walletManager);
+        console.log('  isConnected:', this.walletManager?.isConnected());
+        console.log('  account:', this.walletManager?.account);
+        
         if (this.walletManager && this.walletManager.isConnected()) {
-            return this.walletManager.getAccount().toLowerCase();
+            const account = this.walletManager.getAccount().toLowerCase();
+            console.log('  returning:', account);
+            return account;
         }
+        
+        // Fallback: проверяем Farcaster контекст
+        const farcasterAddress = window.__farcasterContext?.user?.verifiedAddresses?.ethAddresses?.[0] ||
+                                 window.__farcasterContext?.user?.custodyAddress;
+        if (farcasterAddress) {
+            console.log('  using Farcaster fallback:', farcasterAddress);
+            return farcasterAddress.toLowerCase();
+        }
+        
+        console.log('  returning null - wallet not connected');
         return null; // Возвращаем null, если кошелек не подключен
     }
 
@@ -1696,10 +1713,15 @@ class LeaderboardManager {
 
     // Добавить результат на сервер
     async addResult(score, maxCombo, won) {
+        console.log('=== addResult called ===');
+        console.log('  score:', score, 'maxCombo:', maxCombo, 'won:', won);
+        
         const walletAddress = this.getPlayerIdentifier();
+        console.log('  walletAddress:', walletAddress);
 
         if (!walletAddress) {
             // Если кошелек не подключен, не сохраняем результат
+            console.log('  ABORT: no wallet address');
             return null;
         }
         
@@ -3963,8 +3985,22 @@ class MatchThreePro {
         // Сохраняем результат в лидерборд (асинхронно)
         console.log('Wallet IS connected - saving result...');
         console.log('Account:', this.walletManager.account);
-        const savedResult = await this.leaderboard.addResult(this.score, this.maxCombo, won);
-        console.log('Saved result:', savedResult);
+        
+        let savedResult = null;
+        try {
+            savedResult = await this.leaderboard.addResult(this.score, this.maxCombo, won);
+            console.log('Saved result:', savedResult);
+            
+            if (!savedResult) {
+                console.error('ERROR: savedResult is null/undefined');
+            } else if (savedResult._local) {
+                console.warn('WARNING: Result saved locally only (API error)');
+            } else {
+                console.log('SUCCESS: Result saved to server');
+            }
+        } catch (saveError) {
+            console.error('ERROR saving result:', saveError);
+        }
 
         const modal = document.getElementById('gameOverModal');
         const title = document.getElementById('gameOverTitle');
