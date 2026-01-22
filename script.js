@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.8';
+const APP_VERSION = '1.0.9';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -3065,8 +3065,15 @@ class MatchThreePro {
 
     handleCellClick(row, col) {
         // Блокируем клики если игра закончилась или обрабатывается
-        if (this.isProcessing || this.isGameEnded || this.moves <= 0) {
+        if (this.isProcessing || this.isGameEnded) {
             console.log('Click blocked:', { isProcessing: this.isProcessing, isGameEnded: this.isGameEnded, moves: this.moves });
+            return;
+        }
+        
+        // Если ходы закончились, сразу завершаем игру
+        if (this.moves <= 0 && !this.isGameEnded) {
+            console.log('No moves left, ending game now');
+            this.endGame(this.score >= this.targetScore);
             return;
         }
 
@@ -3117,8 +3124,8 @@ class MatchThreePro {
 
         if (matches.length > 0) {
             // Проверяем, не закончилась ли уже игра
-            if (this.isGameEnded || this.moves <= 0) {
-                console.log('Game already ended or no moves left, ignoring');
+            if (this.isGameEnded) {
+                console.log('Game already ended, ignoring swap');
                 return;
             }
             
@@ -3127,6 +3134,18 @@ class MatchThreePro {
             this.combo = 1;
             // Обновляем отображение комбо через updateUI для синхронизации
             this.updateUI();
+            
+            // Проверяем окончание игры СРАЗУ после уменьшения ходов
+            if (this.moves <= 0 && this.score < this.targetScore) {
+                console.log('No moves left! Ending game...');
+                // Даём анимации матчей завершиться, потом заканчиваем игру
+                await this.processMatches(matches);
+                if (!this.isGameEnded) {
+                    this.endGame(false);
+                }
+                return;
+            }
+            
             await this.processMatches(matches);
         } else {
             // Возвращаем обратно
