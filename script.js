@@ -1,16 +1,30 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.15';
+const APP_VERSION = '1.0.16';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
-// Показываем версию на экране для отладки (временно)
-setTimeout(() => {
-    const versionDiv = document.createElement('div');
-    versionDiv.id = 'debug-version';
-    versionDiv.style.cssText = 'position:fixed;bottom:5px;right:50px;background:rgba(0,0,0,0.7);color:#0f0;padding:4px 8px;font-size:10px;z-index:99999;border-radius:4px;';
-    versionDiv.textContent = 'v' + APP_VERSION;
-    document.body.appendChild(versionDiv);
-}, 1000);
+// Обновляем версию на экране (элемент уже есть в HTML)
+function updateVersionDisplay() {
+    // Обновляем элемент версии из HTML
+    const versionEl = document.getElementById('app-version-display');
+    if (versionEl) {
+        versionEl.textContent = 'v' + APP_VERSION;
+        console.log('Version display updated: v' + APP_VERSION);
+    }
+    
+    // Удаляем старый debug-version если есть (для чистоты)
+    const oldDebug = document.getElementById('debug-version');
+    if (oldDebug) oldDebug.remove();
+}
+
+// Обновляем версию при загрузке
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', updateVersionDisplay);
+} else {
+    updateVersionDisplay();
+}
+// Повторно после splash screen для гарантии
+setTimeout(updateVersionDisplay, 2000);
 
 // ==================== SPLASH SCREEN MANAGER ====================
 const SplashScreenManager = {

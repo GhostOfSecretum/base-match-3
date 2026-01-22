@@ -1,13 +1,13 @@
 {
   "name": "base-match-3",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Match-3 puzzle game with crypto tokens for Base Mini Apps",
   "main": "script.js",
   "type": "module",
   "scripts": {
     "dev": "python3 -m http.server 8000",
     "start": "python3 -m http.server 8000",
-    "push": "node update-version.cjs && git add script.js package.json api/leaderboard.js && git commit -m 'chore: bump version [auto]' --allow-empty && git push"
+    "push": "node update-version.cjs && git add script.js package.json api/leaderboard.js index.html && git commit -m 'chore: bump version [auto]' --allow-empty && git push"
   },
   "keywords": ["base", "miniapp", "match-3", "puzzle", "crypto"],
   "author": "",

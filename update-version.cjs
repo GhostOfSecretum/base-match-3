@@ -98,6 +98,15 @@ function main() {
         updated = true;
     }
     
+    // Обновляем версию в index.html (элемент версии)
+    if (updateVersionInFile(
+        'index.html',
+        />v[\d.]+<\/div>/,
+        `>v${newVersion}</div>`
+    )) {
+        updated = true;
+    }
+    
     if (updated) {
         console.log(`\n✨ Version updated successfully to ${newVersion}!`);
         console.log('📝 Don\'t forget to commit the version changes.');
