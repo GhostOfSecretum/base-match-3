@@ -5066,8 +5066,19 @@ function initStartMenu() {
         // GM Streak
         if (profileGMStreak) {
             try {
-                const gmStreak = parseInt(localStorage.getItem('gmStreak') || '0');
-                profileGMStreak.textContent = gmStreak + ' days';
+                const gmData = JSON.parse(localStorage.getItem('gm_streak_data') || '{}');
+                const today = new Date();
+                const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                const yesterdayStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`;
+                
+                // Check if streak is still valid (not broken)
+                let displayStreak = gmData.streak || 0;
+                if (gmData.lastGMDate && gmData.lastGMDate !== todayStr && gmData.lastGMDate !== yesterdayStr) {
+                    displayStreak = 0; // Streak is broken
+                }
+                profileGMStreak.textContent = displayStreak + ' days';
             } catch (e) {
                 profileGMStreak.textContent = '0 days';
             }
