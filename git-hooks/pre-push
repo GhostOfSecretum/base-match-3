@@ -1,3 +1,26 @@
 #!/bin/bash
-# Pre-push hook disabled - use 'npm run push' for auto version bump
+# Pre-push hook для автоматического обновления версии перед push
+
+# Переходим в корень репозитория
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+echo "🔄 Auto-updating version before push..."
+
+# Запускаем скрипт обновления версии
+node update-version.cjs
+
+# Проверяем, были ли изменения
+if git diff --quiet script.js package.json api/leaderboard.js index.html; then
+    echo "ℹ️  Version already up to date"
+else
+    echo "📝 Staging version changes..."
+    git add script.js package.json api/leaderboard.js index.html
+    
+    echo "💾 Committing version bump..."
+    git commit -m "chore: bump version [auto]" --no-verify
+    
+    echo "✅ Version updated and committed"
+fi
+
+# Продолжаем push
 exit 0
