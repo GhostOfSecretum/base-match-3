@@ -727,13 +727,14 @@
 </head>
 
 <body>
-    <!-- Версия приложения - показывается сразу в ВЕРХНЕМ ПРАВОМ углу -->
+    <!-- Версия приложения - показывается снизу по центру -->
     <div id="app-version-display" style="
         position: fixed !important;
-        top: 10px !important;
-        right: 10px !important;
-        bottom: auto !important;
-        left: auto !important;
+        bottom: 10px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        top: auto !important;
+        right: auto !important;
         background: rgba(0, 82, 255, 0.95) !important;
         color: #ffffff !important;
         padding: 6px 12px !important;
