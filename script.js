@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.26';
+const APP_VERSION = '1.0.27';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -1243,6 +1243,18 @@ class WalletManager {
 
     async connectViaBaseAccount(address) {
         try {
+            // Проверяем что address - это строка, а не Promise
+            if (address && typeof address.then === 'function') {
+                console.log('connectViaBaseAccount: address is a Promise, awaiting...');
+                address = await address;
+            }
+            
+            // Проверяем что address - строка
+            if (!address || typeof address !== 'string') {
+                console.log('connectViaBaseAccount: invalid address type:', typeof address);
+                return;
+            }
+            
             // Используем ethers provider для Base Account
             if (typeof ethers !== 'undefined') {
                 // В Base app wallet подключен автоматически
@@ -1706,17 +1718,28 @@ class LeaderboardManager {
         console.log('  account:', this.walletManager?.account);
         
         if (this.walletManager && this.walletManager.isConnected()) {
-            const account = this.walletManager.getAccount().toLowerCase();
-            console.log('  returning:', account);
-            return account;
+            const account = this.walletManager.getAccount();
+            // Проверяем что account - строка
+            if (account && typeof account === 'string') {
+                console.log('  returning:', account.toLowerCase());
+                return account.toLowerCase();
+            } else {
+                console.log('  account is not a string:', typeof account);
+            }
         }
         
         // Fallback: проверяем Farcaster контекст
         const farcasterAddress = window.__farcasterContext?.user?.verifiedAddresses?.ethAddresses?.[0] ||
                                  window.__farcasterContext?.user?.custodyAddress;
-        if (farcasterAddress) {
+        if (farcasterAddress && typeof farcasterAddress === 'string') {
             console.log('  using Farcaster fallback:', farcasterAddress);
             return farcasterAddress.toLowerCase();
+        }
+        
+        // Fallback: проверяем window.__userAddress
+        if (window.__userAddress && typeof window.__userAddress === 'string') {
+            console.log('  using window.__userAddress fallback:', window.__userAddress);
+            return window.__userAddress.toLowerCase();
         }
         
         console.log('  returning null - wallet not connected');
@@ -4301,7 +4324,13 @@ class MatchThreePro {
                 if (!window.__gameEndDebug.error) window.__gameEndDebug.error = 'fetchLeaderboard: ' + (fetchErr?.message || String(fetchErr));
             }
 
-            const currentAddress = (this.walletManager.getAccount() || playerAddress || '').toLowerCase();
+            // Safely get current address (protect against Promise or non-string values)
+            let currentAddress = '';
+            const rawAccount = this.walletManager.getAccount() || playerAddress || window.__userAddress || '';
+            if (rawAccount && typeof rawAccount === 'string') {
+                currentAddress = rawAccount.toLowerCase();
+            }
+            
             const isTopResult = savedResult && currentAddress && topResults.some(r => {
                 const resultAddress = (r.walletAddress || r.playerName || '').toLowerCase();
                 return r.score === this.score && resultAddress === currentAddress &&
