@@ -1,6 +1,11 @@
 #!/bin/bash
 # Pre-push hook для автоматического обновления версии перед push
 
+# Защита от рекурсии
+if [ "$SKIP_VERSION_BUMP" = "1" ]; then
+    exit 0
+fi
+
 # Переходим в корень репозитория
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
@@ -20,6 +25,13 @@ else
     git commit -m "chore: bump version [auto]" --no-verify
     
     echo "✅ Version updated and committed"
+    
+    # Получаем имя текущей ветки и remote
+    BRANCH=$(git rev-parse --abbrev-ref HEAD)
+    REMOTE=$(git config branch.$BRANCH.remote || echo "origin")
+    
+    echo "🚀 Pushing version bump commit..."
+    SKIP_VERSION_BUMP=1 git push "$REMOTE" "$BRANCH" --no-verify
 fi
 
 # Продолжаем push
