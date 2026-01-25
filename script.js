@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.25';
+const APP_VERSION = '1.0.26';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -4593,6 +4593,16 @@ class MatchThreePro {
             });
         }
 
+        // Debug button on game over screen
+        const gameOverDebugBtn = document.getElementById('gameOverDebugBtn');
+        if (gameOverDebugBtn) {
+            gameOverDebugBtn.addEventListener('click', () => {
+                if (typeof window.openDebugModal === 'function') {
+                    window.openDebugModal();
+                }
+            });
+        }
+
         const hintBtn = document.getElementById('hintBtn');
         if (hintBtn) {
             hintBtn.addEventListener('click', () => {
@@ -4908,6 +4918,9 @@ function initStartMenu() {
         if (debugGameEndInfo) debugGameEndInfo.textContent = info;
         if (debugModal) debugModal.classList.add('show');
     }
+    
+    // Make openDebugModal globally accessible
+    window.openDebugModal = openDebugModal;
 
     function copyDebugLogs() {
         const logs = (window.__debugLogs || []).join('\n');
