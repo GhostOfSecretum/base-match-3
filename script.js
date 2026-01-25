@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.27';
+const APP_VERSION = '1.0.28';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -1708,6 +1708,91 @@ class LeaderboardManager {
         this.isLoading = false;
         this.lastFetchTime = 0;
         this.cacheTimeout = 5000; // Кеш на 5 секунд
+        this.nameCache = {}; // Кеш для резолвинга имён по адресу
+        this.nameResolveInProgress = {}; // Трекер для предотвращения дублирования запросов
+    }
+    
+    // Резолвинг имени по адресу кошелька
+    async resolveNameByAddress(address) {
+        if (!address) return null;
+        
+        const normalizedAddress = address.toLowerCase();
+        
+        // Проверяем кеш
+        if (this.nameCache[normalizedAddress]) {
+            return this.nameCache[normalizedAddress];
+        }
+        
+        // Если уже запущен резолвинг для этого адреса - ждём
+        if (this.nameResolveInProgress[normalizedAddress]) {
+            return this.nameResolveInProgress[normalizedAddress];
+        }
+        
+        // Запускаем резолвинг
+        this.nameResolveInProgress[normalizedAddress] = this._fetchNameForAddress(normalizedAddress);
+        
+        try {
+            const name = await this.nameResolveInProgress[normalizedAddress];
+            if (name && name !== 'Player') {
+                this.nameCache[normalizedAddress] = name;
+            }
+            return name;
+        } finally {
+            delete this.nameResolveInProgress[normalizedAddress];
+        }
+    }
+    
+    // Внутренний метод для получения имени через API
+    async _fetchNameForAddress(address) {
+        try {
+            // 1. Пробуем Warpcast (Farcaster) - самый надёжный источник
+            try {
+                const warpcastResponse = await fetch(`https://api.warpcast.com/v2/user-by-verification?address=${address}`, {
+                    signal: AbortSignal.timeout(3000)
+                });
+                if (warpcastResponse.ok) {
+                    const data = await warpcastResponse.json();
+                    if (data.result?.user) {
+                        const name = data.result.user.displayName || data.result.user.username;
+                        if (name) {
+                            return this.formatBasename(name);
+                        }
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            
+            // 2. Пробуем Basenames
+            try {
+                const basenameResponse = await fetch(`https://resolver-api.basename.app/v1/addresses/${address}`, {
+                    signal: AbortSignal.timeout(3000)
+                });
+                if (basenameResponse.ok) {
+                    const data = await basenameResponse.json();
+                    const name = data.name || data.basename;
+                    if (name) {
+                        return this.formatBasename(name);
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            
+            // 3. Пробуем ENS
+            try {
+                const ensResponse = await fetch(`https://api.ensideas.com/ens/resolve/${address}`, {
+                    signal: AbortSignal.timeout(3000)
+                });
+                if (ensResponse.ok) {
+                    const data = await ensResponse.json();
+                    if (data.name) {
+                        return this.formatBasename(data.name);
+                    }
+                }
+            } catch (e) { /* ignore */ }
+            
+            return null;
+        } catch (e) {
+            console.log('Name resolution failed for', address, e.message);
+            return null;
+        }
     }
 
     getPlayerIdentifier() {
@@ -4456,6 +4541,11 @@ class MatchThreePro {
                 // Получаем имя для отображения
                 let displayName = result.playerName;
                 
+                // Проверяем кеш резолвленных имён
+                if (resultAddress && this.leaderboard.nameCache && this.leaderboard.nameCache[resultAddress]) {
+                    displayName = this.leaderboard.nameCache[resultAddress];
+                }
+                
                 // Форматируем имя в .base.eth формат
                 if (displayName && !displayName.includes('.base.eth') && displayName !== 'Player') {
                     displayName = this.formatBasename(displayName);
@@ -4470,6 +4560,9 @@ class MatchThreePro {
                 if (!displayName || displayName.startsWith('0x') || displayName.includes('...')) {
                     displayName = 'Player';
                 }
+                
+                // Нужно ли резолвить имя?
+                const needsResolve = displayName === 'Player' && resultAddress;
                 
                 // Проверяем, является ли это текущий игрок по адресу кошелька
                 const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
@@ -4489,7 +4582,7 @@ class MatchThreePro {
                     : `<div class="player-avatar-placeholder">👤</div>`;
 
                 return `
-                    <div class="leaderboard-item ${isCurrentPlayer ? 'current-player' : ''}">
+                    <div class="leaderboard-item ${isCurrentPlayer ? 'current-player' : ''}" ${needsResolve ? `data-resolve-address="${resultAddress}"` : ''}>
                         <div class="leaderboard-rank">
                             ${medal || `<span class="rank-number">${index + 1}</span>`}
                         </div>
@@ -4511,6 +4604,9 @@ class MatchThreePro {
                     </div>
                 `;
             }).join('');
+            
+            // После рендеринга запускаем резолвинг имён для записей с "Player"
+            this.resolveLeaderboardNames();
         } catch (error) {
             console.error('Error loading leaderboard:', error);
             
@@ -4536,6 +4632,42 @@ class MatchThreePro {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+    
+    // Резолвинг имён для записей лидерборда с "Player"
+    async resolveLeaderboardNames() {
+        const list = document.getElementById('leaderboardList');
+        if (!list) return;
+        
+        // Находим все элементы, которые нужно резолвить
+        const itemsToResolve = list.querySelectorAll('[data-resolve-address]');
+        if (itemsToResolve.length === 0) return;
+        
+        console.log(`Resolving ${itemsToResolve.length} player names...`);
+        
+        // Резолвим имена параллельно (но с ограничением)
+        const resolvePromises = Array.from(itemsToResolve).map(async (item) => {
+            const address = item.getAttribute('data-resolve-address');
+            if (!address) return;
+            
+            try {
+                const name = await this.leaderboard.resolveNameByAddress(address);
+                if (name && name !== 'Player') {
+                    // Обновляем DOM
+                    const nameSpan = item.querySelector('.player-name');
+                    if (nameSpan && nameSpan.textContent === 'Player') {
+                        nameSpan.textContent = name;
+                        // Убираем атрибут чтобы не резолвить повторно
+                        item.removeAttribute('data-resolve-address');
+                    }
+                }
+            } catch (e) {
+                console.log('Failed to resolve name for', address, e.message);
+            }
+        });
+        
+        await Promise.allSettled(resolvePromises);
+        console.log('Name resolution complete');
     }
 
     async newGame() {
