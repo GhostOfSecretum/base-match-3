@@ -714,36 +714,55 @@
                     if (context.user) {
                         debugLog(`  👤 USER FOUND:`);
                         
-                        // Читаем свойства user по одному (для Proxy объектов)
+                        // Свойства user — это Promises, нужен await
                         let userName = null;
                         let userAvatar = null;
                         
                         try {
-                            const displayName = context.user.displayName;
+                            let displayName = context.user.displayName;
+                            // Проверяем если это Promise
+                            if (displayName && typeof displayName.then === 'function') {
+                                debugLog(`    displayName is Promise, awaiting...`);
+                                displayName = await displayName;
+                            }
                             debugLog(`    displayName: ${displayName || 'null'}`);
-                            if (displayName) userName = displayName;
+                            if (displayName && typeof displayName === 'string') userName = displayName;
                         } catch (e) { debugLog(`    displayName error: ${e.message}`); }
                         
                         try {
-                            const username = context.user.username;
+                            let username = context.user.username;
+                            if (username && typeof username.then === 'function') {
+                                debugLog(`    username is Promise, awaiting...`);
+                                username = await username;
+                            }
                             debugLog(`    username: ${username || 'null'}`);
-                            if (!userName && username) userName = username;
+                            if (!userName && username && typeof username === 'string') userName = username;
                         } catch (e) { debugLog(`    username error: ${e.message}`); }
                         
                         try {
-                            const fid = context.user.fid;
+                            let fid = context.user.fid;
+                            if (fid && typeof fid.then === 'function') {
+                                fid = await fid;
+                            }
                             debugLog(`    fid: ${fid || 'null'}`);
                         } catch (e) { debugLog(`    fid error: ${e.message}`); }
                         
                         try {
-                            const pfpUrl = context.user.pfpUrl;
-                            debugLog(`    pfpUrl: ${pfpUrl ? 'YES' : 'null'}`);
-                            if (pfpUrl) userAvatar = pfpUrl;
+                            let pfpUrl = context.user.pfpUrl;
+                            if (pfpUrl && typeof pfpUrl.then === 'function') {
+                                debugLog(`    pfpUrl is Promise, awaiting...`);
+                                pfpUrl = await pfpUrl;
+                            }
+                            debugLog(`    pfpUrl: ${pfpUrl || 'null'}`);
+                            if (pfpUrl && typeof pfpUrl === 'string') userAvatar = pfpUrl;
                         } catch (e) { debugLog(`    pfpUrl error: ${e.message}`); }
                         
                         try {
-                            const avatarUrl = context.user.avatarUrl;
-                            if (!userAvatar && avatarUrl) userAvatar = avatarUrl;
+                            let avatarUrl = context.user.avatarUrl;
+                            if (avatarUrl && typeof avatarUrl.then === 'function') {
+                                avatarUrl = await avatarUrl;
+                            }
+                            if (!userAvatar && avatarUrl && typeof avatarUrl === 'string') userAvatar = avatarUrl;
                         } catch (e) {}
                         
                         // Сохраняем найденные данные
@@ -756,7 +775,7 @@
                         }
                         
                         if (userAvatar) {
-                            debugLog(`  ✅ Got avatar from context`);
+                            debugLog(`  ✅ Got avatar from context: ${userAvatar.slice(0, 50)}...`);
                             window.__userAvatar = userAvatar;
                             try {
                                 localStorage.setItem('playerAvatar', userAvatar);
@@ -854,7 +873,7 @@
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
-    ">v1.0.35</div>
+    ">v1.0.36</div>
     
     <script>
         // Ранняя инициализация темы для предотвращения мерцания
