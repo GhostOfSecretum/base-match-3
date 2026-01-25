@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.38';
+const APP_VERSION = '1.0.39';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -1812,22 +1812,18 @@ class LeaderboardManager {
         return 'Player';
     }
 
-    // Форматирование имени в формат .base.eth
+    // Форматирование имени (без суффикса .base.eth)
     formatBasename(name) {
         if (!name) return 'Player';
         
-        // Если уже содержит .base.eth - оставляем как есть
-        if (name.includes('.base.eth')) return name;
-        
-        // Если это .eth имя (ENS) - конвертируем в .base.eth формат
-        if (name.endsWith('.eth')) {
-            const baseName = name.replace('.eth', '');
-            return `${baseName}.base.eth`;
+        // Убираем .base.eth если есть
+        if (name.includes('.base.eth')) {
+            return name.replace('.base.eth', '');
         }
         
-        // Если это просто имя без домена и не адрес - добавляем .base.eth
-        if (!name.includes('.') && !name.startsWith('0x')) {
-            return `${name}.base.eth`;
+        // Убираем .eth если есть (ENS)
+        if (name.endsWith('.eth')) {
+            return name.replace('.eth', '');
         }
         
         // Если это адрес - возвращаем "Player"
@@ -2778,22 +2774,18 @@ class MatchThreePro {
         }
     }
 
-    // Форматирование имени в формат .base.eth
+    // Форматирование имени (без суффикса .base.eth)
     formatBasename(name) {
         if (!name) return 'Player';
         
-        // Если уже содержит .base.eth - оставляем как есть
-        if (name.includes('.base.eth')) return name;
-        
-        // Если это .eth имя (ENS) - конвертируем в .base.eth формат
-        if (name.endsWith('.eth')) {
-            const baseName = name.replace('.eth', '');
-            return `${baseName}.base.eth`;
+        // Убираем .base.eth если есть
+        if (name.includes('.base.eth')) {
+            return name.replace('.base.eth', '');
         }
         
-        // Если это просто имя без домена и не адрес - добавляем .base.eth
-        if (!name.includes('.') && !name.startsWith('0x')) {
-            return `${name}.base.eth`;
+        // Убираем .eth если есть (ENS)
+        if (name.endsWith('.eth')) {
+            return name.replace('.eth', '');
         }
         
         // Если это адрес - возвращаем "Player"

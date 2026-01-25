@@ -377,7 +377,7 @@
             const avatarEl = document.getElementById('currentPlayerAvatar');
             
             if (nameEl && name) {
-                // Форматируем имя в формат .base.eth если нужно
+                // Форматируем имя (убираем суффиксы)
                 let displayName = formatBasename(name);
                 
                 nameEl.textContent = displayName;
@@ -438,23 +438,23 @@
             }
         }
 
-        // Форматирование имени в формат .base.eth
+        // Форматирование имени (без суффикса .base.eth)
         function formatBasename(name) {
             if (!name) return 'Player';
             
-            // Если уже содержит .base.eth - оставляем как есть
-            if (name.includes('.base.eth')) return name;
-            
-            // Если это .eth имя (ENS) - конвертируем в .base.eth формат
-            if (name.endsWith('.eth')) {
-                // eldoktor.eth -> eldoktor.base.eth
-                const baseName = name.replace('.eth', '');
-                return `${baseName}.base.eth`;
+            // Убираем .base.eth если есть
+            if (name.includes('.base.eth')) {
+                return name.replace('.base.eth', '');
             }
             
-            // Если это просто имя без домена - добавляем .base.eth
-            if (!name.includes('.') && !name.startsWith('0x')) {
-                return `${name}.base.eth`;
+            // Убираем .eth если есть (ENS)
+            if (name.endsWith('.eth')) {
+                return name.replace('.eth', '');
+            }
+            
+            // Если это адрес - возвращаем Player
+            if (name.startsWith('0x')) {
+                return 'Player';
             }
             
             return name;
@@ -889,7 +889,7 @@
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
-    ">v1.0.38</div>
+    ">v1.0.39</div>
     
     <script>
         // Ранняя инициализация темы для предотвращения мерцания
