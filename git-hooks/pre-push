@@ -32,6 +32,10 @@ else
     
     echo "🚀 Pushing version bump commit..."
     SKIP_VERSION_BUMP=1 git push "$REMOTE" "$BRANCH" --no-verify
+    
+    # Обновляем локальную ветку после push
+    git fetch "$REMOTE" "$BRANCH" 2>/dev/null || true
+    git reset --hard "$REMOTE/$BRANCH" 2>/dev/null || true
 fi
 
 # Продолжаем push
