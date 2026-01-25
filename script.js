@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.30';
+const APP_VERSION = '1.0.31';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -1744,74 +1744,74 @@ class LeaderboardManager {
     
     // Внутренний метод для получения имени через API
     async _fetchNameForAddress(address) {
-        console.log(`🔍 Resolving name for ${address.slice(0,10)}...`);
+        if (typeof debugLog === 'function') debugLog(`🔍 Resolving name for ${address.slice(0,10)}...`);
         
         try {
             // 1. Пробуем ENS (обычно работает лучше всего)
             try {
-                console.log('  Trying ENS...');
+                if (typeof debugLog === 'function') debugLog('  Trying ENS...');
                 const ensResponse = await fetch(`https://api.ensideas.com/ens/resolve/${address}`);
                 if (ensResponse.ok) {
                     const data = await ensResponse.json();
-                    console.log('  ENS response:', JSON.stringify(data).slice(0, 100));
+                    if (typeof debugLog === 'function') debugLog('  ENS response: ' + JSON.stringify(data).slice(0, 100));
                     if (data.name) {
                         const formatted = this.formatBasename(data.name);
-                        console.log(`  ✅ ENS resolved: ${formatted}`);
+                        if (typeof debugLog === 'function') debugLog(`  ✅ ENS resolved: ${formatted}`);
                         return formatted;
                     }
                 } else {
-                    console.log(`  ENS status: ${ensResponse.status}`);
+                    if (typeof debugLog === 'function') debugLog(`  ENS status: ${ensResponse.status}`);
                 }
             } catch (e) { 
-                console.log('  ENS error:', e.message);
+                if (typeof debugLog === 'function') debugLog('  ENS error: ' + e.message);
             }
             
             // 2. Пробуем Warpcast (Farcaster)
             try {
-                console.log('  Trying Warpcast...');
+                if (typeof debugLog === 'function') debugLog('  Trying Warpcast...');
                 const warpcastResponse = await fetch(`https://api.warpcast.com/v2/user-by-verification?address=${address}`);
                 if (warpcastResponse.ok) {
                     const data = await warpcastResponse.json();
-                    console.log('  Warpcast response:', JSON.stringify(data).slice(0, 100));
+                    if (typeof debugLog === 'function') debugLog('  Warpcast response: ' + JSON.stringify(data).slice(0, 100));
                     if (data.result?.user) {
                         const name = data.result.user.displayName || data.result.user.username;
                         if (name) {
                             const formatted = this.formatBasename(name);
-                            console.log(`  ✅ Warpcast resolved: ${formatted}`);
+                            if (typeof debugLog === 'function') debugLog(`  ✅ Warpcast resolved: ${formatted}`);
                             return formatted;
                         }
                     }
                 } else {
-                    console.log(`  Warpcast status: ${warpcastResponse.status}`);
+                    if (typeof debugLog === 'function') debugLog(`  Warpcast status: ${warpcastResponse.status}`);
                 }
             } catch (e) { 
-                console.log('  Warpcast error:', e.message);
+                if (typeof debugLog === 'function') debugLog('  Warpcast error: ' + e.message);
             }
             
             // 3. Пробуем Basenames
             try {
-                console.log('  Trying Basenames...');
+                if (typeof debugLog === 'function') debugLog('  Trying Basenames...');
                 const basenameResponse = await fetch(`https://resolver-api.basename.app/v1/addresses/${address}`);
                 if (basenameResponse.ok) {
                     const data = await basenameResponse.json();
-                    console.log('  Basenames response:', JSON.stringify(data).slice(0, 100));
+                    if (typeof debugLog === 'function') debugLog('  Basenames response: ' + JSON.stringify(data).slice(0, 100));
                     const name = data.name || data.basename;
                     if (name) {
                         const formatted = this.formatBasename(name);
-                        console.log(`  ✅ Basenames resolved: ${formatted}`);
+                        if (typeof debugLog === 'function') debugLog(`  ✅ Basenames resolved: ${formatted}`);
                         return formatted;
                     }
                 } else {
-                    console.log(`  Basenames status: ${basenameResponse.status}`);
+                    if (typeof debugLog === 'function') debugLog(`  Basenames status: ${basenameResponse.status}`);
                 }
             } catch (e) { 
-                console.log('  Basenames error:', e.message);
+                if (typeof debugLog === 'function') debugLog('  Basenames error: ' + e.message);
             }
             
-            console.log(`  ❌ Could not resolve name for ${address.slice(0,10)}`);
+            if (typeof debugLog === 'function') debugLog(`  ❌ Could not resolve name for ${address.slice(0,10)}`);
             return null;
         } catch (e) {
-            console.log('Name resolution failed for', address, e.message);
+            if (typeof debugLog === 'function') debugLog('Name resolution failed for ' + address + ': ' + e.message);
             return null;
         }
     }
@@ -4657,20 +4657,20 @@ class MatchThreePro {
     
     // Резолвинг имён для записей лидерборда с "Player"
     async resolveLeaderboardNames() {
-        console.log('=== resolveLeaderboardNames START ===');
+        if (typeof debugLog === 'function') debugLog('=== resolveLeaderboardNames START ===');
         
         const list = document.getElementById('leaderboardList');
         if (!list) {
-            console.log('leaderboardList not found');
+            if (typeof debugLog === 'function') debugLog('leaderboardList not found');
             return;
         }
         
         // Находим все элементы, которые нужно резолвить
         const itemsToResolve = list.querySelectorAll('[data-resolve-address]');
-        console.log(`Found ${itemsToResolve.length} items to resolve`);
+        if (typeof debugLog === 'function') debugLog(`Found ${itemsToResolve.length} items to resolve`);
         
         if (itemsToResolve.length === 0) {
-            console.log('No items need resolving');
+            if (typeof debugLog === 'function') debugLog('No items need resolving');
             return;
         }
         
@@ -4680,7 +4680,7 @@ class MatchThreePro {
             const addr = item.getAttribute('data-resolve-address');
             if (addr) addresses.add(addr);
         });
-        console.log(`Unique addresses to resolve: ${addresses.size}`);
+        if (typeof debugLog === 'function') debugLog(`Unique addresses to resolve: ${addresses.size}`);
         
         // Резолвим имена последовательно чтобы не перегружать API
         for (const item of itemsToResolve) {
@@ -4688,29 +4688,29 @@ class MatchThreePro {
             if (!address) continue;
             
             try {
-                console.log(`Resolving for item with address: ${address.slice(0,10)}...`);
+                if (typeof debugLog === 'function') debugLog(`Resolving for item: ${address.slice(0,10)}...`);
                 const name = await this.leaderboard.resolveNameByAddress(address);
-                console.log(`  Result: ${name || 'null'}`);
+                if (typeof debugLog === 'function') debugLog(`  Result: ${name || 'null'}`);
                 
                 if (name && name !== 'Player') {
                     // Обновляем DOM
                     const nameSpan = item.querySelector('.player-name');
                     if (nameSpan) {
-                        console.log(`  Current name in DOM: "${nameSpan.textContent}"`);
+                        if (typeof debugLog === 'function') debugLog(`  Current: "${nameSpan.textContent}"`);
                         if (nameSpan.textContent === 'Player') {
                             nameSpan.textContent = name;
-                            console.log(`  ✅ Updated to: ${name}`);
+                            if (typeof debugLog === 'function') debugLog(`  ✅ Updated to: ${name}`);
                         }
                         // Убираем атрибут чтобы не резолвить повторно
                         item.removeAttribute('data-resolve-address');
                     }
                 }
             } catch (e) {
-                console.log('Failed to resolve name for', address, e.message);
+                if (typeof debugLog === 'function') debugLog('Failed to resolve: ' + address + ' - ' + e.message);
             }
         }
         
-        console.log('=== resolveLeaderboardNames COMPLETE ===');
+        if (typeof debugLog === 'function') debugLog('=== resolveLeaderboardNames COMPLETE ===');
     }
 
     async newGame() {
