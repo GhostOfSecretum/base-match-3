@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.31';
+const APP_VERSION = '1.0.32';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -1742,76 +1742,31 @@ class LeaderboardManager {
         }
     }
     
-    // Внутренний метод для получения имени через API
+    // Внутренний метод для получения имени через серверный API
     async _fetchNameForAddress(address) {
         if (typeof debugLog === 'function') debugLog(`🔍 Resolving name for ${address.slice(0,10)}...`);
         
         try {
-            // 1. Пробуем ENS (обычно работает лучше всего)
-            try {
-                if (typeof debugLog === 'function') debugLog('  Trying ENS...');
-                const ensResponse = await fetch(`https://api.ensideas.com/ens/resolve/${address}`);
-                if (ensResponse.ok) {
-                    const data = await ensResponse.json();
-                    if (typeof debugLog === 'function') debugLog('  ENS response: ' + JSON.stringify(data).slice(0, 100));
-                    if (data.name) {
-                        const formatted = this.formatBasename(data.name);
-                        if (typeof debugLog === 'function') debugLog(`  ✅ ENS resolved: ${formatted}`);
-                        return formatted;
-                    }
-                } else {
-                    if (typeof debugLog === 'function') debugLog(`  ENS status: ${ensResponse.status}`);
-                }
-            } catch (e) { 
-                if (typeof debugLog === 'function') debugLog('  ENS error: ' + e.message);
-            }
+            // Используем серверный API для обхода CORS
+            const response = await fetch(`/api/resolve-name?address=${address}`);
             
-            // 2. Пробуем Warpcast (Farcaster)
-            try {
-                if (typeof debugLog === 'function') debugLog('  Trying Warpcast...');
-                const warpcastResponse = await fetch(`https://api.warpcast.com/v2/user-by-verification?address=${address}`);
-                if (warpcastResponse.ok) {
-                    const data = await warpcastResponse.json();
-                    if (typeof debugLog === 'function') debugLog('  Warpcast response: ' + JSON.stringify(data).slice(0, 100));
-                    if (data.result?.user) {
-                        const name = data.result.user.displayName || data.result.user.username;
-                        if (name) {
-                            const formatted = this.formatBasename(name);
-                            if (typeof debugLog === 'function') debugLog(`  ✅ Warpcast resolved: ${formatted}`);
-                            return formatted;
-                        }
-                    }
-                } else {
-                    if (typeof debugLog === 'function') debugLog(`  Warpcast status: ${warpcastResponse.status}`);
+            if (response.ok) {
+                const data = await response.json();
+                if (typeof debugLog === 'function') debugLog('  API response: ' + JSON.stringify(data).slice(0, 150));
+                
+                if (data.success && data.name) {
+                    // Не форматируем в .base.eth - оставляем как есть
+                    if (typeof debugLog === 'function') debugLog(`  ✅ Resolved via ${data.source}: ${data.name}`);
+                    return data.name;
                 }
-            } catch (e) { 
-                if (typeof debugLog === 'function') debugLog('  Warpcast error: ' + e.message);
-            }
-            
-            // 3. Пробуем Basenames
-            try {
-                if (typeof debugLog === 'function') debugLog('  Trying Basenames...');
-                const basenameResponse = await fetch(`https://resolver-api.basename.app/v1/addresses/${address}`);
-                if (basenameResponse.ok) {
-                    const data = await basenameResponse.json();
-                    if (typeof debugLog === 'function') debugLog('  Basenames response: ' + JSON.stringify(data).slice(0, 100));
-                    const name = data.name || data.basename;
-                    if (name) {
-                        const formatted = this.formatBasename(name);
-                        if (typeof debugLog === 'function') debugLog(`  ✅ Basenames resolved: ${formatted}`);
-                        return formatted;
-                    }
-                } else {
-                    if (typeof debugLog === 'function') debugLog(`  Basenames status: ${basenameResponse.status}`);
-                }
-            } catch (e) { 
-                if (typeof debugLog === 'function') debugLog('  Basenames error: ' + e.message);
+            } else {
+                if (typeof debugLog === 'function') debugLog(`  API status: ${response.status}`);
             }
             
             if (typeof debugLog === 'function') debugLog(`  ❌ Could not resolve name for ${address.slice(0,10)}`);
             return null;
         } catch (e) {
-            if (typeof debugLog === 'function') debugLog('Name resolution failed for ' + address + ': ' + e.message);
+            if (typeof debugLog === 'function') debugLog('Name resolution failed: ' + e.message);
             return null;
         }
     }
@@ -4565,11 +4520,6 @@ class MatchThreePro {
                 // Проверяем кеш резолвленных имён
                 if (resultAddress && this.leaderboard.nameCache && this.leaderboard.nameCache[resultAddress]) {
                     displayName = this.leaderboard.nameCache[resultAddress];
-                }
-                
-                // Форматируем имя в .base.eth формат
-                if (displayName && !displayName.includes('.base.eth') && displayName !== 'Player') {
-                    displayName = this.formatBasename(displayName);
                 }
                 
                 // Если это текущий игрок и у нас есть имя, используем его
