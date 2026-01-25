@@ -1,22 +1,3 @@
 #!/bin/bash
-# Pre-commit hook для автоматического обновления версии
-
-echo "🔄 Auto-updating version before commit..."
-
-# Обновляем версию
-node update-version.cjs
-
-# Проверяем, были ли изменения
-if git diff --quiet script.js package.json api/leaderboard.js index.html; then
-    echo "✅ Version already up to date"
-else
-    echo "📦 Version updated, adding files to staging..."
-    git add script.js package.json api/leaderboard.js index.html
-    
-    # Получаем новую версию из script.js
-    NEW_VERSION=$(grep "const APP_VERSION" script.js | sed "s/.*'\(.*\)'.*/\1/")
-    
-    echo "✅ Version auto-bumped to $NEW_VERSION (files staged)"
-fi
-
+# Pre-commit hook - версия обновляется только при push (pre-push hook)
 exit 0
