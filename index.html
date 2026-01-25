@@ -710,17 +710,63 @@
                 if (context) {
                     window.__farcasterContext = context;
                     debugLog(`✅ Got context!`);
-                    debugLog(`  Keys: ${Object.keys(context).join(', ')}`);
                     
                     if (context.user) {
                         debugLog(`  👤 USER FOUND:`);
-                        debugLog(`    displayName: ${context.user.displayName || 'null'}`);
-                        debugLog(`    username: ${context.user.username || 'null'}`);
-                        debugLog(`    pfpUrl: ${context.user.pfpUrl ? 'YES' : 'null'}`);
-                        debugLog(`    fid: ${context.user.fid || 'null'}`);
-                        Object.keys(context.user).forEach(k => {
-                            debugLog(`    ${k}: ${typeof context.user[k]}`);
-                        });
+                        
+                        // Читаем свойства user по одному (для Proxy объектов)
+                        let userName = null;
+                        let userAvatar = null;
+                        
+                        try {
+                            const displayName = context.user.displayName;
+                            debugLog(`    displayName: ${displayName || 'null'}`);
+                            if (displayName) userName = displayName;
+                        } catch (e) { debugLog(`    displayName error: ${e.message}`); }
+                        
+                        try {
+                            const username = context.user.username;
+                            debugLog(`    username: ${username || 'null'}`);
+                            if (!userName && username) userName = username;
+                        } catch (e) { debugLog(`    username error: ${e.message}`); }
+                        
+                        try {
+                            const fid = context.user.fid;
+                            debugLog(`    fid: ${fid || 'null'}`);
+                        } catch (e) { debugLog(`    fid error: ${e.message}`); }
+                        
+                        try {
+                            const pfpUrl = context.user.pfpUrl;
+                            debugLog(`    pfpUrl: ${pfpUrl ? 'YES' : 'null'}`);
+                            if (pfpUrl) userAvatar = pfpUrl;
+                        } catch (e) { debugLog(`    pfpUrl error: ${e.message}`); }
+                        
+                        try {
+                            const avatarUrl = context.user.avatarUrl;
+                            if (!userAvatar && avatarUrl) userAvatar = avatarUrl;
+                        } catch (e) {}
+                        
+                        // Сохраняем найденные данные
+                        if (userName) {
+                            debugLog(`  ✅ Got username from context: ${userName}`);
+                            window.__userName = userName;
+                            try {
+                                localStorage.setItem('playerDisplayName', userName);
+                            } catch (e) {}
+                        }
+                        
+                        if (userAvatar) {
+                            debugLog(`  ✅ Got avatar from context`);
+                            window.__userAvatar = userAvatar;
+                            try {
+                                localStorage.setItem('playerAvatar', userAvatar);
+                            } catch (e) {}
+                            
+                            // Обновляем отображение
+                            updatePlayerDisplay(userName, userAvatar, [userAvatar]);
+                        } else if (userName) {
+                            updatePlayerDisplay(userName, null, []);
+                        }
                     } else {
                         debugLog(`  user: NO`);
                     }
@@ -808,7 +854,7 @@
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
-    ">v1.0.34</div>
+    ">v1.0.35</div>
     
     <script>
         // Ранняя инициализация темы для предотвращения мерцания
