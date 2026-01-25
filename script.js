@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.29';
+const APP_VERSION = '1.0.30';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -4846,6 +4846,16 @@ class MatchThreePro {
             closeLeaderboardBtn.addEventListener('click', () => {
                 const modal = document.getElementById('leaderboardModal');
                 if (modal) modal.classList.remove('show');
+            });
+        }
+
+        // Debug button in leaderboard
+        const leaderboardDebugBtn = document.getElementById('leaderboardDebugBtn');
+        if (leaderboardDebugBtn) {
+            leaderboardDebugBtn.addEventListener('click', () => {
+                if (typeof window.openDebugModal === 'function') {
+                    window.openDebugModal();
+                }
             });
         }
 
