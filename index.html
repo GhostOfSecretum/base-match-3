@@ -631,20 +631,49 @@
                 let context = null;
                 debugLog('🔍 Getting context...');
                 
-                // Пробуем все возможные способы
-                if (typeof sdkInstance.context === 'function') {
+                // Логируем все свойства SDK для отладки
+                debugLog('  SDK keys: ' + Object.keys(sdkInstance).join(', '));
+                
+                // Проверяем frame объект напрямую
+                if (typeof frame !== 'undefined') {
+                    debugLog('  frame keys: ' + Object.keys(frame).join(', '));
+                    if (frame.user) {
+                        debugLog('  ✅ Found frame.user!');
+                        debugLog('    ' + JSON.stringify(frame.user).slice(0, 200));
+                        context = { user: frame.user };
+                    }
+                    if (frame.context) {
+                        debugLog('  frame.context type: ' + typeof frame.context);
+                    }
+                }
+                
+                // Проверяем frames объект
+                if (typeof frames !== 'undefined') {
+                    debugLog('  frames keys: ' + Object.keys(frames).join(', '));
+                }
+                
+                // Пробуем все возможные способы получить context
+                if (!context && typeof sdkInstance.context === 'function') {
                     debugLog('  Trying: context()');
-                    context = await sdkInstance.context();
-                } else if (sdkInstance.context && typeof sdkInstance.context.get === 'function') {
+                    try {
+                        context = await sdkInstance.context();
+                    } catch (e) {
+                        debugLog('  context() error: ' + e.message);
+                    }
+                }
+                
+                if (!context && sdkInstance.context && typeof sdkInstance.context.get === 'function') {
                     debugLog('  Trying: context.get()');
                     context = await sdkInstance.context.get();
-                } else if (sdkInstance.context && sdkInstance.context.then) {
+                } else if (!context && sdkInstance.context && sdkInstance.context.then) {
                     debugLog('  Trying: await context');
                     context = await sdkInstance.context;
-                } else if (sdkInstance.context) {
-                    debugLog('  Trying: context (direct)');
+                } else if (!context && sdkInstance.context && typeof sdkInstance.context === 'object') {
+                    debugLog('  Trying: context (direct object)');
                     context = sdkInstance.context;
-                } else if (sdkInstance.getContext) {
+                }
+                
+                if (!context && sdkInstance.getContext) {
                     debugLog('  Trying: getContext()');
                     context = await sdkInstance.getContext();
                 } else if (sdkInstance.user) {
@@ -753,7 +782,7 @@
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
-    ">v1.0.32</div>
+    ">v1.0.33</div>
     
     <script>
         // Ранняя инициализация темы для предотвращения мерцания
