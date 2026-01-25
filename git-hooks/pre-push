@@ -33,9 +33,14 @@ else
     echo "🚀 Pushing version bump commit..."
     SKIP_VERSION_BUMP=1 git push "$REMOTE" "$BRANCH" --no-verify
     
-    # Обновляем ссылку на remote без изменения рабочей директории
+    # Обновляем ссылку на remote и рабочую директорию
     git fetch "$REMOTE" "$BRANCH" 2>/dev/null || true
     git update-ref "refs/heads/$BRANCH" "$REMOTE/$BRANCH" 2>/dev/null || true
+    git reset --hard "$REMOTE/$BRANCH" 2>/dev/null || true
+    
+    # Отменяем основной push, так как мы уже отправили все изменения
+    echo "✅ All changes pushed, skipping main push"
+    exit 0
 fi
 
 # Продолжаем push
