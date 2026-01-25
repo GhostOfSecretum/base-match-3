@@ -714,56 +714,70 @@
                     if (context.user) {
                         debugLog(`  👤 USER FOUND:`);
                         
-                        // Свойства user — это Promises, нужен await
                         let userName = null;
                         let userAvatar = null;
+                        const user = context.user;
                         
-                        try {
-                            let displayName = context.user.displayName;
-                            // Проверяем если это Promise
-                            if (displayName && typeof displayName.then === 'function') {
-                                debugLog(`    displayName is Promise, awaiting...`);
-                                displayName = await displayName;
-                            }
-                            debugLog(`    displayName: ${displayName || 'null'}`);
-                            if (displayName && typeof displayName === 'string') userName = displayName;
-                        } catch (e) { debugLog(`    displayName error: ${e.message}`); }
+                        // Проверяем тип и методы user объекта
+                        debugLog(`    user type: ${typeof user}`);
+                        debugLog(`    user.then exists: ${typeof user.then}`);
                         
-                        try {
-                            let username = context.user.username;
-                            if (username && typeof username.then === 'function') {
-                                debugLog(`    username is Promise, awaiting...`);
-                                username = await username;
+                        // Если user сам является Promise — await его
+                        let resolvedUser = user;
+                        if (typeof user.then === 'function') {
+                            debugLog(`    user IS a Promise, awaiting...`);
+                            try {
+                                resolvedUser = await user;
+                                debugLog(`    user resolved! type: ${typeof resolvedUser}`);
+                                if (resolvedUser) {
+                                    debugLog(`    resolved keys: ${Object.keys(resolvedUser).join(', ')}`);
+                                }
+                            } catch (e) {
+                                debugLog(`    user await error: ${e.message}`);
                             }
-                            debugLog(`    username: ${username || 'null'}`);
-                            if (!userName && username && typeof username === 'string') userName = username;
-                        } catch (e) { debugLog(`    username error: ${e.message}`); }
+                        }
                         
-                        try {
-                            let fid = context.user.fid;
-                            if (fid && typeof fid.then === 'function') {
-                                fid = await fid;
+                        // Пробуем получить данные из resolved user
+                        if (resolvedUser && typeof resolvedUser === 'object') {
+                            try {
+                                // Пробуем через Object.entries чтобы обойти Proxy
+                                const entries = Object.entries(resolvedUser);
+                                debugLog(`    entries count: ${entries.length}`);
+                                entries.forEach(([k, v]) => {
+                                    debugLog(`      ${k}: ${typeof v === 'string' ? v : typeof v}`);
+                                    if (k === 'displayName' && typeof v === 'string') userName = v;
+                                    if (k === 'username' && typeof v === 'string' && !userName) userName = v;
+                                    if ((k === 'pfpUrl' || k === 'avatarUrl') && typeof v === 'string') userAvatar = v;
+                                });
+                            } catch (e) {
+                                debugLog(`    entries error: ${e.message}`);
                             }
-                            debugLog(`    fid: ${fid || 'null'}`);
-                        } catch (e) { debugLog(`    fid error: ${e.message}`); }
-                        
-                        try {
-                            let pfpUrl = context.user.pfpUrl;
-                            if (pfpUrl && typeof pfpUrl.then === 'function') {
-                                debugLog(`    pfpUrl is Promise, awaiting...`);
-                                pfpUrl = await pfpUrl;
+                            
+                            // Альтернатива: прямой доступ с await для каждого свойства
+                            if (!userName) {
+                                try {
+                                    const dn = await Promise.resolve(resolvedUser.displayName);
+                                    debugLog(`    await displayName: ${dn}`);
+                                    if (dn && typeof dn === 'string') userName = dn;
+                                } catch (e) { debugLog(`    dn error: ${e.message}`); }
                             }
-                            debugLog(`    pfpUrl: ${pfpUrl || 'null'}`);
-                            if (pfpUrl && typeof pfpUrl === 'string') userAvatar = pfpUrl;
-                        } catch (e) { debugLog(`    pfpUrl error: ${e.message}`); }
-                        
-                        try {
-                            let avatarUrl = context.user.avatarUrl;
-                            if (avatarUrl && typeof avatarUrl.then === 'function') {
-                                avatarUrl = await avatarUrl;
+                            
+                            if (!userName) {
+                                try {
+                                    const un = await Promise.resolve(resolvedUser.username);
+                                    debugLog(`    await username: ${un}`);
+                                    if (un && typeof un === 'string') userName = un;
+                                } catch (e) { debugLog(`    un error: ${e.message}`); }
                             }
-                            if (!userAvatar && avatarUrl && typeof avatarUrl === 'string') userAvatar = avatarUrl;
-                        } catch (e) {}
+                            
+                            if (!userAvatar) {
+                                try {
+                                    const pf = await Promise.resolve(resolvedUser.pfpUrl);
+                                    debugLog(`    await pfpUrl: ${pf ? 'YES' : 'null'}`);
+                                    if (pf && typeof pf === 'string') userAvatar = pf;
+                                } catch (e) { debugLog(`    pf error: ${e.message}`); }
+                            }
+                        }
                         
                         // Сохраняем найденные данные
                         if (userName) {
@@ -873,7 +887,7 @@
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
-    ">v1.0.36</div>
+    ">v1.0.37</div>
     
     <script>
         // Ранняя инициализация темы для предотвращения мерцания
