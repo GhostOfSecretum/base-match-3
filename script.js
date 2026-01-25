@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.24';
+const APP_VERSION = '1.0.25';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -4301,8 +4301,8 @@ class MatchThreePro {
                 if (!window.__gameEndDebug.error) window.__gameEndDebug.error = 'fetchLeaderboard: ' + (fetchErr?.message || String(fetchErr));
             }
 
-            const currentAddress = this.walletManager.getAccount().toLowerCase();
-            const isTopResult = savedResult && topResults.some(r => {
+            const currentAddress = (this.walletManager.getAccount() || playerAddress || '').toLowerCase();
+            const isTopResult = savedResult && currentAddress && topResults.some(r => {
                 const resultAddress = (r.walletAddress || r.playerName || '').toLowerCase();
                 return r.score === this.score && resultAddress === currentAddress &&
                     Math.abs(new Date(r.date).getTime() - Date.now()) < 5000;
