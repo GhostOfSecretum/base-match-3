@@ -1709,7 +1709,9 @@ class LeaderboardManager {
         this.lastFetchTime = 0;
         this.cacheTimeout = 5000; // Кеш на 5 секунд
         this.nameCache = {}; // Кеш для резолвинга имён по адресу
+        this.avatarCache = {}; // Кеш для резолвинга аватаров по адресу
         this.nameResolveInProgress = {}; // Трекер для предотвращения дублирования запросов
+        this.avatarResolveInProgress = {}; // Трекер для предотвращения дублирования запросов аватаров
     }
     
     // Резолвинг имени по адресу кошелька
@@ -1725,16 +1727,22 @@ class LeaderboardManager {
         
         // Если уже запущен резолвинг для этого адреса - ждём
         if (this.nameResolveInProgress[normalizedAddress]) {
-            return this.nameResolveInProgress[normalizedAddress];
+            const result = await this.nameResolveInProgress[normalizedAddress];
+            return result?.name || result;
         }
         
         // Запускаем резолвинг
-        this.nameResolveInProgress[normalizedAddress] = this._fetchNameForAddress(normalizedAddress);
+        this.nameResolveInProgress[normalizedAddress] = this._fetchNameAndAvatarForAddress(normalizedAddress);
         
         try {
-            const name = await this.nameResolveInProgress[normalizedAddress];
+            const result = await this.nameResolveInProgress[normalizedAddress];
+            const name = result?.name || result;
             if (name && name !== 'Player') {
                 this.nameCache[normalizedAddress] = name;
+            }
+            // Сохраняем аватар в кеш если он есть
+            if (result?.avatar) {
+                this.avatarCache[normalizedAddress] = result.avatar;
             }
             return name;
         } finally {
@@ -1742,9 +1750,45 @@ class LeaderboardManager {
         }
     }
     
-    // Внутренний метод для получения имени через серверный API
-    async _fetchNameForAddress(address) {
-        if (typeof debugLog === 'function') debugLog(`🔍 Resolving name for ${address.slice(0,10)}...`);
+    // Резолвинг аватара по адресу кошелька
+    async resolveAvatarByAddress(address) {
+        if (!address) return null;
+        
+        const normalizedAddress = address.toLowerCase();
+        
+        // Проверяем кеш
+        if (this.avatarCache[normalizedAddress]) {
+            return this.avatarCache[normalizedAddress];
+        }
+        
+        // Если уже запущен резолвинг для этого адреса - ждём
+        if (this.avatarResolveInProgress[normalizedAddress]) {
+            const result = await this.avatarResolveInProgress[normalizedAddress];
+            return result?.avatar || result;
+        }
+        
+        // Запускаем резолвинг
+        this.avatarResolveInProgress[normalizedAddress] = this._fetchNameAndAvatarForAddress(normalizedAddress);
+        
+        try {
+            const result = await this.avatarResolveInProgress[normalizedAddress];
+            const avatar = result?.avatar || null;
+            if (avatar) {
+                this.avatarCache[normalizedAddress] = avatar;
+            }
+            // Сохраняем имя в кеш если оно есть
+            if (result?.name && result.name !== 'Player') {
+                this.nameCache[normalizedAddress] = result.name;
+            }
+            return avatar;
+        } finally {
+            delete this.avatarResolveInProgress[normalizedAddress];
+        }
+    }
+    
+    // Внутренний метод для получения имени и аватара через серверный API
+    async _fetchNameAndAvatarForAddress(address) {
+        if (typeof debugLog === 'function') debugLog(`🔍 Resolving name and avatar for ${address.slice(0,10)}...`);
         
         try {
             // Используем серверный API для обхода CORS
@@ -1754,20 +1798,26 @@ class LeaderboardManager {
                 const data = await response.json();
                 if (typeof debugLog === 'function') debugLog('  API response: ' + JSON.stringify(data).slice(0, 150));
                 
-                if (data.success && data.name) {
-                    // Не форматируем в .base.eth - оставляем как есть
-                    if (typeof debugLog === 'function') debugLog(`  ✅ Resolved via ${data.source}: ${data.name}`);
-                    return data.name;
+                if (data.success) {
+                    const result = {
+                        name: data.name || null,
+                        avatar: data.avatar || null
+                    };
+                    if (data.name) {
+                        // Не форматируем в .base.eth - оставляем как есть
+                        if (typeof debugLog === 'function') debugLog(`  ✅ Resolved via ${data.source}: ${data.name}${data.avatar ? ' (with avatar)' : ''}`);
+                    }
+                    return result;
                 }
             } else {
                 if (typeof debugLog === 'function') debugLog(`  API status: ${response.status}`);
             }
             
-            if (typeof debugLog === 'function') debugLog(`  ❌ Could not resolve name for ${address.slice(0,10)}`);
-            return null;
+            if (typeof debugLog === 'function') debugLog(`  ❌ Could not resolve name/avatar for ${address.slice(0,10)}`);
+            return { name: null, avatar: null };
         } catch (e) {
-            if (typeof debugLog === 'function') debugLog('Name resolution failed: ' + e.message);
-            return null;
+            if (typeof debugLog === 'function') debugLog('Name/avatar resolution failed: ' + e.message);
+            return { name: null, avatar: null };
         }
     }
 
@@ -4538,6 +4588,14 @@ class MatchThreePro {
                                 window.__userAvatar;
                 }
                 
+                // Проверяем кеш аватаров
+                if (!avatarUrl && resultAddress && this.leaderboard.avatarCache && this.leaderboard.avatarCache[resultAddress]) {
+                    avatarUrl = this.leaderboard.avatarCache[resultAddress];
+                }
+                
+                // Нужно ли резолвить аватар? (для всех игроков без аватара, кроме текущего)
+                const needsResolveAvatar = !avatarUrl && resultAddress && !isCurrentPlayer;
+                
                 // Генерируем HTML для аватара
                 const avatarHtml = avatarUrl 
                     ? `<img src="${this.escapeHtml(avatarUrl)}" alt="" class="player-avatar" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
@@ -4545,7 +4603,7 @@ class MatchThreePro {
                     : `<div class="player-avatar-placeholder">👤</div>`;
 
                 return `
-                    <div class="leaderboard-item ${isCurrentPlayer ? 'current-player' : ''}" ${needsResolve ? `data-resolve-address="${resultAddress}"` : ''}>
+                    <div class="leaderboard-item ${isCurrentPlayer ? 'current-player' : ''}" ${needsResolve ? `data-resolve-address="${resultAddress}"` : ''} ${needsResolveAvatar ? `data-resolve-avatar="${resultAddress}"` : ''}>
                         <div class="leaderboard-rank">
                             ${medal || `<span class="rank-number">${index + 1}</span>`}
                         </div>
@@ -4607,30 +4665,23 @@ class MatchThreePro {
             return;
         }
         
-        // Находим все элементы, которые нужно резолвить
-        const itemsToResolve = list.querySelectorAll('[data-resolve-address]');
-        if (typeof debugLog === 'function') debugLog(`Found ${itemsToResolve.length} items to resolve`);
+        // Находим все элементы, которые нужно резолвить (имена и аватары)
+        const itemsToResolveName = list.querySelectorAll('[data-resolve-address]');
+        const itemsToResolveAvatar = list.querySelectorAll('[data-resolve-avatar]');
+        if (typeof debugLog === 'function') debugLog(`Found ${itemsToResolveName.length} items to resolve names, ${itemsToResolveAvatar.length} items to resolve avatars`);
         
-        if (itemsToResolve.length === 0) {
+        if (itemsToResolveName.length === 0 && itemsToResolveAvatar.length === 0) {
             if (typeof debugLog === 'function') debugLog('No items need resolving');
             return;
         }
         
-        // Собираем уникальные адреса
-        const addresses = new Set();
-        itemsToResolve.forEach(item => {
-            const addr = item.getAttribute('data-resolve-address');
-            if (addr) addresses.add(addr);
-        });
-        if (typeof debugLog === 'function') debugLog(`Unique addresses to resolve: ${addresses.size}`);
-        
         // Резолвим имена последовательно чтобы не перегружать API
-        for (const item of itemsToResolve) {
+        for (const item of itemsToResolveName) {
             const address = item.getAttribute('data-resolve-address');
             if (!address) continue;
             
             try {
-                if (typeof debugLog === 'function') debugLog(`Resolving for item: ${address.slice(0,10)}...`);
+                if (typeof debugLog === 'function') debugLog(`Resolving name for item: ${address.slice(0,10)}...`);
                 const name = await this.leaderboard.resolveNameByAddress(address);
                 if (typeof debugLog === 'function') debugLog(`  Result: ${name || 'null'}`);
                 
@@ -4648,7 +4699,59 @@ class MatchThreePro {
                     }
                 }
             } catch (e) {
-                if (typeof debugLog === 'function') debugLog('Failed to resolve: ' + address + ' - ' + e.message);
+                if (typeof debugLog === 'function') debugLog('Failed to resolve name: ' + address + ' - ' + e.message);
+            }
+        }
+        
+        // Резолвим аватары последовательно
+        for (const item of itemsToResolveAvatar) {
+            const address = item.getAttribute('data-resolve-avatar');
+            if (!address) continue;
+            
+            try {
+                if (typeof debugLog === 'function') debugLog(`Resolving avatar for item: ${address.slice(0,10)}...`);
+                const avatar = await this.leaderboard.resolveAvatarByAddress(address);
+                if (typeof debugLog === 'function') debugLog(`  Avatar result: ${avatar ? 'found' : 'null'}`);
+                
+                if (avatar) {
+                    // Обновляем DOM - находим элемент аватара
+                    const avatarContainer = item.querySelector('.leaderboard-avatar');
+                    if (avatarContainer) {
+                        // Удаляем placeholder если есть
+                        const placeholder = avatarContainer.querySelector('.player-avatar-placeholder');
+                        const existingImg = avatarContainer.querySelector('.player-avatar');
+                        
+                        if (placeholder && !existingImg) {
+                            // Создаем новый img элемент
+                            const img = document.createElement('img');
+                            img.src = avatar;
+                            img.alt = '';
+                            img.className = 'player-avatar';
+                            img.onerror = function() {
+                                this.style.display = 'none';
+                                if (placeholder) placeholder.style.display = 'flex';
+                            };
+                            img.onload = function() {
+                                if (placeholder) placeholder.style.display = 'none';
+                            };
+                            
+                            placeholder.style.display = 'none';
+                            avatarContainer.insertBefore(img, placeholder);
+                            if (typeof debugLog === 'function') debugLog(`  ✅ Avatar updated`);
+                        } else if (existingImg) {
+                            // Обновляем существующий img
+                            existingImg.src = avatar;
+                            existingImg.style.display = 'block';
+                            if (placeholder) placeholder.style.display = 'none';
+                            if (typeof debugLog === 'function') debugLog(`  ✅ Avatar updated (existing img)`);
+                        }
+                        
+                        // Убираем атрибут чтобы не резолвить повторно
+                        item.removeAttribute('data-resolve-avatar');
+                    }
+                }
+            } catch (e) {
+                if (typeof debugLog === 'function') debugLog('Failed to resolve avatar: ' + address + ' - ' + e.message);
             }
         }
         
