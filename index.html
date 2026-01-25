@@ -739,43 +739,45 @@
                         
                         // Пробуем получить данные из resolved user
                         if (resolvedUser && typeof resolvedUser === 'object') {
-                            try {
-                                // Пробуем через Object.entries чтобы обойти Proxy
-                                const entries = Object.entries(resolvedUser);
-                                debugLog(`    entries count: ${entries.length}`);
-                                entries.forEach(([k, v]) => {
-                                    debugLog(`      ${k}: ${typeof v === 'string' ? v : typeof v}`);
-                                    if (k === 'displayName' && typeof v === 'string') userName = v;
-                                    if (k === 'username' && typeof v === 'string' && !userName) userName = v;
-                                    if ((k === 'pfpUrl' || k === 'avatarUrl') && typeof v === 'string') userAvatar = v;
-                                });
-                            } catch (e) {
-                                debugLog(`    entries error: ${e.message}`);
-                            }
+                            // Структура: resolvedUser = { user, client, location, features }
+                            // Данные пользователя в resolvedUser.user!
+                            const actualUser = resolvedUser.user || resolvedUser;
                             
-                            // Альтернатива: прямой доступ с await для каждого свойства
-                            if (!userName) {
+                            debugLog(`    actualUser type: ${typeof actualUser}`);
+                            if (actualUser && typeof actualUser === 'object') {
                                 try {
-                                    const dn = await Promise.resolve(resolvedUser.displayName);
-                                    debugLog(`    await displayName: ${dn}`);
-                                    if (dn && typeof dn === 'string') userName = dn;
-                                } catch (e) { debugLog(`    dn error: ${e.message}`); }
-                            }
-                            
-                            if (!userName) {
-                                try {
-                                    const un = await Promise.resolve(resolvedUser.username);
-                                    debugLog(`    await username: ${un}`);
-                                    if (un && typeof un === 'string') userName = un;
-                                } catch (e) { debugLog(`    un error: ${e.message}`); }
-                            }
-                            
-                            if (!userAvatar) {
-                                try {
-                                    const pf = await Promise.resolve(resolvedUser.pfpUrl);
-                                    debugLog(`    await pfpUrl: ${pf ? 'YES' : 'null'}`);
-                                    if (pf && typeof pf === 'string') userAvatar = pf;
-                                } catch (e) { debugLog(`    pf error: ${e.message}`); }
+                                    const userKeys = Object.keys(actualUser);
+                                    debugLog(`    actualUser keys: ${userKeys.slice(0, 10).join(', ')}`);
+                                    
+                                    // Читаем данные пользователя
+                                    Object.entries(actualUser).forEach(([k, v]) => {
+                                        const val = typeof v === 'string' ? v.slice(0, 50) : typeof v;
+                                        debugLog(`      ${k}: ${val}`);
+                                        if (k === 'displayName' && typeof v === 'string') userName = v;
+                                        if (k === 'username' && typeof v === 'string' && !userName) userName = v;
+                                        if ((k === 'pfpUrl' || k === 'avatarUrl' || k === 'pfp') && typeof v === 'string') userAvatar = v;
+                                    });
+                                } catch (e) {
+                                    debugLog(`    actualUser entries error: ${e.message}`);
+                                }
+                                
+                                // Прямой доступ к свойствам
+                                if (!userName && actualUser.displayName) {
+                                    userName = actualUser.displayName;
+                                    debugLog(`    direct displayName: ${userName}`);
+                                }
+                                if (!userName && actualUser.username) {
+                                    userName = actualUser.username;
+                                    debugLog(`    direct username: ${userName}`);
+                                }
+                                if (!userAvatar && actualUser.pfpUrl) {
+                                    userAvatar = actualUser.pfpUrl;
+                                    debugLog(`    direct pfpUrl: YES`);
+                                }
+                                if (!userAvatar && actualUser.pfp) {
+                                    userAvatar = actualUser.pfp;
+                                    debugLog(`    direct pfp: YES`);
+                                }
                             }
                         }
                         
@@ -887,7 +889,7 @@
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
-    ">v1.0.37</div>
+    ">v1.0.38</div>
     
     <script>
         // Ранняя инициализация темы для предотвращения мерцания
