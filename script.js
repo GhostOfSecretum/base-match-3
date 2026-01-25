@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.23';
+const APP_VERSION = '1.0.24';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
@@ -1143,6 +1143,25 @@ class WalletManager {
             debugLog(`  FINAL name: ${this.username || 'null'}`);
             debugLog(`  avatar: ${this.avatar ? 'YES' : 'NO'}`);
             debugLog(`  fid: ${context.user.fid || 'null'}`);
+            
+            // ВАЖНО: Сохраняем имя в глобальные переменные для leaderboard
+            if (this.username) {
+                window.__userName = this.username;
+                try {
+                    localStorage.setItem('playerDisplayName', this.username);
+                    debugLog(`  ✅ Saved name to localStorage: ${this.username}`);
+                } catch (e) {
+                    debugLog(`  ⚠️ Could not save to localStorage: ${e.message}`);
+                }
+            }
+            
+            // Сохраняем аватар
+            if (this.avatar) {
+                window.__userAvatar = this.avatar;
+                try {
+                    localStorage.setItem('playerAvatar', this.avatar);
+                } catch (e) {}
+            }
 
             // Если есть адрес в контексте, используем его
             const address = context.user.custodyAddress || 
@@ -1194,6 +1213,21 @@ class WalletManager {
                     
                     debugLog(`  ✅ Got from Neynar: ${this.username}`);
                     debugLog(`  avatar: ${this.avatar ? 'YES' : 'NO'}`);
+                    
+                    // ВАЖНО: Сохраняем имя в глобальные переменные для leaderboard
+                    if (this.username) {
+                        window.__userName = this.username;
+                        try {
+                            localStorage.setItem('playerDisplayName', this.username);
+                            debugLog(`  ✅ Saved name to localStorage: ${this.username}`);
+                        } catch (e) {}
+                    }
+                    if (this.avatar) {
+                        window.__userAvatar = this.avatar;
+                        try {
+                            localStorage.setItem('playerAvatar', this.avatar);
+                        } catch (e) {}
+                    }
                     
                     return this.username;
                 }
@@ -1260,6 +1294,19 @@ class WalletManager {
                 if (user.pfpUrl || user.avatarUrl) {
                     this.avatar = user.pfpUrl || user.avatarUrl;
                 }
+                
+                // ВАЖНО: Сохраняем имя в глобальные переменные для leaderboard
+                window.__userName = displayName;
+                try {
+                    localStorage.setItem('playerDisplayName', displayName);
+                } catch (e) {}
+                if (this.avatar) {
+                    window.__userAvatar = this.avatar;
+                    try {
+                        localStorage.setItem('playerAvatar', this.avatar);
+                    } catch (e) {}
+                }
+                
                 console.log('Got username from early context:', displayName);
                 return displayName;
             }
@@ -1309,6 +1356,19 @@ class WalletManager {
                     if (context.user.pfpUrl || context.user.avatarUrl) {
                         this.avatar = context.user.pfpUrl || context.user.avatarUrl;
                     }
+                    
+                    // ВАЖНО: Сохраняем имя в глобальные переменные для leaderboard
+                    window.__userName = displayName;
+                    try {
+                        localStorage.setItem('playerDisplayName', displayName);
+                    } catch (e) {}
+                    if (this.avatar) {
+                        window.__userAvatar = this.avatar;
+                        try {
+                            localStorage.setItem('playerAvatar', this.avatar);
+                        } catch (e) {}
+                    }
+                    
                     console.log('Got username from SDK:', displayName);
                     return displayName;
                 }
@@ -1375,6 +1435,20 @@ class WalletManager {
                 if (context.user) {
                     this.username = context.user.displayName || context.user.username || null;
                     this.avatar = context.user.pfpUrl || context.user.avatarUrl || null;
+                    
+                    // ВАЖНО: Сохраняем имя в глобальные переменные для leaderboard
+                    if (this.username) {
+                        window.__userName = this.username;
+                        try {
+                            localStorage.setItem('playerDisplayName', this.username);
+                        } catch (e) {}
+                    }
+                    if (this.avatar) {
+                        window.__userAvatar = this.avatar;
+                        try {
+                            localStorage.setItem('playerAvatar', this.avatar);
+                        } catch (e) {}
+                    }
                 }
                 return context;
             }
