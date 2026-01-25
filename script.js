@@ -1728,7 +1728,7 @@ class LeaderboardManager {
         // Если уже запущен резолвинг для этого адреса - ждём
         if (this.nameResolveInProgress[normalizedAddress]) {
             const result = await this.nameResolveInProgress[normalizedAddress];
-            return result?.name || result;
+            return result?.name || null;
         }
         
         // Запускаем резолвинг
@@ -1736,7 +1736,8 @@ class LeaderboardManager {
         
         try {
             const result = await this.nameResolveInProgress[normalizedAddress];
-            const name = result?.name || result;
+            // Извлекаем имя из объекта результата, не возвращаем весь объект
+            const name = result?.name || null;
             if (name && name !== 'Player') {
                 this.nameCache[normalizedAddress] = name;
             }
@@ -1764,7 +1765,7 @@ class LeaderboardManager {
         // Если уже запущен резолвинг для этого адреса - ждём
         if (this.avatarResolveInProgress[normalizedAddress]) {
             const result = await this.avatarResolveInProgress[normalizedAddress];
-            return result?.avatar || result;
+            return result?.avatar || null;
         }
         
         // Запускаем резолвинг
