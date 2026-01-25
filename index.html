@@ -636,46 +636,72 @@
                 
                 // Проверяем frame объект напрямую
                 if (typeof frame !== 'undefined') {
-                    debugLog('  frame keys: ' + Object.keys(frame).join(', '));
-                    if (frame.user) {
+                    debugLog('  frame keys: ' + Object.keys(frame).slice(0, 20).join(', '));
+                    
+                    // Пробуем frame.Context (с большой буквы)
+                    if (frame.Context) {
+                        debugLog('  Found frame.Context, type: ' + typeof frame.Context);
+                        try {
+                            if (typeof frame.Context === 'function') {
+                                const ctx = await frame.Context();
+                                debugLog('  frame.Context() result: ' + JSON.stringify(ctx).slice(0, 200));
+                                if (ctx && ctx.user) context = ctx;
+                            } else if (frame.Context.get) {
+                                const ctx = await frame.Context.get();
+                                debugLog('  frame.Context.get() result: ' + JSON.stringify(ctx).slice(0, 200));
+                                if (ctx && ctx.user) context = ctx;
+                            } else if (typeof frame.Context === 'object') {
+                                debugLog('  frame.Context object: ' + JSON.stringify(frame.Context).slice(0, 200));
+                                if (frame.Context.user) context = frame.Context;
+                            }
+                        } catch (e) {
+                            debugLog('  frame.Context error: ' + e.message);
+                        }
+                    }
+                    
+                    // Проверяем frame.user напрямую
+                    if (!context && frame.user) {
                         debugLog('  ✅ Found frame.user!');
                         debugLog('    ' + JSON.stringify(frame.user).slice(0, 200));
                         context = { user: frame.user };
                     }
-                    if (frame.context) {
-                        debugLog('  frame.context type: ' + typeof frame.context);
-                    }
                 }
                 
-                // Проверяем frames объект
-                if (typeof frames !== 'undefined') {
-                    debugLog('  frames keys: ' + Object.keys(frames).join(', '));
-                }
-                
-                // Пробуем все возможные способы получить context
-                if (!context && typeof sdkInstance.context === 'function') {
-                    debugLog('  Trying: context()');
+                // Пробуем sdk.context как объект (не функцию)
+                if (!context && sdkInstance.context) {
+                    debugLog('  sdkInstance.context type: ' + typeof sdkInstance.context);
+                    
+                    // Проверяем есть ли у context свойства напрямую
                     try {
-                        context = await sdkInstance.context();
+                        const contextKeys = Object.keys(sdkInstance.context);
+                        debugLog('  sdkInstance.context keys: ' + contextKeys.slice(0, 10).join(', '));
+                        
+                        if (sdkInstance.context.user) {
+                            debugLog('  ✅ Found sdkInstance.context.user!');
+                            context = sdkInstance.context;
+                        }
                     } catch (e) {
-                        debugLog('  context() error: ' + e.message);
+                        debugLog('  Cannot read context keys: ' + e.message);
                     }
-                }
-                
-                if (!context && sdkInstance.context && typeof sdkInstance.context.get === 'function') {
-                    debugLog('  Trying: context.get()');
-                    context = await sdkInstance.context.get();
-                } else if (!context && sdkInstance.context && sdkInstance.context.then) {
-                    debugLog('  Trying: await context');
-                    context = await sdkInstance.context;
-                } else if (!context && sdkInstance.context && typeof sdkInstance.context === 'object') {
-                    debugLog('  Trying: context (direct object)');
-                    context = sdkInstance.context;
+                    
+                    // Пробуем вызвать как функцию
+                    if (!context && typeof sdkInstance.context === 'function') {
+                        debugLog('  Trying: context()');
+                        try {
+                            context = await sdkInstance.context();
+                        } catch (e) {
+                            debugLog('  context() error: ' + e.message);
+                        }
+                    }
                 }
                 
                 if (!context && sdkInstance.getContext) {
                     debugLog('  Trying: getContext()');
-                    context = await sdkInstance.getContext();
+                    try {
+                        context = await sdkInstance.getContext();
+                    } catch (e) {
+                        debugLog('  getContext() error: ' + e.message);
+                    }
                 } else if (sdkInstance.user) {
                     debugLog('  Trying: user (direct)');
                     context = { user: sdkInstance.user };
@@ -782,7 +808,7 @@
         display: block !important;
         visibility: visible !important;
         opacity: 1 !important;
-    ">v1.0.33</div>
+    ">v1.0.34</div>
     
     <script>
         // Ранняя инициализация темы для предотвращения мерцания
