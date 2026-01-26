@@ -4775,28 +4775,30 @@ class MatchThreePro {
         if (typeof debugLog === 'function') debugLog('Mint result: starting');
 
         try {
-            // Deploy contract if not exists
-            let contractAddress = getGameResultContractAddress();
-            if (!isValidAddress(contractAddress) || isZeroAddress(contractAddress)) {
-                mintBtn.textContent = 'Deploying...';
-                if (typeof debugLog === 'function') debugLog('Mint result: deploying contract');
-                const deployResult = await deployGameResultContract(() => {});
-                contractAddress = deployResult.address;
-                if (typeof debugLog === 'function') debugLog(`Mint result: contract deployed at ${contractAddress}`);
+            // Encode game result as hex data
+            // Format: 0x + "BASEMATCH3" (hex) + score (32 bytes) + maxCombo (32 bytes) + won (32 bytes)
+            const scoreHex = this.lastGameResult.score.toString(16).padStart(64, '0');
+            const comboHex = this.lastGameResult.maxCombo.toString(16).padStart(64, '0');
+            const wonHex = (this.lastGameResult.won ? 1 : 0).toString(16).padStart(64, '0');
+            // "BASEMATCH3" in hex = 0x424153454d41544348330000000000000000000000000000000000000000000000
+            const prefixHex = '424153454d4154434833'; // "BASEMATCH3" as hex
+            const data = '0x' + prefixHex + scoreHex + comboHex + wonHex;
+            
+            if (typeof debugLog === 'function') {
+                debugLog(`Mint result: score=${this.lastGameResult.score}, combo=${this.lastGameResult.maxCombo}, won=${this.lastGameResult.won}`);
+                debugLog(`Mint result: data=${data.substring(0, 50)}...`);
             }
 
-            // Mint the result
-            mintBtn.textContent = 'Minting...';
-            if (typeof debugLog === 'function') debugLog('Mint result: preparing transaction');
-
-            const data = encodeGameResultMintCall(
-                this.lastGameResult.score,
-                this.lastGameResult.maxCombo,
-                this.lastGameResult.won
-            );
-
+            // Get player's address to send self-transaction
+            const playerAddress = window.__userAddress || (this.walletManager && this.walletManager.account);
+            if (!playerAddress) {
+                throw new Error('Wallet not connected');
+            }
+            
+            // Send to self as a self-transaction with data
+            // This records the result on-chain without needing a contract
             const txParams = {
-                to: contractAddress,
+                to: playerAddress,
                 value: '0x0',
                 data: data
             };
