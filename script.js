@@ -4802,98 +4802,41 @@ class MatchThreePro {
                 debugLog(`Mint result: score=${score}, combo=${maxCombo}, won=${won}`);
             }
 
-            // Step 1: Get Ethereum provider from Farcaster SDK or window.ethereum
-            updateStatus('Connecting to wallet...');
-            
-            let ethProvider = null;
-            const farcasterSDK = SponsoredTransactions.getFarcasterSDK();
-            
-            if (farcasterSDK?.wallet?.ethProvider) {
-                ethProvider = farcasterSDK.wallet.ethProvider;
-                if (typeof debugLog === 'function') debugLog('Using sdk.wallet.ethProvider');
-            } else if (farcasterSDK?.wallet?.getEthereumProvider) {
-                ethProvider = await farcasterSDK.wallet.getEthereumProvider();
-                if (typeof debugLog === 'function') debugLog('Using sdk.wallet.getEthereumProvider()');
-            } else if (window.ethereum) {
-                ethProvider = window.ethereum;
-                if (typeof debugLog === 'function') debugLog('Using window.ethereum');
-            }
-            
-            if (!ethProvider) {
-                throw new Error('No wallet found. Please connect your wallet.');
-            }
-
-            // Step 2: Get user address
-            updateStatus('Getting wallet address...');
-            
-            let userAddress = window.__userAddress;
-            if (!userAddress) {
-                try {
-                    const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
-                    userAddress = accounts?.[0];
-                    if (typeof debugLog === 'function') debugLog(`Got account: ${userAddress}`);
-                } catch (e) {
-                    if (typeof debugLog === 'function') debugLog(`eth_requestAccounts error: ${e.message}`);
-                    throw new Error('Please connect your wallet first.');
-                }
-            }
-            
-            if (!userAddress) {
-                throw new Error('No wallet address available.');
-            }
-
-            // Step 3: Use GM Contract to record the result (already deployed!)
-            // We call sayGM() which creates an on-chain record of the interaction
-            const contractAddress = GM_CONTRACT.address;
-            const txData = GM_CONTRACT.sayGMSelector; // sayGM() function
+            // Use GM Contract to record the result (already deployed!)
+            // Same approach as sendGMTransaction which works
+            const txParams = {
+                to: GM_CONTRACT.address,
+                value: '0x0',
+                data: GM_CONTRACT.sayGMSelector // sayGM() function selector
+            };
             
             if (typeof debugLog === 'function') {
-                debugLog(`Using GM Contract: ${contractAddress}`);
-                debugLog(`Function: sayGM() selector: ${txData}`);
+                debugLog(`Using GM Contract: ${GM_CONTRACT.address}`);
+                debugLog(`Function: sayGM() selector: ${GM_CONTRACT.sayGMSelector}`);
             }
 
-            // Step 4: Build transaction
-            const txParams = {
-                from: userAddress,
-                to: contractAddress,
-                value: '0x0',
-                data: txData
-            };
-
-            if (typeof debugLog === 'function') debugLog(`TX params: to=${contractAddress}, from=${userAddress}`);
-
-            // Step 5: Send transaction - user signs and pays gas
+            // Send transaction via SponsoredTransactions (same as GM button)
             updateStatus('Please confirm transaction in your wallet...');
             mintBtn.textContent = 'Confirm...';
 
-            let txHash = null;
-            
-            try {
-                // Use eth_sendTransaction - wallet will prompt user to sign
-                txHash = await ethProvider.request({
-                    method: 'eth_sendTransaction',
-                    params: [txParams]
-                });
-                
-                if (typeof debugLog === 'function') debugLog(`TX sent! Hash: ${txHash}`);
-            } catch (txError) {
-                if (typeof debugLog === 'function') debugLog(`eth_sendTransaction error: ${txError.message}`);
-                
-                // Handle user rejection
-                if (txError.message?.includes('reject') || txError.message?.includes('denied') || txError.code === 4001) {
-                    throw new Error('Transaction cancelled by user.');
+            const result = await SponsoredTransactions.sendViaFarcasterSDK(
+                txParams,
+                (status) => {
+                    updateStatus(status);
+                    if (typeof debugLog === 'function') debugLog('Mint status: ' + status);
                 }
-                // Handle insufficient funds
-                if (txError.message?.includes('insufficient')) {
-                    throw new Error('Insufficient ETH for gas. Please add ETH to your wallet.');
-                }
-                throw txError;
-            }
+            );
 
-            // Step 6: Success!
+            const txHash = result?.txHash;
+            
+            if (typeof debugLog === 'function') debugLog(`TX result: ${JSON.stringify(result)}`);
+
+            // Success!
             if (txHash) {
                 this.lastGameResult.mintTxHash = txHash;
-                updateStatus(`Success! TX: ${txHash.slice(0, 10)}...${txHash.slice(-6)}`);
+                if (statusEl) {
+                    statusEl.innerHTML = `Success! <a href="https://basescan.org/tx/${txHash}" target="_blank" style="color: #0052ff;">View TX ↗</a>`;
+                }
                 if (typeof debugLog === 'function') debugLog(`Mint success! TX: ${txHash}`);
             } else {
                 this.lastGameResult.mintTxHash = 'success';
@@ -4906,14 +4849,26 @@ class MatchThreePro {
 
         } catch (error) {
             console.error('Mint result error:', error);
-            const errorMessage = error?.message || 'Mint failed. Please try again.';
             
-            updateStatus(errorMessage, true);
+            let errorMsg = 'Mint failed. Please try again.';
+            if (error?.message) {
+                if (error.message.includes('reject') || error.message.includes('denied') || error.message.includes('cancelled')) {
+                    errorMsg = 'Transaction cancelled';
+                } else if (error.message.includes('insufficient')) {
+                    errorMsg = 'Insufficient ETH for gas';
+                } else if (error.message.includes('wallet') || error.message.includes('connect')) {
+                    errorMsg = 'Please connect your wallet';
+                } else {
+                    errorMsg = error.message.slice(0, 60);
+                }
+            }
+            
+            updateStatus(errorMsg, true);
             mintBtn.disabled = false;
             mintBtn.textContent = 'Mint Result';
             
             if (typeof debugLog === 'function') {
-                debugLog('Mint error: ' + errorMessage);
+                debugLog('Mint error: ' + errorMsg);
                 debugLog('Error details: ' + JSON.stringify(error, Object.getOwnPropertyNames(error)));
             }
         } finally {
