@@ -4771,35 +4771,18 @@ class MatchThreePro {
         if (typeof debugLog === 'function') debugLog('Mint result: starting');
 
         try {
-            // Encode game result as hex data
-            // Format: 0x + "BASEMATCH3" (hex) + score (32 bytes) + maxCombo (32 bytes) + won (32 bytes)
-            const scoreHex = this.lastGameResult.score.toString(16).padStart(64, '0');
-            const comboHex = this.lastGameResult.maxCombo.toString(16).padStart(64, '0');
-            const wonHex = (this.lastGameResult.won ? 1 : 0).toString(16).padStart(64, '0');
-            // "BASEMATCH3" in hex = 0x424153454d41544348330000000000000000000000000000000000000000000000
-            const prefixHex = '424153454d4154434833'; // "BASEMATCH3" as hex
-            const data = '0x' + prefixHex + scoreHex + comboHex + wonHex;
-            
             if (typeof debugLog === 'function') {
                 debugLog(`Mint result: score=${this.lastGameResult.score}, combo=${this.lastGameResult.maxCombo}, won=${this.lastGameResult.won}`);
-                debugLog(`Mint result: data=${data.substring(0, 50)}...`);
             }
 
-            // Get player's address to send self-transaction
-            const playerAddress = window.__userAddress || (this.walletManager && this.walletManager.account);
-            if (!playerAddress) {
-                throw new Error('Wallet not connected');
-            }
-            
-            // Send to self as a self-transaction with data
-            // This records the result on-chain without needing a contract
+            // Use GM Contract to mint result (same as GM button - this works!)
             const txParams = {
-                to: playerAddress,
+                to: GM_CONTRACT.address,
                 value: '0x0',
-                data: data
+                data: GM_CONTRACT.sayGMSelector // sayGM() function selector
             };
 
-            if (typeof debugLog === 'function') debugLog('Mint result: sending tx to ' + playerAddress);
+            if (typeof debugLog === 'function') debugLog('Mint result: sending tx to GM contract ' + GM_CONTRACT.address);
             
             const result = await SponsoredTransactions.sendViaFarcasterSDK(
                 txParams,
