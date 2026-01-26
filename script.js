@@ -4728,25 +4728,22 @@ class MatchThreePro {
 
     updateMintResultUI() {
         const mintBtn = document.getElementById('mintResultBtn');
-        const restartBtn = document.getElementById('restartBtn');
         if (!mintBtn) return;
 
         mintBtn.classList.remove('loading');
         mintBtn.textContent = 'Mint Result';
         mintBtn.disabled = false;
         mintBtn.style.display = 'inline-flex';
-        if (restartBtn) restartBtn.style.display = 'none';
 
         if (!this.lastGameResult) {
             mintBtn.disabled = true;
+            mintBtn.style.display = 'none';
             return;
         }
 
         if (this.lastGameResult.mintTxHash) {
             mintBtn.disabled = true;
-            mintBtn.textContent = 'Minted';
-            mintBtn.style.display = 'none';
-            if (restartBtn) restartBtn.style.display = 'inline-flex';
+            mintBtn.textContent = 'Minted ✓';
             return;
         }
 
@@ -4759,7 +4756,6 @@ class MatchThreePro {
 
     async mintGameResult() {
         const mintBtn = document.getElementById('mintResultBtn');
-        const restartBtn = document.getElementById('restartBtn');
         if (!mintBtn) return;
 
         if (this.isMintingResult) return;
@@ -4821,17 +4817,10 @@ class MatchThreePro {
                 if (typeof debugLog === 'function') debugLog('Mint result: completed without tx hash');
             }
 
-            // Success - show Play Again
-            if (typeof debugLog === 'function') debugLog('Mint result: showing Play Again button');
-            mintBtn.textContent = 'Minted';
+            // Success
+            if (typeof debugLog === 'function') debugLog('Mint result: success');
+            mintBtn.textContent = 'Minted ✓';
             mintBtn.disabled = true;
-            mintBtn.style.display = 'none';
-            if (restartBtn) {
-                restartBtn.style.display = 'inline-flex';
-                if (typeof debugLog === 'function') debugLog('Play Again button displayed');
-            } else {
-                if (typeof debugLog === 'function') debugLog('ERROR: restartBtn not found!');
-            }
 
         } catch (error) {
             console.error('Mint result error:', error);
