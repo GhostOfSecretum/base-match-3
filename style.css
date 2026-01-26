@@ -2447,6 +2447,14 @@ body.light-theme .history-item .history-date {
     gap: 10px;
 }
 
+.mint-actions {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
 .mint-status {
     font-size: 0.9em;
     color: rgba(255, 255, 255, 0.8);

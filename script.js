@@ -429,6 +429,9 @@ const GAME_RESULT_CONTRACT = {
     ]
 };
 
+// GameResultMint deployment bytecode (solc 0.8.20)
+const GAME_RESULT_BYTECODE = '0x36303830363034303532333438303135363130303066353735663830666435623530363130353133383036313030316435663339356666336665363038303630343035323334383031353631303030663537356638306664356235303630303433363130363130303366353735663335363065303163383036333834343936616263313436313030343335373830363338633665313963343134363130303566353738303633633833343461323031343631303038663537356235663830666435623631303035643630303438303336303338313031393036313030353839313930363130333233353635623631303063323536356230303562363130303739363030343830333630333831303139303631303037343931393036313033636435363562363130316464353635623630343035313631303038363931393036313034303735363562363034303531383039313033393066333562363130306139363030343830333630333831303139303631303061343931393036313034323035363562363130323235353635623630343035313631303062393934393339323931393036313034366435363562363034303531383039313033393066333562356638303333373366666666666666666666666666666666666666666666666666666666666666666666666666666666313637336666666666666666666666666666666666666666666666666666666666666666666666666666666631363831353236303230303139303831353236303230303135663230363034303531383036303830303136303430353238303835383135323630323030313834383135323630323030313833313531353831353236303230303134323831353235303930383036303031383135343031383038323535383039313530353036303031393030333930356635323630323035663230393036303034303230313566393039313930393139303931353035663832303135313831356630313535363032303832303135313831363030313031353536303430383230313531383136303032303135663631303130303061383135343831363066663032313931363930383331353135303231373930353535303630363038323031353138313630303330313535353035303333373366666666666666666666666666666666666666666666666666666666666666666666666666666666313637663964353764626266323663316337616630356662356639326631383166346330633563353561613037376231653465613733393766626265643266363662346138343834383434323630343035313631303164303934393339323931393036313034366435363562363034303531383039313033393061323530353035303536356235663830356638333733666666666666666666666666666666666666666666666666666666666666666666666666666666313637336666666666666666666666666666666666666666666666666666666666666666666666666666666631363831353236303230303139303831353236303230303135663230383638313534383131303631303237383537363130323737363130346230353635623562393035663532363032303566323039303630303430323031393035303830356630313534383136303031303135343832363030323031356639303534393036313031303030613930303436306666313638333630303330313534393435303934353039343530393435303530393239353931393435303932353035363562356638306664356235663831393035303931393035303536356236313032636438313631303262623536356238313134363130326437353735663830666435623530353635623566383133353930353036313032653838313631303263343536356239323931353035303536356235663831313531353930353039313930353035363562363130333032383136313032656535363562383131343631303330633537356638306664356235303536356235663831333539303530363130333164383136313032663935363562393239313530353035363562356638303566363036303834383630333132313536313033336135373631303333393631303262373536356235623566363130333437383638323837303136313032646135363562393335303530363032303631303335383836383238373031363130326461353635623932353035303630343036313033363938363832383730313631303330663536356239313530353039323530393235303932353635623566373366666666666666666666666666666666666666666666666666666666666666666666666666666666383231363930353039313930353035363562356636313033396338323631303337333536356239303530393139303530353635623631303361633831363130333932353635623831313436313033623635373566383066643562353035363562356638313335393035303631303363373831363130336133353635623932393135303530353635623566363032303832383430333132313536313033653235373631303365313631303262373536356235623566363130336566383438323835303136313033623935363562393135303530393239313530353035363562363130343031383136313032626235363562383235323530353035363562356636303230383230313930353036313034316135663833303138343631303366383536356239323931353035303536356235663830363034303833383530333132313536313034333635373631303433353631303262373536356235623566363130343433383538323836303136313033623935363562393235303530363032303631303435343835383238363031363130326461353635623931353035303932353039323930353035363562363130343637383136313032656535363562383235323530353035363562356636303830383230313930353036313034383035663833303138373631303366383536356236313034386436303230383330313836363130336638353635623631303439613630343038333031383536313034356535363562363130346137363036303833303138343631303366383536356239353934353035303530353035303536356237663465343837623731303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303035663532363033323630303435323630323435666664666561323634363937303636373335383232313232306635656263356464643762623730383136343731366236653838636434633933333466316638316639306564373931326535346163626165313765386138633436343733366636633633343330303038313430303333';
+
 const GAME_RESULT_STORAGE_KEY = 'gameResultContractAddress';
 
 function isZeroAddress(address) {
@@ -437,6 +440,11 @@ function isZeroAddress(address) {
 
 function isValidAddress(address) {
     return /^0x[a-fA-F0-9]{40}$/.test(address || '');
+}
+
+function formatShortAddress(address) {
+    if (!address || !isValidAddress(address)) return '';
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
 }
 
 function getGameResultContractAddress() {
@@ -462,12 +470,181 @@ function setGameResultContractAddress(address) {
     return true;
 }
 
+function requestGameResultContractAddress() {
+    const current = getGameResultContractAddress();
+    const defaultValue = isValidAddress(current) && !isZeroAddress(current) ? current : '';
+    const entered = window.prompt('Enter Game Result contract address (Base)', defaultValue);
+    if (entered === null) return null;
+    const trimmed = entered.trim();
+    if (!trimmed) {
+        setGameResultContractAddress('0x0000000000000000000000000000000000000000');
+        return null;
+    }
+    if (!isValidAddress(trimmed)) {
+        throw new Error('Invalid contract address.');
+    }
+    setGameResultContractAddress(trimmed);
+    return trimmed;
+}
+
 function encodeGameResultMintCall(score, maxCombo, won) {
     if (typeof ethers === 'undefined' || !ethers?.utils?.Interface) {
         throw new Error('Ethers.js is not available. Please refresh and try again.');
     }
     const iface = new ethers.utils.Interface(GAME_RESULT_CONTRACT.abi);
     return iface.encodeFunctionData('mintResult', [score, maxCombo, !!won]);
+}
+
+async function ensureEthersLoaded(statusCallback) {
+    if (typeof ethers !== 'undefined') return;
+    if (statusCallback) statusCallback('Loading ethers.js...');
+
+    await new Promise((resolve, reject) => {
+        const cdns = [
+            'https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js',
+            'https://unpkg.com/ethers@5.7.2/dist/ethers.umd.min.js',
+            'https://cdnjs.cloudflare.com/ajax/libs/ethers/5.7.2/ethers.umd.min.js'
+        ];
+
+        let cdnIndex = 0;
+
+        function tryNextCDN() {
+            if (typeof ethers !== 'undefined') {
+                resolve();
+                return;
+            }
+
+            if (cdnIndex >= cdns.length) {
+                reject(new Error('Could not load ethers.js. Please check your internet connection and try again.'));
+                return;
+            }
+
+            const script = document.createElement('script');
+            script.src = cdns[cdnIndex];
+            script.onload = () => {
+                if (typeof ethers !== 'undefined') {
+                    resolve();
+                } else {
+                    cdnIndex++;
+                    tryNextCDN();
+                }
+            };
+            script.onerror = () => {
+                cdnIndex++;
+                tryNextCDN();
+            };
+            document.head.appendChild(script);
+        }
+
+        tryNextCDN();
+
+        setTimeout(() => {
+            if (typeof ethers === 'undefined') {
+                reject(new Error('ethers.js loading timeout. Please refresh the page.'));
+            }
+        }, 10000);
+    });
+}
+
+async function deployGameResultContract(statusCallback) {
+    const updateStatus = (message) => {
+        if (statusCallback) statusCallback(message);
+    };
+
+    await ensureEthersLoaded(updateStatus);
+    updateStatus('Connecting wallet...');
+
+    const farcasterSDK = SponsoredTransactions.getFarcasterSDK();
+    const rawProvider = farcasterSDK?.wallet?.ethProvider || window.ethereum;
+    if (!rawProvider) {
+        throw new Error('No wallet found. Please connect your wallet.');
+    }
+
+    const accounts = await rawProvider.request({ method: 'eth_requestAccounts' });
+    const userAddress = accounts?.[0];
+    if (!userAddress) {
+        throw new Error('No wallet address available.');
+    }
+
+    let chainId = await rawProvider.request({ method: 'eth_chainId' });
+    if (chainId !== BASE_NETWORK.chainId) {
+        updateStatus('Switching to Base network...');
+        try {
+            await rawProvider.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: BASE_NETWORK.chainId }]
+            });
+        } catch (switchError) {
+            if (switchError.code === 4902) {
+                await rawProvider.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [BASE_NETWORK]
+                });
+            } else {
+                throw new Error('Please switch to Base network in your wallet.');
+            }
+        }
+        chainId = await rawProvider.request({ method: 'eth_chainId' });
+    }
+
+    const provider = new ethers.providers.Web3Provider(rawProvider);
+    const signer = provider.getSigner();
+    const factory = new ethers.ContractFactory(GAME_RESULT_CONTRACT.abi, GAME_RESULT_BYTECODE, signer);
+    const deployTx = factory.getDeployTransaction();
+
+    let contractAddress = null;
+    let wasSponsored = false;
+
+    try {
+        const sponsorshipAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
+        if (sponsorshipAvailable) {
+            updateStatus('Sending deployment...');
+            const deployTxParams = {
+                from: userAddress,
+                to: undefined,
+                value: '0x0',
+                data: deployTx.data
+            };
+
+            const sponsorResult = await SponsoredTransactions.sendTransaction(
+                rawProvider,
+                deployTxParams,
+                userAddress,
+                updateStatus
+            );
+
+            if (sponsorResult.success && sponsorResult.txHash) {
+                wasSponsored = sponsorResult.sponsored || false;
+                updateStatus('Waiting for confirmation...');
+                const receipt = await provider.waitForTransaction(sponsorResult.txHash);
+                contractAddress = receipt.contractAddress;
+            }
+        }
+    } catch (sponsorError) {
+        console.log('Mint contract sponsored deploy failed:', sponsorError.message);
+    }
+
+    if (!contractAddress) {
+        updateStatus('Confirm deployment in wallet...');
+        const contract = await factory.deploy();
+        updateStatus('Waiting for confirmation...');
+        const deployedContract = await contract.deployed();
+        const receipt = await provider.getTransactionReceipt(contract.deployTransaction.hash);
+        if (!receipt) {
+            throw new Error('Transaction not found. Please check your wallet.');
+        }
+        if (receipt.status === 0) {
+            throw new Error('Transaction failed on-chain. Check BaseScan for details.');
+        }
+        contractAddress = receipt.contractAddress || deployedContract.address;
+    }
+
+    if (!contractAddress) {
+        throw new Error('Failed to get contract address');
+    }
+
+    setGameResultContractAddress(contractAddress);
+    return { address: contractAddress, sponsored: wasSponsored };
 }
 
 if (typeof window !== 'undefined') {
@@ -4552,27 +4729,30 @@ class MatchThreePro {
     updateMintResultUI() {
         const mintBtn = document.getElementById('mintResultBtn');
         const mintStatus = document.getElementById('mintResultStatus');
+        const mintConfigBtn = document.getElementById('mintConfigBtn');
         if (!mintBtn || !mintStatus) return;
 
         const contractAddress = getGameResultContractAddress();
         const hasContract = isValidAddress(contractAddress) && !isZeroAddress(contractAddress);
 
         mintBtn.classList.remove('loading');
-        mintBtn.disabled = true;
         mintBtn.textContent = 'Mint Result';
         mintStatus.className = 'mint-status';
+        mintBtn.disabled = false;
+        mintBtn.style.display = hasContract ? 'inline-flex' : 'none';
+        if (mintConfigBtn) {
+            mintConfigBtn.style.display = hasContract ? 'none' : 'inline-flex';
+            mintConfigBtn.textContent = 'Mint Result';
+        }
 
         if (!this.lastGameResult) {
+            mintBtn.disabled = true;
             mintStatus.textContent = 'Finish a game to mint your result.';
             return;
         }
 
-        if (!hasContract) {
-            mintStatus.textContent = 'Minting not configured. Set gameResultContractAddress.';
-            return;
-        }
-
         if (this.lastGameResult.mintTxHash) {
+            mintBtn.disabled = true;
             mintBtn.textContent = 'Minted';
             mintStatus.className = 'mint-status success';
             mintStatus.innerHTML = `Result minted! <a href="https://basescan.org/tx/${this.lastGameResult.mintTxHash}" target="_blank">View ↗</a>`;
@@ -4580,14 +4760,21 @@ class MatchThreePro {
         }
 
         if (this.isMintingResult) {
-            mintBtn.textContent = 'Minting...';
             mintBtn.disabled = true;
+            mintBtn.textContent = 'Minting...';
             mintStatus.textContent = 'Preparing transaction...';
             return;
         }
 
-        mintBtn.disabled = false;
-        mintStatus.textContent = 'Mint your result on Base.';
+        if (!hasContract) {
+            mintBtn.disabled = true;
+            mintStatus.textContent = 'Mint Result will deploy the contract first.';
+            return;
+        }
+        const shortAddress = formatShortAddress(contractAddress);
+        mintStatus.textContent = shortAddress
+            ? `Contract: ${shortAddress}. Mint your result on Base.`
+            : 'Mint your result on Base.';
     }
 
     async mintGameResult() {
@@ -4605,9 +4792,7 @@ class MatchThreePro {
 
         const contractAddress = getGameResultContractAddress();
         if (!isValidAddress(contractAddress) || isZeroAddress(contractAddress)) {
-            mintBtn.disabled = true;
-            mintBtn.textContent = 'Mint Result';
-            mintStatus.textContent = 'Minting not configured. Set gameResultContractAddress.';
+            mintStatus.textContent = 'Deploy the mint contract first.';
             mintStatus.className = 'mint-status';
             return;
         }
@@ -4618,6 +4803,7 @@ class MatchThreePro {
         mintBtn.textContent = 'Minting...';
         mintStatus.textContent = 'Preparing transaction...';
         mintStatus.className = 'mint-status';
+        if (typeof debugLog === 'function') debugLog('Mint result: preparing transaction');
 
         try {
             const data = encodeGameResultMintCall(
@@ -4644,11 +4830,13 @@ class MatchThreePro {
                 mintBtn.disabled = true;
                 mintStatus.className = 'mint-status success';
                 mintStatus.innerHTML = `Result minted! <a href="https://basescan.org/tx/${txHash}" target="_blank">View ↗</a>`;
+                if (typeof debugLog === 'function') debugLog(`Mint result: tx ${txHash}`);
             } else {
                 mintBtn.textContent = 'Minted';
                 mintBtn.disabled = true;
                 mintStatus.className = 'mint-status success';
                 mintStatus.textContent = 'Mint submitted. Check your wallet for status.';
+                if (typeof debugLog === 'function') debugLog('Mint result: submitted without tx hash');
             }
         } catch (error) {
             console.error('Mint result error:', error);
@@ -4657,6 +4845,7 @@ class MatchThreePro {
             mintBtn.textContent = 'Mint Result';
             mintStatus.textContent = errorMessage;
             mintStatus.className = 'mint-status error';
+            if (typeof debugLog === 'function') debugLog('Mint result error: ' + errorMessage);
         } finally {
             this.isMintingResult = false;
             mintBtn.classList.remove('loading');
@@ -5045,6 +5234,45 @@ class MatchThreePro {
             mintResultBtn.addEventListener('click', () => {
                 activateSoundsOnce();
                 this.mintGameResult();
+            });
+        }
+        const mintConfigBtn = document.getElementById('mintConfigBtn');
+        if (mintConfigBtn) {
+            mintConfigBtn.addEventListener('click', async () => {
+                activateSoundsOnce();
+                const mintStatus = document.getElementById('mintResultStatus');
+                const mintBtn = document.getElementById('mintResultBtn');
+                mintConfigBtn.disabled = true;
+                if (mintBtn) mintBtn.disabled = true;
+                if (mintStatus) {
+                    mintStatus.textContent = 'Preparing deployment...';
+                    mintStatus.className = 'mint-status';
+                }
+                try {
+                    const result = await deployGameResultContract((status) => {
+                        if (mintStatus) mintStatus.textContent = status;
+                    });
+                    const shortAddress = formatShortAddress(result.address);
+                    if (mintStatus) {
+                        mintStatus.className = 'mint-status success';
+                        mintStatus.textContent = shortAddress
+                            ? `Contract deployed: ${shortAddress}`
+                            : 'Contract deployed.';
+                    }
+                    if (typeof debugLog === 'function') {
+                        debugLog(`Mint contract deployed: ${result.address}`);
+                    }
+                    this.updateMintResultUI();
+                    await this.mintGameResult();
+                } catch (e) {
+                    if (mintStatus) {
+                        mintStatus.textContent = e.message || 'Deploy failed.';
+                        mintStatus.className = 'mint-status error';
+                    }
+                } finally {
+                    mintConfigBtn.disabled = false;
+                    this.updateMintResultUI();
+                }
             });
         }
 
