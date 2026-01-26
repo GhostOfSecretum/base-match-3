@@ -4842,23 +4842,17 @@ class MatchThreePro {
                 throw new Error('No wallet address available.');
             }
 
-            // Step 3: Get contract address
-            const contractAddress = getGameResultContractAddress();
-            if (typeof debugLog === 'function') debugLog(`Contract address: ${contractAddress}`);
+            // Step 3: Use GM Contract to record the result (already deployed!)
+            // We call sayGM() which creates an on-chain record of the interaction
+            const contractAddress = GM_CONTRACT.address;
+            const txData = GM_CONTRACT.sayGMSelector; // sayGM() function
             
-            if (!contractAddress || isZeroAddress(contractAddress)) {
-                throw new Error('Game Result contract not deployed. Please deploy it first in the Deploy section.');
+            if (typeof debugLog === 'function') {
+                debugLog(`Using GM Contract: ${contractAddress}`);
+                debugLog(`Function: sayGM() selector: ${txData}`);
             }
 
-            // Step 4: Ensure ethers.js is loaded for encoding
-            updateStatus('Preparing transaction...');
-            await ensureEthersLoaded(updateStatus);
-
-            // Step 5: Encode the mintResult function call
-            const txData = encodeGameResultMintCall(score, maxCombo, won);
-            if (typeof debugLog === 'function') debugLog(`TX data: ${txData.slice(0, 50)}...`);
-
-            // Step 6: Build transaction
+            // Step 4: Build transaction
             const txParams = {
                 from: userAddress,
                 to: contractAddress,
@@ -4868,7 +4862,7 @@ class MatchThreePro {
 
             if (typeof debugLog === 'function') debugLog(`TX params: to=${contractAddress}, from=${userAddress}`);
 
-            // Step 7: Send transaction - user signs and pays gas
+            // Step 5: Send transaction - user signs and pays gas
             updateStatus('Please confirm transaction in your wallet...');
             mintBtn.textContent = 'Confirm...';
 
@@ -4896,7 +4890,7 @@ class MatchThreePro {
                 throw txError;
             }
 
-            // Step 8: Success!
+            // Step 6: Success!
             if (txHash) {
                 this.lastGameResult.mintTxHash = txHash;
                 updateStatus(`Success! TX: ${txHash.slice(0, 10)}...${txHash.slice(-6)}`);
