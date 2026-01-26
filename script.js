@@ -4801,25 +4801,35 @@ class MatchThreePro {
                 data: data
             };
 
+            if (typeof debugLog === 'function') debugLog('Mint result: sending tx to ' + contractAddress);
+            
             const result = await SponsoredTransactions.sendViaFarcasterSDK(
                 txParams,
-                () => {}
+                (status) => { if (typeof debugLog === 'function') debugLog('Mint status: ' + status); }
             );
 
-            const txHash = result?.txHash;
+            if (typeof debugLog === 'function') debugLog('Mint result response: ' + JSON.stringify(result));
+
+            const txHash = result?.txHash || result?.hash || result?.transactionHash;
             if (txHash) {
                 this.lastGameResult.mintTxHash = txHash;
                 if (typeof debugLog === 'function') debugLog(`Mint result: tx ${txHash}`);
             } else {
-                this.lastGameResult.mintTxHash = 'pending';
-                if (typeof debugLog === 'function') debugLog('Mint result: submitted without tx hash');
+                this.lastGameResult.mintTxHash = 'success';
+                if (typeof debugLog === 'function') debugLog('Mint result: completed without tx hash');
             }
 
             // Success - show Play Again
+            if (typeof debugLog === 'function') debugLog('Mint result: showing Play Again button');
             mintBtn.textContent = 'Minted';
             mintBtn.disabled = true;
             mintBtn.style.display = 'none';
-            if (restartBtn) restartBtn.style.display = 'inline-flex';
+            if (restartBtn) {
+                restartBtn.style.display = 'inline-flex';
+                if (typeof debugLog === 'function') debugLog('Play Again button displayed');
+            } else {
+                if (typeof debugLog === 'function') debugLog('ERROR: restartBtn not found!');
+            }
 
         } catch (error) {
             console.error('Mint result error:', error);
@@ -4827,6 +4837,7 @@ class MatchThreePro {
             mintBtn.disabled = false;
             mintBtn.textContent = 'Mint Result';
             if (typeof debugLog === 'function') debugLog('Mint result error: ' + errorMessage);
+            if (typeof debugLog === 'function') debugLog('Error details: ' + JSON.stringify(error, Object.getOwnPropertyNames(error)));
         } finally {
             this.isMintingResult = false;
             mintBtn.classList.remove('loading');
