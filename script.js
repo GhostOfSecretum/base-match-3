@@ -4728,72 +4728,43 @@ class MatchThreePro {
 
     updateMintResultUI() {
         const mintBtn = document.getElementById('mintResultBtn');
-        const mintStatus = document.getElementById('mintResultStatus');
-        const mintConfigBtn = document.getElementById('mintConfigBtn');
-        if (!mintBtn || !mintStatus) return;
-
-        const contractAddress = getGameResultContractAddress();
-        const hasContract = isValidAddress(contractAddress) && !isZeroAddress(contractAddress);
+        const restartBtn = document.getElementById('restartBtn');
+        if (!mintBtn) return;
 
         mintBtn.classList.remove('loading');
         mintBtn.textContent = 'Mint Result';
-        mintStatus.className = 'mint-status';
         mintBtn.disabled = false;
-        mintBtn.style.display = hasContract ? 'inline-flex' : 'none';
-        if (mintConfigBtn) {
-            mintConfigBtn.style.display = hasContract ? 'none' : 'inline-flex';
-            mintConfigBtn.textContent = 'Mint Result';
-        }
+        mintBtn.style.display = 'inline-flex';
+        if (restartBtn) restartBtn.style.display = 'none';
 
         if (!this.lastGameResult) {
             mintBtn.disabled = true;
-            mintStatus.textContent = 'Finish a game to mint your result.';
             return;
         }
 
         if (this.lastGameResult.mintTxHash) {
             mintBtn.disabled = true;
             mintBtn.textContent = 'Minted';
-            mintStatus.className = 'mint-status success';
-            mintStatus.innerHTML = `Result minted! <a href="https://basescan.org/tx/${this.lastGameResult.mintTxHash}" target="_blank">View ↗</a>`;
+            mintBtn.style.display = 'none';
+            if (restartBtn) restartBtn.style.display = 'inline-flex';
             return;
         }
 
         if (this.isMintingResult) {
             mintBtn.disabled = true;
             mintBtn.textContent = 'Minting...';
-            mintStatus.textContent = 'Preparing transaction...';
             return;
         }
-
-        if (!hasContract) {
-            mintBtn.disabled = true;
-            mintStatus.textContent = 'Mint Result will deploy the contract first.';
-            return;
-        }
-        const shortAddress = formatShortAddress(contractAddress);
-        mintStatus.textContent = shortAddress
-            ? `Contract: ${shortAddress}. Mint your result on Base.`
-            : 'Mint your result on Base.';
     }
 
     async mintGameResult() {
         const mintBtn = document.getElementById('mintResultBtn');
-        const mintStatus = document.getElementById('mintResultStatus');
-        if (!mintBtn || !mintStatus) return;
+        const restartBtn = document.getElementById('restartBtn');
+        if (!mintBtn) return;
 
         if (this.isMintingResult) return;
 
         if (!this.lastGameResult) {
-            mintStatus.textContent = 'Finish a game to mint your result.';
-            mintStatus.className = 'mint-status';
-            return;
-        }
-
-        const contractAddress = getGameResultContractAddress();
-        if (!isValidAddress(contractAddress) || isZeroAddress(contractAddress)) {
-            mintStatus.textContent = 'Deploy the mint contract first.';
-            mintStatus.className = 'mint-status';
             return;
         }
 
@@ -4801,11 +4772,23 @@ class MatchThreePro {
         mintBtn.disabled = true;
         mintBtn.classList.add('loading');
         mintBtn.textContent = 'Minting...';
-        mintStatus.textContent = 'Preparing transaction...';
-        mintStatus.className = 'mint-status';
-        if (typeof debugLog === 'function') debugLog('Mint result: preparing transaction');
+        if (typeof debugLog === 'function') debugLog('Mint result: starting');
 
         try {
+            // Deploy contract if not exists
+            let contractAddress = getGameResultContractAddress();
+            if (!isValidAddress(contractAddress) || isZeroAddress(contractAddress)) {
+                mintBtn.textContent = 'Deploying...';
+                if (typeof debugLog === 'function') debugLog('Mint result: deploying contract');
+                const deployResult = await deployGameResultContract(() => {});
+                contractAddress = deployResult.address;
+                if (typeof debugLog === 'function') debugLog(`Mint result: contract deployed at ${contractAddress}`);
+            }
+
+            // Mint the result
+            mintBtn.textContent = 'Minting...';
+            if (typeof debugLog === 'function') debugLog('Mint result: preparing transaction');
+
             const data = encodeGameResultMintCall(
                 this.lastGameResult.score,
                 this.lastGameResult.maxCombo,
@@ -4820,31 +4803,29 @@ class MatchThreePro {
 
             const result = await SponsoredTransactions.sendViaFarcasterSDK(
                 txParams,
-                (status) => { if (mintStatus) mintStatus.textContent = status; }
+                () => {}
             );
 
             const txHash = result?.txHash;
             if (txHash) {
                 this.lastGameResult.mintTxHash = txHash;
-                mintBtn.textContent = 'Minted';
-                mintBtn.disabled = true;
-                mintStatus.className = 'mint-status success';
-                mintStatus.innerHTML = `Result minted! <a href="https://basescan.org/tx/${txHash}" target="_blank">View ↗</a>`;
                 if (typeof debugLog === 'function') debugLog(`Mint result: tx ${txHash}`);
             } else {
-                mintBtn.textContent = 'Minted';
-                mintBtn.disabled = true;
-                mintStatus.className = 'mint-status success';
-                mintStatus.textContent = 'Mint submitted. Check your wallet for status.';
+                this.lastGameResult.mintTxHash = 'pending';
                 if (typeof debugLog === 'function') debugLog('Mint result: submitted without tx hash');
             }
+
+            // Success - show Play Again
+            mintBtn.textContent = 'Minted';
+            mintBtn.disabled = true;
+            mintBtn.style.display = 'none';
+            if (restartBtn) restartBtn.style.display = 'inline-flex';
+
         } catch (error) {
             console.error('Mint result error:', error);
             const errorMessage = error?.message || 'Mint failed. Please try again.';
             mintBtn.disabled = false;
             mintBtn.textContent = 'Mint Result';
-            mintStatus.textContent = errorMessage;
-            mintStatus.className = 'mint-status error';
             if (typeof debugLog === 'function') debugLog('Mint result error: ' + errorMessage);
         } finally {
             this.isMintingResult = false;
@@ -5234,45 +5215,6 @@ class MatchThreePro {
             mintResultBtn.addEventListener('click', () => {
                 activateSoundsOnce();
                 this.mintGameResult();
-            });
-        }
-        const mintConfigBtn = document.getElementById('mintConfigBtn');
-        if (mintConfigBtn) {
-            mintConfigBtn.addEventListener('click', async () => {
-                activateSoundsOnce();
-                const mintStatus = document.getElementById('mintResultStatus');
-                const mintBtn = document.getElementById('mintResultBtn');
-                mintConfigBtn.disabled = true;
-                if (mintBtn) mintBtn.disabled = true;
-                if (mintStatus) {
-                    mintStatus.textContent = 'Preparing deployment...';
-                    mintStatus.className = 'mint-status';
-                }
-                try {
-                    const result = await deployGameResultContract((status) => {
-                        if (mintStatus) mintStatus.textContent = status;
-                    });
-                    const shortAddress = formatShortAddress(result.address);
-                    if (mintStatus) {
-                        mintStatus.className = 'mint-status success';
-                        mintStatus.textContent = shortAddress
-                            ? `Contract deployed: ${shortAddress}`
-                            : 'Contract deployed.';
-                    }
-                    if (typeof debugLog === 'function') {
-                        debugLog(`Mint contract deployed: ${result.address}`);
-                    }
-                    this.updateMintResultUI();
-                    await this.mintGameResult();
-                } catch (e) {
-                    if (mintStatus) {
-                        mintStatus.textContent = e.message || 'Deploy failed.';
-                        mintStatus.className = 'mint-status error';
-                    }
-                } finally {
-                    mintConfigBtn.disabled = false;
-                    this.updateMintResultUI();
-                }
             });
         }
 
