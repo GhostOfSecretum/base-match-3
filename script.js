@@ -4803,7 +4803,7 @@ class MatchThreePro {
                 data: data
             };
 
-            if (typeof debugLog === 'function') debugLog('Mint result: sending tx to ' + contractAddress);
+            if (typeof debugLog === 'function') debugLog('Mint result: sending tx to ' + playerAddress);
             
             const result = await SponsoredTransactions.sendViaFarcasterSDK(
                 txParams,
