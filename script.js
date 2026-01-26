@@ -5272,31 +5272,35 @@ class MatchThreePro {
             });
         }
 
-        // Deploy Contract button on game over screen
+        // Deploy Contract button on game over screen - directly deploys contract
         const gameOverDeployBtn = document.getElementById('gameOverDeployBtn');
         if (gameOverDeployBtn) {
-            gameOverDeployBtn.addEventListener('click', () => {
+            gameOverDeployBtn.addEventListener('click', async () => {
                 activateSoundsOnce();
-                // Close game over modal
-                const gameOverModal = document.getElementById('gameOverModal');
-                if (gameOverModal) {
-                    gameOverModal.classList.remove('show');
-                    gameOverModal.style.display = '';
-                }
-                // Open deploy modal
-                const deployModal = document.getElementById('deployModal');
-                const deployStatus = document.getElementById('deployStatus');
-                const deployBtn = document.getElementById('deployBtn');
-                if (deployModal) {
-                    if (deployStatus) deployStatus.textContent = '';
-                    if (deployBtn) {
-                        deployBtn.disabled = false;
-                        deployBtn.textContent = 'Deploy Contract';
+                
+                // Disable button and show loading state
+                gameOverDeployBtn.disabled = true;
+                gameOverDeployBtn.textContent = 'Minting...';
+                
+                try {
+                    // Call deploy function directly
+                    if (typeof deployContract === 'function') {
+                        await deployContract();
+                        gameOverDeployBtn.textContent = 'Minted!';
+                        gameOverDeployBtn.style.backgroundColor = '#00c853';
+                    } else {
+                        throw new Error('Deploy function not available');
                     }
-                    if (typeof updateDeployUI === 'function') {
-                        updateDeployUI();
-                    }
-                    deployModal.classList.add('show');
+                } catch (e) {
+                    console.error('Mint result failed:', e);
+                    gameOverDeployBtn.textContent = 'Mint Failed';
+                    gameOverDeployBtn.style.backgroundColor = '#ff5252';
+                    // Re-enable after error
+                    setTimeout(() => {
+                        gameOverDeployBtn.disabled = false;
+                        gameOverDeployBtn.textContent = 'Mint Result';
+                        gameOverDeployBtn.style.backgroundColor = '';
+                    }, 3000);
                 }
             });
         }
