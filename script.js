@@ -5272,6 +5272,35 @@ class MatchThreePro {
             });
         }
 
+        // Deploy Contract button on game over screen
+        const gameOverDeployBtn = document.getElementById('gameOverDeployBtn');
+        if (gameOverDeployBtn) {
+            gameOverDeployBtn.addEventListener('click', () => {
+                activateSoundsOnce();
+                // Close game over modal
+                const gameOverModal = document.getElementById('gameOverModal');
+                if (gameOverModal) {
+                    gameOverModal.classList.remove('show');
+                    gameOverModal.style.display = '';
+                }
+                // Open deploy modal
+                const deployModal = document.getElementById('deployModal');
+                const deployStatus = document.getElementById('deployStatus');
+                const deployBtn = document.getElementById('deployBtn');
+                if (deployModal) {
+                    if (deployStatus) deployStatus.textContent = '';
+                    if (deployBtn) {
+                        deployBtn.disabled = false;
+                        deployBtn.textContent = 'Deploy Contract';
+                    }
+                    if (typeof updateDeployUI === 'function') {
+                        updateDeployUI();
+                    }
+                    deployModal.classList.add('show');
+                }
+            });
+        }
+
         const hintBtn = document.getElementById('hintBtn');
         if (hintBtn) {
             hintBtn.addEventListener('click', () => {
