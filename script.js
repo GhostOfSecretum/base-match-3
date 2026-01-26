@@ -5272,59 +5272,6 @@ class MatchThreePro {
             });
         }
 
-        // Deploy Contract button on game over screen - directly deploys contract
-        const gameOverDeployBtn = document.getElementById('gameOverDeployBtn');
-        if (gameOverDeployBtn) {
-            gameOverDeployBtn.addEventListener('click', async () => {
-                activateSoundsOnce();
-                
-                // Disable button and show loading state
-                gameOverDeployBtn.disabled = true;
-                const originalText = gameOverDeployBtn.textContent;
-                
-                // Status callback to update button text
-                const statusCallback = (status) => {
-                    // Show short status on button
-                    if (status.includes('Connecting')) {
-                        gameOverDeployBtn.textContent = 'Connecting...';
-                    } else if (status.includes('Preparing')) {
-                        gameOverDeployBtn.textContent = 'Preparing...';
-                    } else if (status.includes('Sending') || status.includes('Confirm')) {
-                        gameOverDeployBtn.textContent = 'Confirm in wallet...';
-                    } else if (status.includes('Waiting')) {
-                        gameOverDeployBtn.textContent = 'Deploying...';
-                    } else {
-                        gameOverDeployBtn.textContent = 'Minting...';
-                    }
-                };
-                
-                try {
-                    // Call deploy function directly with status callback
-                    if (typeof deployContract === 'function') {
-                        await deployContract(statusCallback);
-                        gameOverDeployBtn.textContent = 'Minted!';
-                        gameOverDeployBtn.style.backgroundColor = '#00c853';
-                    } else {
-                        throw new Error('Deploy function not available');
-                    }
-                } catch (e) {
-                    console.error('Mint result failed:', e);
-                    let errorText = 'Mint Failed';
-                    if (e.code === 4001 || e.message?.includes('rejected')) {
-                        errorText = 'Cancelled';
-                    }
-                    gameOverDeployBtn.textContent = errorText;
-                    gameOverDeployBtn.style.backgroundColor = '#ff5252';
-                    // Re-enable after error
-                    setTimeout(() => {
-                        gameOverDeployBtn.disabled = false;
-                        gameOverDeployBtn.textContent = 'Mint Result';
-                        gameOverDeployBtn.style.backgroundColor = '';
-                    }, 3000);
-                }
-            });
-        }
-
         const hintBtn = document.getElementById('hintBtn');
         if (hintBtn) {
             hintBtn.addEventListener('click', () => {
