@@ -4728,12 +4728,21 @@ class MatchThreePro {
 
     updateMintResultUI() {
         const mintBtn = document.getElementById('mintResultBtn');
+        const statusEl = document.getElementById('mintResultStatus');
+        
         if (!mintBtn) return;
 
         mintBtn.classList.remove('loading');
         mintBtn.textContent = 'Mint Result';
         mintBtn.disabled = false;
         mintBtn.style.display = 'inline-flex';
+        mintBtn.style.backgroundColor = '';
+        
+        // Reset status
+        if (statusEl) {
+            statusEl.textContent = '';
+            statusEl.style.color = '#888';
+        }
 
         if (!this.lastGameResult) {
             mintBtn.disabled = true;
@@ -4744,6 +4753,13 @@ class MatchThreePro {
         if (this.lastGameResult.mintTxHash) {
             mintBtn.disabled = true;
             mintBtn.textContent = 'Minted ✓';
+            mintBtn.style.backgroundColor = '#28a745';
+            if (statusEl) {
+                const txHash = this.lastGameResult.mintTxHash;
+                if (txHash && txHash !== 'success' && txHash.startsWith('0x')) {
+                    statusEl.textContent = `TX: ${txHash.slice(0, 10)}...${txHash.slice(-6)}`;
+                }
+            }
             return;
         }
 
@@ -4756,101 +4772,156 @@ class MatchThreePro {
 
     async mintGameResult() {
         const mintBtn = document.getElementById('mintResultBtn');
+        const statusEl = document.getElementById('mintResultStatus');
+        
         if (!mintBtn) return;
-
         if (this.isMintingResult) return;
 
         if (!this.lastGameResult) {
+            if (statusEl) statusEl.textContent = 'No game result to mint';
             return;
         }
+
+        const updateStatus = (msg, isError = false) => {
+            if (statusEl) {
+                statusEl.textContent = msg;
+                statusEl.style.color = isError ? '#ff4444' : '#888';
+            }
+            if (typeof debugLog === 'function') debugLog('Mint: ' + msg);
+        };
 
         this.isMintingResult = true;
         mintBtn.disabled = true;
         mintBtn.classList.add('loading');
         mintBtn.textContent = 'Minting...';
-        if (typeof debugLog === 'function') debugLog('Mint result: starting');
+        updateStatus('Starting mint process...');
 
         try {
+            const { score, maxCombo, won } = this.lastGameResult;
             if (typeof debugLog === 'function') {
-                debugLog(`Mint result: score=${this.lastGameResult.score}, combo=${this.lastGameResult.maxCombo}, won=${this.lastGameResult.won}`);
+                debugLog(`Mint result: score=${score}, combo=${maxCombo}, won=${won}`);
             }
 
-            // Get Farcaster SDK and provider (same as deploy contract)
-            const farcasterSDK = SponsoredTransactions.getFarcasterSDK();
-            let rawProvider = farcasterSDK?.wallet?.ethProvider || window.ethereum;
+            // Step 1: Get Ethereum provider from Farcaster SDK or window.ethereum
+            updateStatus('Connecting to wallet...');
             
-            if (!rawProvider) {
-                throw new Error('No wallet found');
+            let ethProvider = null;
+            const farcasterSDK = SponsoredTransactions.getFarcasterSDK();
+            
+            if (farcasterSDK?.wallet?.ethProvider) {
+                ethProvider = farcasterSDK.wallet.ethProvider;
+                if (typeof debugLog === 'function') debugLog('Using sdk.wallet.ethProvider');
+            } else if (farcasterSDK?.wallet?.getEthereumProvider) {
+                ethProvider = await farcasterSDK.wallet.getEthereumProvider();
+                if (typeof debugLog === 'function') debugLog('Using sdk.wallet.getEthereumProvider()');
+            } else if (window.ethereum) {
+                ethProvider = window.ethereum;
+                if (typeof debugLog === 'function') debugLog('Using window.ethereum');
+            }
+            
+            if (!ethProvider) {
+                throw new Error('No wallet found. Please connect your wallet.');
             }
 
-            // Get user address
+            // Step 2: Get user address
+            updateStatus('Getting wallet address...');
+            
             let userAddress = window.__userAddress;
             if (!userAddress) {
-                const accounts = await rawProvider.request({ method: 'eth_accounts' });
-                userAddress = accounts?.[0];
+                try {
+                    const accounts = await ethProvider.request({ method: 'eth_requestAccounts' });
+                    userAddress = accounts?.[0];
+                    if (typeof debugLog === 'function') debugLog(`Got account: ${userAddress}`);
+                } catch (e) {
+                    if (typeof debugLog === 'function') debugLog(`eth_requestAccounts error: ${e.message}`);
+                    throw new Error('Please connect your wallet first.');
+                }
             }
+            
             if (!userAddress) {
-                throw new Error('Wallet not connected');
+                throw new Error('No wallet address available.');
             }
 
-            // Transaction params - call sayGM() on GM contract
+            // Step 3: Get contract address
+            const contractAddress = getGameResultContractAddress();
+            if (typeof debugLog === 'function') debugLog(`Contract address: ${contractAddress}`);
+            
+            if (!contractAddress || isZeroAddress(contractAddress)) {
+                throw new Error('Game Result contract not deployed. Please deploy it first in the Deploy section.');
+            }
+
+            // Step 4: Ensure ethers.js is loaded for encoding
+            updateStatus('Preparing transaction...');
+            await ensureEthersLoaded(updateStatus);
+
+            // Step 5: Encode the mintResult function call
+            const txData = encodeGameResultMintCall(score, maxCombo, won);
+            if (typeof debugLog === 'function') debugLog(`TX data: ${txData.slice(0, 50)}...`);
+
+            // Step 6: Build transaction
             const txParams = {
                 from: userAddress,
-                to: GM_CONTRACT.address,
+                to: contractAddress,
                 value: '0x0',
-                data: GM_CONTRACT.sayGMSelector
+                data: txData
             };
 
-            if (typeof debugLog === 'function') debugLog('Mint result: sending tx to GM contract ' + GM_CONTRACT.address);
-            
-            // Use sponsored transaction (same as deploy contract)
-            mintBtn.textContent = 'Sending...';
-            const sponsorshipAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
-            if (typeof debugLog === 'function') debugLog('Mint result: sponsorship available = ' + sponsorshipAvailable);
+            if (typeof debugLog === 'function') debugLog(`TX params: to=${contractAddress}, from=${userAddress}`);
+
+            // Step 7: Send transaction - user signs and pays gas
+            updateStatus('Please confirm transaction in your wallet...');
+            mintBtn.textContent = 'Confirm...';
 
             let txHash = null;
             
-            if (sponsorshipAvailable) {
-                const sponsorResult = await SponsoredTransactions.sendTransaction(
-                    rawProvider,
-                    txParams,
-                    userAddress,
-                    (status) => { 
-                        if (typeof debugLog === 'function') debugLog('Mint status: ' + status);
-                        mintBtn.textContent = status.includes('confirm') ? 'Confirm...' : 'Sending...';
-                    }
-                );
-                txHash = sponsorResult?.txHash;
-                if (typeof debugLog === 'function') debugLog('Mint result: sponsor result = ' + JSON.stringify(sponsorResult));
-            } else {
-                // Fallback to regular transaction
-                if (typeof debugLog === 'function') debugLog('Mint result: using regular transaction');
-                txHash = await rawProvider.request({
+            try {
+                // Use eth_sendTransaction - wallet will prompt user to sign
+                txHash = await ethProvider.request({
                     method: 'eth_sendTransaction',
                     params: [txParams]
                 });
+                
+                if (typeof debugLog === 'function') debugLog(`TX sent! Hash: ${txHash}`);
+            } catch (txError) {
+                if (typeof debugLog === 'function') debugLog(`eth_sendTransaction error: ${txError.message}`);
+                
+                // Handle user rejection
+                if (txError.message?.includes('reject') || txError.message?.includes('denied') || txError.code === 4001) {
+                    throw new Error('Transaction cancelled by user.');
+                }
+                // Handle insufficient funds
+                if (txError.message?.includes('insufficient')) {
+                    throw new Error('Insufficient ETH for gas. Please add ETH to your wallet.');
+                }
+                throw txError;
             }
 
+            // Step 8: Success!
             if (txHash) {
                 this.lastGameResult.mintTxHash = txHash;
-                if (typeof debugLog === 'function') debugLog(`Mint result: tx ${txHash}`);
+                updateStatus(`Success! TX: ${txHash.slice(0, 10)}...${txHash.slice(-6)}`);
+                if (typeof debugLog === 'function') debugLog(`Mint success! TX: ${txHash}`);
             } else {
                 this.lastGameResult.mintTxHash = 'success';
-                if (typeof debugLog === 'function') debugLog('Mint result: completed without tx hash');
+                updateStatus('Transaction sent successfully!');
             }
 
-            // Success
-            if (typeof debugLog === 'function') debugLog('Mint result: success');
             mintBtn.textContent = 'Minted ✓';
             mintBtn.disabled = true;
+            mintBtn.style.backgroundColor = '#28a745';
 
         } catch (error) {
             console.error('Mint result error:', error);
             const errorMessage = error?.message || 'Mint failed. Please try again.';
+            
+            updateStatus(errorMessage, true);
             mintBtn.disabled = false;
             mintBtn.textContent = 'Mint Result';
-            if (typeof debugLog === 'function') debugLog('Mint result error: ' + errorMessage);
-            if (typeof debugLog === 'function') debugLog('Error details: ' + JSON.stringify(error, Object.getOwnPropertyNames(error)));
+            
+            if (typeof debugLog === 'function') {
+                debugLog('Mint error: ' + errorMessage);
+                debugLog('Error details: ' + JSON.stringify(error, Object.getOwnPropertyNames(error)));
+            }
         } finally {
             this.isMintingResult = false;
             mintBtn.classList.remove('loading');
