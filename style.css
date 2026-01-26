@@ -2439,6 +2439,40 @@ body.light-theme .history-item .history-date {
     color: #4caf50;
 }
 
+.mint-result {
+    margin-top: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+
+.mint-status {
+    font-size: 0.9em;
+    color: rgba(255, 255, 255, 0.8);
+    text-align: center;
+    min-height: 20px;
+}
+
+.mint-status.error {
+    color: #ff6b6b;
+}
+
+.mint-status.success {
+    color: #4caf50;
+}
+
+.mint-status a {
+    color: var(--base-blue);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.mint-status a:hover {
+    color: var(--base-blue-light);
+    text-decoration: underline;
+}
+
 .gm-last-said {
     font-size: 0.85em;
     color: rgba(255, 255, 255, 0.5);

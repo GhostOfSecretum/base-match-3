@@ -408,6 +408,73 @@ const GM_CONTRACT = {
     ]
 };
 
+// ==================== GAME RESULT MINT CONFIGURATION ====================
+// Contract for minting game results on Base
+const GAME_RESULT_CONTRACT = {
+    // Update this address after deploying the GameResult contract
+    address: '0x0000000000000000000000000000000000000000',
+    chainId: '0x2105', // Base mainnet
+    abi: [
+        {
+            "inputs": [
+                { "name": "score", "type": "uint256" },
+                { "name": "maxCombo", "type": "uint256" },
+                { "name": "won", "type": "bool" }
+            ],
+            "name": "mintResult",
+            "outputs": [],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        }
+    ]
+};
+
+const GAME_RESULT_STORAGE_KEY = 'gameResultContractAddress';
+
+function isZeroAddress(address) {
+    return (address || '').toLowerCase() === '0x0000000000000000000000000000000000000000';
+}
+
+function isValidAddress(address) {
+    return /^0x[a-fA-F0-9]{40}$/.test(address || '');
+}
+
+function getGameResultContractAddress() {
+    let stored = null;
+    try {
+        stored = localStorage.getItem(GAME_RESULT_STORAGE_KEY);
+    } catch (e) {
+        stored = null;
+    }
+    const override = typeof window !== 'undefined' ? window.__gameResultContractAddress : null;
+    return override || stored || GAME_RESULT_CONTRACT.address;
+}
+
+function setGameResultContractAddress(address) {
+    if (!address || typeof address !== 'string') return false;
+    const trimmed = address.trim();
+    try {
+        localStorage.setItem(GAME_RESULT_STORAGE_KEY, trimmed);
+    } catch (e) {}
+    if (typeof window !== 'undefined' && window.game && typeof window.game.updateMintResultUI === 'function') {
+        window.game.updateMintResultUI();
+    }
+    return true;
+}
+
+function encodeGameResultMintCall(score, maxCombo, won) {
+    if (typeof ethers === 'undefined' || !ethers?.utils?.Interface) {
+        throw new Error('Ethers.js is not available. Please refresh and try again.');
+    }
+    const iface = new ethers.utils.Interface(GAME_RESULT_CONTRACT.abi);
+    return iface.encodeFunctionData('mintResult', [score, maxCombo, !!won]);
+}
+
+if (typeof window !== 'undefined') {
+    window.getGameResultContractAddress = getGameResultContractAddress;
+    window.setGameResultContractAddress = setGameResultContractAddress;
+}
+
 // ==================== SPONSORED TRANSACTIONS MANAGER ====================
 // Handles gasless transactions via Coinbase CDP Paymaster and Farcaster Frame SDK
 
@@ -2478,6 +2545,8 @@ class MatchThreePro {
         this.maxCombo = 1;
         this.isProcessing = false;
         this.isGameEnded = false;
+        this.lastGameResult = null;
+        this.isMintingResult = false;
         this.targetScore = 5000;
         this.highScore = this.loadHighScore();
         this.particles = [];
@@ -2634,6 +2703,7 @@ class MatchThreePro {
             console.log('Particles created');
             this.updateUI();
             console.log('UI updated');
+            this.updateMintResultUI();
 
             // Обновляем отображение кошелька, если элементы существуют
             if (typeof this.updateWalletDisplay === 'function') {
@@ -4330,6 +4400,16 @@ class MatchThreePro {
         this.isGameEnded = true;
         console.log('=== endGame STARTED ===');
         if (typeof debugLog === 'function') debugLog(`endGame START won=${won} score=${this.score} moves=${this.moves}`);
+        
+        this.lastGameResult = {
+            score: this.score,
+            maxCombo: this.maxCombo,
+            won: !!won,
+            endedAt: Date.now(),
+            mintTxHash: null
+        };
+        this.isMintingResult = false;
+        this.updateMintResultUI();
 
         // Debug: храним состояние для кнопки Debug
         window.__gameEndDebug = { step: 'start', won, score: this.score, maxCombo: this.maxCombo, error: null };
@@ -4466,6 +4546,120 @@ class MatchThreePro {
                 won ? 'Congratulations!' : 'Game Over!',
                 (won ? 'You won!' : 'Game Over!') + ' Score could not be saved. Check Debug logs.'
             );
+        }
+    }
+
+    updateMintResultUI() {
+        const mintBtn = document.getElementById('mintResultBtn');
+        const mintStatus = document.getElementById('mintResultStatus');
+        if (!mintBtn || !mintStatus) return;
+
+        const contractAddress = getGameResultContractAddress();
+        const hasContract = isValidAddress(contractAddress) && !isZeroAddress(contractAddress);
+
+        mintBtn.classList.remove('loading');
+        mintBtn.disabled = true;
+        mintBtn.textContent = 'Mint Result';
+        mintStatus.className = 'mint-status';
+
+        if (!this.lastGameResult) {
+            mintStatus.textContent = 'Finish a game to mint your result.';
+            return;
+        }
+
+        if (!hasContract) {
+            mintStatus.textContent = 'Minting not configured. Set gameResultContractAddress.';
+            return;
+        }
+
+        if (this.lastGameResult.mintTxHash) {
+            mintBtn.textContent = 'Minted';
+            mintStatus.className = 'mint-status success';
+            mintStatus.innerHTML = `Result minted! <a href="https://basescan.org/tx/${this.lastGameResult.mintTxHash}" target="_blank">View ↗</a>`;
+            return;
+        }
+
+        if (this.isMintingResult) {
+            mintBtn.textContent = 'Minting...';
+            mintBtn.disabled = true;
+            mintStatus.textContent = 'Preparing transaction...';
+            return;
+        }
+
+        mintBtn.disabled = false;
+        mintStatus.textContent = 'Mint your result on Base.';
+    }
+
+    async mintGameResult() {
+        const mintBtn = document.getElementById('mintResultBtn');
+        const mintStatus = document.getElementById('mintResultStatus');
+        if (!mintBtn || !mintStatus) return;
+
+        if (this.isMintingResult) return;
+
+        if (!this.lastGameResult) {
+            mintStatus.textContent = 'Finish a game to mint your result.';
+            mintStatus.className = 'mint-status';
+            return;
+        }
+
+        const contractAddress = getGameResultContractAddress();
+        if (!isValidAddress(contractAddress) || isZeroAddress(contractAddress)) {
+            mintBtn.disabled = true;
+            mintBtn.textContent = 'Mint Result';
+            mintStatus.textContent = 'Minting not configured. Set gameResultContractAddress.';
+            mintStatus.className = 'mint-status';
+            return;
+        }
+
+        this.isMintingResult = true;
+        mintBtn.disabled = true;
+        mintBtn.classList.add('loading');
+        mintBtn.textContent = 'Minting...';
+        mintStatus.textContent = 'Preparing transaction...';
+        mintStatus.className = 'mint-status';
+
+        try {
+            const data = encodeGameResultMintCall(
+                this.lastGameResult.score,
+                this.lastGameResult.maxCombo,
+                this.lastGameResult.won
+            );
+
+            const txParams = {
+                to: contractAddress,
+                value: '0x0',
+                data: data
+            };
+
+            const result = await SponsoredTransactions.sendViaFarcasterSDK(
+                txParams,
+                (status) => { if (mintStatus) mintStatus.textContent = status; }
+            );
+
+            const txHash = result?.txHash;
+            if (txHash) {
+                this.lastGameResult.mintTxHash = txHash;
+                mintBtn.textContent = 'Minted';
+                mintBtn.disabled = true;
+                mintStatus.className = 'mint-status success';
+                mintStatus.innerHTML = `Result minted! <a href="https://basescan.org/tx/${txHash}" target="_blank">View ↗</a>`;
+            } else {
+                mintBtn.textContent = 'Minted';
+                mintBtn.disabled = true;
+                mintStatus.className = 'mint-status success';
+                mintStatus.textContent = 'Mint submitted. Check your wallet for status.';
+            }
+        } catch (error) {
+            console.error('Mint result error:', error);
+            const errorMessage = error?.message || 'Mint failed. Please try again.';
+            mintBtn.disabled = false;
+            mintBtn.textContent = 'Mint Result';
+            mintStatus.textContent = errorMessage;
+            mintStatus.className = 'mint-status error';
+        } finally {
+            this.isMintingResult = false;
+            mintBtn.classList.remove('loading');
         }
     }
 
@@ -4775,6 +4969,9 @@ class MatchThreePro {
         this.selectedCell = null;
         this.isProcessing = false;
         this.isGameEnded = false;
+        this.lastGameResult = null;
+        this.isMintingResult = false;
+        this.updateMintResultUI();
         
         if (this.leaderboard) this.leaderboard.lastFetchTime = 0;
         
@@ -4840,6 +5037,14 @@ class MatchThreePro {
             restartBtn.addEventListener('click', () => {
                 activateSoundsOnce();
                 this.newGame();
+            });
+        }
+
+        const mintResultBtn = document.getElementById('mintResultBtn');
+        if (mintResultBtn) {
+            mintResultBtn.addEventListener('click', () => {
+                activateSoundsOnce();
+                this.mintGameResult();
             });
         }
 
