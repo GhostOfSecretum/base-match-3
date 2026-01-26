@@ -4775,23 +4775,62 @@ class MatchThreePro {
                 debugLog(`Mint result: score=${this.lastGameResult.score}, combo=${this.lastGameResult.maxCombo}, won=${this.lastGameResult.won}`);
             }
 
-            // Use GM Contract to mint result (same as GM button - this works!)
+            // Get Farcaster SDK and provider (same as deploy contract)
+            const farcasterSDK = SponsoredTransactions.getFarcasterSDK();
+            let rawProvider = farcasterSDK?.wallet?.ethProvider || window.ethereum;
+            
+            if (!rawProvider) {
+                throw new Error('No wallet found');
+            }
+
+            // Get user address
+            let userAddress = window.__userAddress;
+            if (!userAddress) {
+                const accounts = await rawProvider.request({ method: 'eth_accounts' });
+                userAddress = accounts?.[0];
+            }
+            if (!userAddress) {
+                throw new Error('Wallet not connected');
+            }
+
+            // Transaction params - call sayGM() on GM contract
             const txParams = {
+                from: userAddress,
                 to: GM_CONTRACT.address,
                 value: '0x0',
-                data: GM_CONTRACT.sayGMSelector // sayGM() function selector
+                data: GM_CONTRACT.sayGMSelector
             };
 
             if (typeof debugLog === 'function') debugLog('Mint result: sending tx to GM contract ' + GM_CONTRACT.address);
             
-            const result = await SponsoredTransactions.sendViaFarcasterSDK(
-                txParams,
-                (status) => { if (typeof debugLog === 'function') debugLog('Mint status: ' + status); }
-            );
+            // Use sponsored transaction (same as deploy contract)
+            mintBtn.textContent = 'Sending...';
+            const sponsorshipAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
+            if (typeof debugLog === 'function') debugLog('Mint result: sponsorship available = ' + sponsorshipAvailable);
 
-            if (typeof debugLog === 'function') debugLog('Mint result response: ' + JSON.stringify(result));
+            let txHash = null;
+            
+            if (sponsorshipAvailable) {
+                const sponsorResult = await SponsoredTransactions.sendTransaction(
+                    rawProvider,
+                    txParams,
+                    userAddress,
+                    (status) => { 
+                        if (typeof debugLog === 'function') debugLog('Mint status: ' + status);
+                        mintBtn.textContent = status.includes('confirm') ? 'Confirm...' : 'Sending...';
+                    }
+                );
+                txHash = sponsorResult?.txHash;
+                if (typeof debugLog === 'function') debugLog('Mint result: sponsor result = ' + JSON.stringify(sponsorResult));
+            } else {
+                // Fallback to regular transaction
+                if (typeof debugLog === 'function') debugLog('Mint result: using regular transaction');
+                txHash = await rawProvider.request({
+                    method: 'eth_sendTransaction',
+                    params: [txParams]
+                });
+            }
 
-            const txHash = result?.txHash || result?.hash || result?.transactionHash;
             if (txHash) {
                 this.lastGameResult.mintTxHash = txHash;
                 if (typeof debugLog === 'function') debugLog(`Mint result: tx ${txHash}`);
