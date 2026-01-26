@@ -5280,12 +5280,28 @@ class MatchThreePro {
                 
                 // Disable button and show loading state
                 gameOverDeployBtn.disabled = true;
-                gameOverDeployBtn.textContent = 'Minting...';
+                const originalText = gameOverDeployBtn.textContent;
+                
+                // Status callback to update button text
+                const statusCallback = (status) => {
+                    // Show short status on button
+                    if (status.includes('Connecting')) {
+                        gameOverDeployBtn.textContent = 'Connecting...';
+                    } else if (status.includes('Preparing')) {
+                        gameOverDeployBtn.textContent = 'Preparing...';
+                    } else if (status.includes('Sending') || status.includes('Confirm')) {
+                        gameOverDeployBtn.textContent = 'Confirm in wallet...';
+                    } else if (status.includes('Waiting')) {
+                        gameOverDeployBtn.textContent = 'Deploying...';
+                    } else {
+                        gameOverDeployBtn.textContent = 'Minting...';
+                    }
+                };
                 
                 try {
-                    // Call deploy function directly
+                    // Call deploy function directly with status callback
                     if (typeof deployContract === 'function') {
-                        await deployContract();
+                        await deployContract(statusCallback);
                         gameOverDeployBtn.textContent = 'Minted!';
                         gameOverDeployBtn.style.backgroundColor = '#00c853';
                     } else {
@@ -5293,7 +5309,11 @@ class MatchThreePro {
                     }
                 } catch (e) {
                     console.error('Mint result failed:', e);
-                    gameOverDeployBtn.textContent = 'Mint Failed';
+                    let errorText = 'Mint Failed';
+                    if (e.code === 4001 || e.message?.includes('rejected')) {
+                        errorText = 'Cancelled';
+                    }
+                    gameOverDeployBtn.textContent = errorText;
                     gameOverDeployBtn.style.backgroundColor = '#ff5252';
                     // Re-enable after error
                     setTimeout(() => {
@@ -6817,19 +6837,28 @@ async function runDeployDebugCheck() {
 }
 
 // Deploy smart contract
-async function deployContract() {
+// statusCallback is optional - if provided, will be called with status updates
+async function deployContract(statusCallback = null) {
     const deployBtn = document.getElementById('deployContractBtn');
     const deployStatus = document.getElementById('deployStatus');
     
-    if (!deployBtn) return;
+    // Helper to update status both via callback and DOM element
+    const updateStatus = (message) => {
+        if (statusCallback) statusCallback(message);
+        if (deployStatus) {
+            deployStatus.textContent = message;
+        }
+    };
     
-    // Set loading state
-    deployBtn.disabled = true;
-    deployBtn.classList.add('loading');
-    deployBtn.innerHTML = '<span>Deploying...</span>';
+    // Set loading state on button if it exists
+    if (deployBtn) {
+        deployBtn.disabled = true;
+        deployBtn.classList.add('loading');
+        deployBtn.innerHTML = '<span>Deploying...</span>';
+    }
     
+    updateStatus('Preparing gasless deployment...');
     if (deployStatus) {
-        deployStatus.textContent = 'Preparing gasless deployment...';
         deployStatus.className = 'deploy-status';
     }
     
@@ -6838,7 +6867,7 @@ async function deployContract() {
     try {
         // Check for ethers.js with retry
         if (typeof ethers === 'undefined') {
-            if (deployStatus) deployStatus.textContent = 'Loading ethers.js...';
+            updateStatus('Loading ethers.js...');
             
             // Try to load ethers.js dynamically
             await new Promise((resolve, reject) => {
@@ -6901,7 +6930,7 @@ async function deployContract() {
         if (farcasterSDK && farcasterSDK.wallet && farcasterSDK.wallet.ethProvider) {
             // Use Farcaster SDK's ethProvider (Base Mini App)
             console.log('Deploying via Farcaster SDK ethProvider');
-            if (deployStatus) deployStatus.textContent = 'Connecting wallet...';
+            updateStatus('Connecting wallet...');
             
             const ethProvider = farcasterSDK.wallet.ethProvider;
             rawProvider = ethProvider;
@@ -6936,7 +6965,7 @@ async function deployContract() {
         // Fallback to window.ethereum
         if (!userAddress && window.ethereum) {
             console.log('Deploying via window.ethereum');
-            if (deployStatus) deployStatus.textContent = 'Connecting wallet...';
+            updateStatus('Connecting wallet...');
             
             rawProvider = window.ethereum;
             provider = new ethers.providers.Web3Provider(window.ethereum);
@@ -6967,7 +6996,7 @@ async function deployContract() {
         }
         
         if (network.chainId !== 8453 && rawProvider === window.ethereum) {
-            if (deployStatus) deployStatus.textContent = 'Switching to Base network...';
+            updateStatus('Switching to Base network...');
             
             try {
                 await rawProvider.request({
@@ -7001,7 +7030,7 @@ async function deployContract() {
         }
         
         // ===== TRY SPONSORED DEPLOYMENT =====
-        if (deployStatus) deployStatus.textContent = 'Preparing gasless deployment on Base...';
+        updateStatus('Preparing gasless deployment on Base...');
         console.log('Attempting sponsored contract deployment...');
         
         let contractAddress = null;
@@ -7017,7 +7046,7 @@ async function deployContract() {
             console.log('Sponsorship available:', sponsorshipAvailable, 'Type:', SponsoredTransactions.sponsorType);
             
             if (sponsorshipAvailable && rawProvider) {
-                if (deployStatus) deployStatus.textContent = 'Sending gasless deployment...';
+                updateStatus('Sending gasless deployment...');
                 
                 // For contract deployment: to = null/undefined, data = contract bytecode
                 const deployTxParams = {
@@ -7039,7 +7068,7 @@ async function deployContract() {
                     wasSponsored = sponsorResult.sponsored || false;
                     console.log('Deployment transaction sent:', sponsorResult.txHash, wasSponsored ? '(sponsored)' : '(regular)');
                     
-                    if (deployStatus) deployStatus.textContent = 'Waiting for confirmation...';
+                    updateStatus('Waiting for confirmation...');
                     
                     // Wait for transaction receipt to get contract address
                     const receipt = await provider.waitForTransaction(sponsorResult.txHash);
@@ -7055,7 +7084,7 @@ async function deployContract() {
         // ===== FALLBACK TO REGULAR DEPLOYMENT =====
         if (!contractAddress) {
             console.log('Using regular (non-sponsored) deployment');
-            if (deployStatus) deployStatus.textContent = 'Confirm deployment in wallet...';
+            updateStatus('Confirm deployment in wallet...');
             
             // Create contract factory
             const factory = new ethers.ContractFactory(SIMPLE_STORAGE_ABI, SIMPLE_STORAGE_BYTECODE, signer);
@@ -7065,7 +7094,7 @@ async function deployContract() {
             const contract = await factory.deploy();
             
             console.log('Deploy transaction hash:', contract.deployTransaction.hash);
-            if (deployStatus) deployStatus.textContent = 'Waiting for confirmation...';
+            updateStatus('Waiting for confirmation...');
             
             // Wait for deployment with timeout
             const deployedContract = await contract.deployed();
@@ -7122,21 +7151,27 @@ async function deployContract() {
     } catch (error) {
         console.error('Deploy error:', error);
         
-        // Reset button
-        deployBtn.disabled = false;
-        deployBtn.classList.remove('loading');
-        deployBtn.innerHTML = '<span>Deploy to Base</span>';
+        // Reset button if it exists
+        if (deployBtn) {
+            deployBtn.disabled = false;
+            deployBtn.classList.remove('loading');
+            deployBtn.innerHTML = '<span>Deploy to Base</span>';
+        }
         
+        let errorMessage = error.message || 'Deployment failed';
+        if (error.code === 4001) {
+            errorMessage = 'Transaction rejected by user';
+        } else if (error.code === -32603) {
+            errorMessage = 'Insufficient funds for gas';
+        }
+        
+        updateStatus('Error: ' + errorMessage);
         if (deployStatus) {
-            let errorMessage = error.message || 'Deployment failed';
-            if (error.code === 4001) {
-                errorMessage = 'Transaction rejected by user';
-            } else if (error.code === -32603) {
-                errorMessage = 'Insufficient funds for gas';
-            }
-            deployStatus.textContent = 'Error: ' + errorMessage;
             deployStatus.className = 'deploy-status error';
         }
+        
+        // Re-throw so caller can handle
+        throw error;
     }
 }
 
