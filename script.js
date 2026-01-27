@@ -2716,8 +2716,9 @@ class MatchThreePro {
         this.numTypes = 6;
         this.board = [];
         this.selectedCell = null;
+        this.baseMoves = 15;
         this.score = 0;
-        this.moves = 15;
+        this.moves = this.baseMoves;
         this.combo = 1;
         this.maxCombo = 1;
         this.isProcessing = false;
@@ -2725,6 +2726,10 @@ class MatchThreePro {
         this.lastGameResult = null;
         this.isMintingResult = false;
         this.targetScore = 5000;
+        this.rpgStorageKey = 'match3RpgState';
+        this.rpg = this.loadRpgState();
+        this.applyRpgBonuses();
+        this.moves = this.getStartingMoves();
         this.highScore = this.loadHighScore();
         this.particles = [];
         this.walletManager = new WalletManager();
@@ -2815,6 +2820,164 @@ class MatchThreePro {
         } catch (e) {
             console.log('Error saving high score:', e.message);
         }
+    }
+
+    getXpForLevel(level) {
+        return Math.round(100 * Math.pow(level, 1.25));
+    }
+
+    loadRpgState() {
+        const defaultState = {
+            level: 1,
+            xp: 0,
+            xpToNext: this.getXpForLevel(1),
+            points: 0,
+            perks: {
+                scoreBoost: 0,
+                extraMoves: 0,
+                xpBoost: 0
+            }
+        };
+
+        try {
+            const raw = localStorage.getItem(this.rpgStorageKey);
+            if (!raw) return { ...defaultState, perks: { ...defaultState.perks } };
+            const parsed = JSON.parse(raw);
+            const state = {
+                ...defaultState,
+                ...parsed,
+                perks: { ...defaultState.perks, ...(parsed.perks || {}) }
+            };
+
+            state.level = Math.max(1, parseInt(state.level, 10) || 1);
+            state.points = Math.max(0, parseInt(state.points, 10) || 0);
+            state.xp = Math.max(0, parseInt(state.xp, 10) || 0);
+            state.xpToNext = this.getXpForLevel(state.level);
+
+            while (state.xp >= state.xpToNext) {
+                state.xp -= state.xpToNext;
+                state.level += 1;
+                state.points += 1;
+                state.xpToNext = this.getXpForLevel(state.level);
+            }
+
+            return state;
+        } catch (e) {
+            return { ...defaultState, perks: { ...defaultState.perks } };
+        }
+    }
+
+    saveRpgState() {
+        try {
+            localStorage.setItem(this.rpgStorageKey, JSON.stringify(this.rpg));
+        } catch (e) {
+            console.log('Error saving RPG state:', e.message);
+        }
+    }
+
+    applyRpgBonuses() {
+        const perks = this.rpg?.perks || {};
+        this.scoreMultiplier = 1 + (perks.scoreBoost || 0) * 0.05;
+        this.xpMultiplier = 1 + (perks.xpBoost || 0) * 0.1;
+        this.bonusMoves = perks.extraMoves || 0;
+    }
+
+    getStartingMoves() {
+        return this.baseMoves + (this.bonusMoves || 0);
+    }
+
+    getScoreMultiplier() {
+        return this.scoreMultiplier || 1;
+    }
+
+    getXpMultiplier() {
+        return this.xpMultiplier || 1;
+    }
+
+    addXp(amount) {
+        if (!amount || amount <= 0) return;
+        const boosted = Math.max(1, Math.round(amount * this.getXpMultiplier()));
+        this.rpg.xp += boosted;
+
+        let leveledUp = false;
+        while (this.rpg.xp >= this.rpg.xpToNext) {
+            this.rpg.xp -= this.rpg.xpToNext;
+            this.rpg.level += 1;
+            this.rpg.points += 1;
+            this.rpg.xpToNext = this.getXpForLevel(this.rpg.level);
+            leveledUp = true;
+        }
+
+        if (leveledUp) {
+            this.showLevelUpPopup();
+        }
+
+        this.saveRpgState();
+        this.updateRpgUI();
+    }
+
+    upgradePerk(perkKey) {
+        if (!this.rpg || this.rpg.points <= 0) return;
+        if (!this.rpg.perks || typeof this.rpg.perks[perkKey] !== 'number') return;
+
+        this.rpg.perks[perkKey] += 1;
+        this.rpg.points -= 1;
+        this.applyRpgBonuses();
+        this.saveRpgState();
+
+        if (perkKey === 'extraMoves' && !this.isGameEnded) {
+            this.moves += 1;
+            this.updateUI();
+        } else {
+            this.updateRpgUI();
+        }
+    }
+
+    updateRpgUI() {
+        if (!this.rpg) return;
+        const levelEl = document.getElementById('rpgLevel');
+        const xpEl = document.getElementById('rpgXp');
+        const xpToNextEl = document.getElementById('rpgXpToNext');
+        const pointsEl = document.getElementById('rpgPoints');
+        const progressEl = document.getElementById('rpgXpProgress');
+        const scoreBoostEl = document.getElementById('perkScoreBoost');
+        const extraMovesEl = document.getElementById('perkExtraMoves');
+        const xpBoostEl = document.getElementById('perkXpBoost');
+
+        if (levelEl) levelEl.textContent = this.rpg.level;
+        if (xpEl) xpEl.textContent = this.rpg.xp.toLocaleString();
+        if (xpToNextEl) xpToNextEl.textContent = this.rpg.xpToNext.toLocaleString();
+        if (pointsEl) pointsEl.textContent = this.rpg.points;
+        if (scoreBoostEl) scoreBoostEl.textContent = this.rpg.perks.scoreBoost;
+        if (extraMovesEl) extraMovesEl.textContent = this.rpg.perks.extraMoves;
+        if (xpBoostEl) xpBoostEl.textContent = this.rpg.perks.xpBoost;
+
+        if (progressEl) {
+            const progress = Math.min((this.rpg.xp / this.rpg.xpToNext) * 100, 100);
+            progressEl.style.width = `${progress}%`;
+        }
+
+        const perkButtons = document.querySelectorAll('.rpg-perk-btn');
+        perkButtons.forEach((btn) => {
+            btn.disabled = this.rpg.points <= 0;
+        });
+    }
+
+    showLevelUpPopup() {
+        const popup = document.getElementById('scorePopup');
+        if (!popup) return;
+        popup.textContent = 'LEVEL UP!';
+        popup.style.left = '50%';
+        popup.style.top = '32%';
+        popup.style.fontSize = '1.4em';
+        popup.style.color = '#4caf50';
+        popup.classList.add('show');
+
+        setTimeout(() => {
+            popup.classList.remove('show');
+            popup.style.fontSize = '';
+            popup.style.color = '';
+        }, 1500);
     }
 
     updateHighScoreFromLeaderboard() {
@@ -4156,7 +4319,8 @@ class MatchThreePro {
         const lShapeBonusScore = lShapeBonus * 10 * 0.3;
 
         const scoreGain = (baseScore + tShapeBonusScore + lShapeBonusScore) * comboMultiplier;
-        this.score += scoreGain;
+        const boostedScoreGain = Math.round(scoreGain * this.getScoreMultiplier());
+        this.score += boostedScoreGain;
 
         // Показываем комбо (только надпись, без звука)
         if (this.combo > 1) {
@@ -4164,7 +4328,9 @@ class MatchThreePro {
         }
 
         // Показываем очки
-        this.showScorePopup(scoreGain);
+        this.showScorePopup(boostedScoreGain);
+        const xpGain = Math.max(5, Math.round(scoreGain / 20));
+        this.addXp(xpGain);
 
         // Воспроизводим звук монетки один раз при исчезновении ячеек
         this.soundManager.playCoinSound();
@@ -4535,6 +4701,8 @@ class MatchThreePro {
         // Обновляем прогресс цели
         const progress = Math.min((this.score / this.targetScore) * 100, 100);
         document.getElementById('scoreProgress').style.width = progress + '%';
+
+        this.updateRpgUI();
         
         // Если ходы закончились, СРАЗУ завершаем игру (не ждём следующего действия)
         if (this.moves <= 0 && !this.isGameEnded) {
@@ -4607,6 +4775,8 @@ class MatchThreePro {
         } catch (e) {
             console.log('Error saving game stats:', e.message);
         }
+
+        this.addXp(won ? 40 : 20);
 
         const modal = document.getElementById('gameOverModal');
         const titleEl = document.getElementById('gameOverTitle');
@@ -5177,7 +5347,7 @@ class MatchThreePro {
         
         console.log('Previous isGameEnded:', this.isGameEnded);
         this.score = 0;
-        this.moves = 15;
+        this.moves = this.getStartingMoves();
         this.combo = 1;
         this.maxCombo = 1;
         this.selectedCell = null;
@@ -5223,6 +5393,17 @@ class MatchThreePro {
                 this.newGame();
             });
         }
+
+        const perkButtons = document.querySelectorAll('.rpg-perk-btn');
+        perkButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                activateSoundsOnce();
+                const perkKey = button.getAttribute('data-perk');
+                if (perkKey) {
+                    this.upgradePerk(perkKey);
+                }
+            });
+        });
 
         // Back button - возврат в главное меню
         const backBtn = document.getElementById('backBtn');
@@ -5772,8 +5953,10 @@ function initStartMenu() {
         const profileName = document.getElementById('profileName');
         const profileAddress = document.getElementById('profileAddress');
         const profileHighScore = document.getElementById('profileHighScore');
+        const profileLevel = document.getElementById('profileLevel');
         const profileGamesPlayed = document.getElementById('profileGamesPlayed');
         const profileBestCombo = document.getElementById('profileBestCombo');
+        const profileDeployCount = document.getElementById('profileDeployCount');
         const profileGMStreak = document.getElementById('profileGMStreak');
         const profileAvatar = document.getElementById('profileAvatar');
         const profileAvatarPlaceholder = document.getElementById('profileAvatarPlaceholder');
@@ -5847,6 +6030,22 @@ function initStartMenu() {
             }
         }
 
+        // Уровень игрока (RPG)
+        if (profileLevel) {
+            try {
+                let level = 1;
+                if (window.game && window.game.rpg && window.game.rpg.level) {
+                    level = window.game.rpg.level;
+                } else {
+                    const storedRpg = JSON.parse(localStorage.getItem('match3RpgState') || '{}');
+                    if (storedRpg.level) level = storedRpg.level;
+                }
+                profileLevel.textContent = level.toString();
+            } catch (e) {
+                profileLevel.textContent = '1';
+            }
+        }
+
         // Количество игр
         if (profileGamesPlayed) {
             try {
@@ -5864,6 +6063,16 @@ function initStartMenu() {
                 profileBestCombo.textContent = bestCombo + 'x';
             } catch (e) {
                 profileBestCombo.textContent = '0x';
+            }
+        }
+
+        // Количество деплойнутых контрактов
+        if (profileDeployCount) {
+            try {
+                const contracts = typeof getDeployedContracts === 'function' ? getDeployedContracts() : [];
+                profileDeployCount.textContent = (contracts.length || 0).toString();
+            } catch (e) {
+                profileDeployCount.textContent = '0';
             }
         }
 

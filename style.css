@@ -680,6 +680,122 @@ body::before {
     margin-bottom: 4px;
 }
 
+.rpg-panel {
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 8px;
+    margin-bottom: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.rpg-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75em;
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.rpg-level {
+    font-weight: 600;
+    color: var(--base-blue);
+}
+
+.rpg-xp-bar {
+    width: 100%;
+    height: 6px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+.rpg-xp-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--primary-gradient);
+    transition: width 0.3s ease;
+}
+
+.rpg-points {
+    font-size: 0.7em;
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.rpg-perks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.rpg-perk {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    font-size: 0.7em;
+}
+
+.rpg-perk-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.rpg-perk-name {
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.9);
+}
+
+.rpg-perk-desc {
+    color: rgba(255, 255, 255, 0.5);
+    font-size: 0.9em;
+}
+
+.rpg-perk-controls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.rpg-perk-value {
+    font-weight: 700;
+    color: var(--base-blue);
+    min-width: 16px;
+    text-align: right;
+}
+
+.rpg-perk-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    border: none;
+    background: var(--primary-gradient);
+    color: #ffffff;
+    font-weight: 700;
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 4px 12px rgba(0, 82, 255, 0.4);
+}
+
+.rpg-perk-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 82, 255, 0.5);
+}
+
+.rpg-perk-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
 .wallet-panel {
     margin-bottom: 4px;
     display: flex;
@@ -2137,6 +2253,22 @@ body.light-theme .objectives-panel,
 body.light-theme .player-name-display {
     background: var(--bg-secondary);
     border: 1px solid var(--border-color);
+}
+
+body.light-theme .rpg-panel,
+body.light-theme .rpg-perk {
+    background: rgba(0, 0, 0, 0.05);
+    border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+body.light-theme .rpg-perk-name {
+    color: rgba(0, 0, 0, 0.8);
+}
+
+body.light-theme .rpg-perk-desc,
+body.light-theme .rpg-points,
+body.light-theme .rpg-header {
+    color: rgba(0, 0, 0, 0.6);
 }
 
 body.light-theme .stat-label,
