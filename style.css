@@ -726,26 +726,30 @@ body::before {
 
 .rpg-perks {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 6px;
 }
 
 .rpg-perk {
+    flex: 1;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 6px 8px;
+    justify-content: center;
+    gap: 4px;
+    padding: 6px 4px;
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.08);
     border-radius: 8px;
-    font-size: 0.7em;
+    font-size: 0.65em;
+    text-align: center;
 }
 
 .rpg-perk-info {
     display: flex;
     flex-direction: column;
     gap: 2px;
+    align-items: center;
 }
 
 .rpg-perk-name {
@@ -761,7 +765,8 @@ body::before {
 .rpg-perk-controls {
     display: flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    gap: 4px;
 }
 
 .rpg-perk-value {
