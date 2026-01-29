@@ -8,7 +8,7 @@
     "version": "1",
     "name": "Base Match-3",
     "homeUrl": "https://base-match-3.vercel.app",
-    "iconUrl": "https://base-match-3.vercel.app/icon.png?v=2",
+    "iconUrl": "https://base-match-3.vercel.app/icon.png",
     "splashImageUrl": "https://base-match-3.vercel.app/splash.png?v=2",
     "splashBackgroundColor": "#0052FF",
     "primaryCategory": "games",
