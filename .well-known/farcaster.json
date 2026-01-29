@@ -9,12 +9,12 @@
     "name": "Base Match-3",
     "homeUrl": "https://base-match-3.vercel.app",
     "iconUrl": "https://base-match-3.vercel.app/icon.png",
-    "splashImageUrl": "https://base-match-3.vercel.app/splash.png?v=2",
+    "splashImageUrl": "https://base-match-3.vercel.app/splash.png",
     "splashBackgroundColor": "#0052FF",
     "primaryCategory": "games",
     "tags": ["match-3", "puzzle", "crypto", "base", "gaming"],
     "tagline": "Match crypto tokens",
-    "heroImageUrl": "https://base-match-3.vercel.app/centered_base_match_3.png?v=4",
+    "heroImageUrl": "https://base-match-3.vercel.app/centered_base_match_3.png",
     "screenshotUrls": [
       "https://base-match-3.vercel.app/screenshot-1.png"
     ],
@@ -23,7 +23,7 @@
     "webhookUrl": "https://base-match-3.vercel.app/api/webhook",
     "ogTitle": "Base Match-3",
     "ogDescription": "Match crypto tokens in this fast-paced puzzle game on Base.",
-    "ogImageUrl": "https://base-match-3.vercel.app/centered_base_match_3.png?v=4",
+    "ogImageUrl": "https://base-match-3.vercel.app/centered_base_match_3.png",
     "noindex": false
   }
 }
