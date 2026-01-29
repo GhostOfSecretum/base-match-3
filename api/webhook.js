@@ -34,9 +34,15 @@ export default async function handler(req, res) {
       } else if (event.type === 'mini_app_removed') {
         console.log('Mini app was removed by user:', event.data?.fid);
       } else if (event.type === 'notification_enabled') {
-        console.log('Notifications enabled by user:', event.data?.fid);
+        // event.data может содержать: fid, token, url — сохраните в БД для отправки уведомлений от имени мини-аппки
+        console.log('Notifications enabled by user fid:', event.data?.fid);
+        if (event.data?.token) {
+          // TODO: сохранить event.data (fid, token, url) в БД для self-hosted рассылки
+          console.log('Notification token received (store in DB for sending)');
+        }
       } else if (event.type === 'notification_disabled') {
         console.log('Notifications disabled by user:', event.data?.fid);
+        // TODO: пометить токен недействительным или удалить из БД
       }
       
       // Always respond quickly with success

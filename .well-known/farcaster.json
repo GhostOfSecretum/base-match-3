@@ -5,7 +5,7 @@
     "signature": "sH1DhGtNev5Xs32SKz3XfxwQSmokuWs7MWreSmBjicJMKb5wsspYvEP8EFSz6bwvubYueEz9jy8x8qBIuBNvhRw="
   },
   "miniapp": {
-    "version": "2",
+    "version": "1",
     "name": "Base Match-3",
     "homeUrl": "https://base-match-3.vercel.app",
     "iconUrl": "https://base-match-3.vercel.app/icon.png?v=2",

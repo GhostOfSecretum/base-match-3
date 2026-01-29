@@ -3903,6 +3903,13 @@ class MatchThreePro {
             // Обновляем отображение комбо через updateUI для синхронизации
             this.updateUI();
             
+            // Отправляем событие о совершении хода
+            this.trackEvent('move_made', {
+                score: this.score,
+                movesLeft: this.moves,
+                combo: this.combo
+            });
+            
             // Проверяем окончание игры СРАЗУ после уменьшения ходов
             if (this.moves <= 0) {
                 console.log('No moves left! Ending game after matches...');
@@ -4746,6 +4753,15 @@ class MatchThreePro {
         console.log('=== endGame STARTED ===');
         if (typeof debugLog === 'function') debugLog(`endGame START won=${won} score=${this.score} moves=${this.moves}`);
         
+        // Отправляем событие окончания игры
+        this.trackEvent('game_ended', {
+            won: won,
+            score: this.score,
+            level: this.level,
+            movesLeft: this.moves,
+            maxCombo: this.combo
+        });
+        
         this.lastGameResult = {
             score: this.score,
             maxCombo: this.maxCombo,
@@ -5349,6 +5365,12 @@ class MatchThreePro {
         this.score = 0;
         this.moves = this.getStartingMoves();
         this.combo = 1;
+        
+        // Отправляем событие начала игры
+        this.trackEvent('game_started', {
+            level: this.level,
+            targetScore: this.targetScore
+        });
         this.maxCombo = 1;
         this.selectedCell = null;
         this.isProcessing = false;
@@ -5569,6 +5591,35 @@ class MatchThreePro {
         }
     }
 
+    // Метод для отправки событий в Base analytics
+    trackEvent(eventName, eventData = {}) {
+        try {
+            const sdk = window.__farcasterSDK || window.sdk || (typeof frame !== 'undefined' ? frame.sdk : null);
+            
+            if (sdk && sdk.track) {
+                // Используем track метод если доступен
+                sdk.track(eventName, eventData);
+                console.log(`Tracked event: ${eventName}`, eventData);
+            } else if (sdk && sdk.actions && sdk.actions.track) {
+                // Альтернативный путь через actions
+                sdk.actions.track(eventName, eventData);
+                console.log(`Tracked event via actions: ${eventName}`, eventData);
+            } else {
+                // Fallback - отправляем через postMessage
+                if (window.parent && window.parent !== window) {
+                    window.parent.postMessage({
+                        type: 'fc:track',
+                        event: eventName,
+                        data: eventData
+                    }, '*');
+                    console.log(`Tracked event via postMessage: ${eventName}`, eventData);
+                }
+            }
+        } catch (error) {
+            console.log('Failed to track event:', error);
+        }
+    }
+
     initializeSDK() {
         // SDK уже должен быть инициализирован в index.html или в начале script.js
         // Здесь просто проверяем и сохраняем ссылку для использования в игре
@@ -5578,6 +5629,9 @@ class MatchThreePro {
                 if (window.__farcasterSDKReady && window.__farcasterSDK) {
                     sdk = window.__farcasterSDK;
                     console.log('Using pre-initialized Farcaster SDK');
+                    
+                    // Отправляем событие app_opened
+                    this.trackEvent('app_opened');
                     return;
                 }
 
@@ -5603,6 +5657,9 @@ class MatchThreePro {
                 if (window.farcaster && window.farcaster.miniapp) {
                     sdk = window.farcaster.miniapp;
                     console.log('SDK found via window.farcaster.miniapp');
+                    
+                    // Отправляем событие app_opened
+                    this.trackEvent('app_opened');
                     return;
                 }
 
