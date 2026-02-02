@@ -2167,16 +2167,17 @@ class LeaderboardManager {
                 return this.leaderboard.length > 0 ? this.getTopResults(limit, filter) : [];
             }
 
-            if (data.success && data.results) {
-                this.leaderboard = data.results;
+            if (data.success) {
+                const results = Array.isArray(data.results) ? data.results : [];
+                this.leaderboard = results;
                 this.lastFetchTime = now;
-                this.totalPlayers = data.totalPlayers || 0;
-                this.totalGames = data.totalGames || 0;
+                this.totalPlayers = data.totalPlayers != null ? data.totalPlayers : (new Set(results.map(r => (r.walletAddress || r.playerName || '').toLowerCase()).filter(Boolean))).size;
+                this.totalGames = data.totalGames != null ? data.totalGames : results.length;
                 this.lastError = null;
                 if (window.game && typeof window.game.updateHighScoreFromLeaderboard === 'function') {
                     window.game.updateHighScoreFromLeaderboard();
                 }
-                return data.results;
+                return this.getTopResults(limit, filter);
             }
 
             this.lastError = (data && data.error) || 'Invalid response format';
@@ -5560,16 +5561,6 @@ class MatchThreePro {
         // Проверяем, нужно ли показать onboarding
         this.checkOnboarding();
 
-        // Вкладки лидерборда
-        document.querySelectorAll('.tab-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                const filter = btn.dataset.tab;
-                if (typeof this.showLeaderboard === 'function') {
-                    this.showLeaderboard(filter);
-                }
-            });
-        });
-
         // Закрытие модалок по клику на backdrop
         document.querySelectorAll('.modal-backdrop').forEach(backdrop => {
             backdrop.addEventListener('click', (e) => {
@@ -5918,29 +5909,72 @@ function initStartMenu() {
     // Initialize theme on page load
     initTheme();
 
+    // Глобальное открытие лидерборда (работает до и после инициализации игры)
+    window.openLeaderboard = function openLeaderboard(filter) {
+        filter = filter || 'all';
+        const modal = document.getElementById('leaderboardModal');
+        const list = document.getElementById('leaderboardList');
+        const totalPlayersEl = document.getElementById('totalPlayers');
+        const totalGamesEl = document.getElementById('totalGames');
+        if (!modal || !list) return;
+        modal.classList.add('show');
+        list.innerHTML = '<div class="leaderboard-empty">Loading leaderboard...</div>';
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.tab === filter);
+        });
+        if (window.game && typeof window.game.showLeaderboard === 'function') {
+            window.game.showLeaderboard(filter);
+            return;
+        }
+        fetch('/api/leaderboard?filter=' + encodeURIComponent(filter) + '&limit=20')
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (totalPlayersEl) totalPlayersEl.textContent = data.totalPlayers != null ? data.totalPlayers : 0;
+                if (totalGamesEl) totalGamesEl.textContent = data.totalGames != null ? data.totalGames : 0;
+                if (!data.success || !Array.isArray(data.results) || data.results.length === 0) {
+                    if (data.error && (data.error + '').toLowerCase().indexOf('not configured') !== -1) {
+                        list.innerHTML = '<div class="leaderboard-empty"><div style="font-weight:600;">Leaderboard Storage Not Configured</div><div style="font-size:12px;opacity:0.7;margin-top:8px;">Connect Upstash Redis via Vercel Marketplace.</div></div>';
+                    } else {
+                        list.innerHTML = '<div class="leaderboard-empty">No results yet. Be the first to play!</div>';
+                    }
+                    return;
+                }
+                function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+                list.innerHTML = data.results.map(function(r, i) {
+                    var d = r.date != null ? new Date(r.date) : new Date();
+                    var dateStr = isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+                    var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
+                    var name = (r.playerName && !String(r.playerName).startsWith('0x')) ? r.playerName : 'Player';
+                    var score = (r.score != null ? r.score : 0).toLocaleString();
+                    var combo = (r.maxCombo != null ? r.maxCombo : 1);
+                    return '<div class="leaderboard-item"><div class="leaderboard-rank">' + (medal || '<span class="rank-number">' + (i + 1) + '</span>') + '</div><div class="leaderboard-avatar"><div class="player-avatar-placeholder">👤</div></div><div class="leaderboard-player"><div class="player-name-row"><span class="player-name">' + esc(name) + '</span>' + (r.won ? '<span class="win-badge">✓</span>' : '') + '</div><div class="player-date">' + dateStr + '</div></div><div class="leaderboard-score"><div class="score-value">' + score + '</div><div class="combo-value">Combo: ' + combo + 'x</div></div></div>';
+                }).join('');
+            })
+            .catch(function(err) {
+                console.error('Leaderboard fetch error:', err);
+                list.innerHTML = '<div class="leaderboard-empty">Cannot reach leaderboard. Check your connection or deploy the app with the API.</div>';
+                if (totalPlayersEl) totalPlayersEl.textContent = '0';
+                if (totalGamesEl) totalGamesEl.textContent = '0';
+            });
+    };
+
+    // Вкладки лидерборда — единая точка входа через openLeaderboard
+    document.querySelectorAll('#leaderboardModal .tab-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var filter = btn.getAttribute('data-tab');
+            if (typeof window.openLeaderboard === 'function') window.openLeaderboard(filter || 'all');
+        });
+    });
+
     // Leaderboard - открываем лидерборд
     if (menuLeaderboardBtn) {
         menuLeaderboardBtn.addEventListener('click', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            console.log('Leaderboard button clicked');
-            if (window.game && typeof window.game.showLeaderboard === 'function') {
-                window.game.showLeaderboard();
-            } else {
-                // Альтернативный способ открытия лидерборда
-                const leaderboardModal = document.getElementById('leaderboardModal');
-                const leaderboardBtn = document.getElementById('leaderboardBtn');
-                if (leaderboardModal && leaderboardBtn) {
-                    leaderboardBtn.click();
-                } else if (leaderboardModal) {
-                    // Если модальное окно есть, но кнопки нет, открываем напрямую
-                    leaderboardModal.classList.add('show');
-                }
+            if (typeof window.openLeaderboard === 'function') {
+                window.openLeaderboard('all');
             }
         });
-        console.log('Leaderboard button handler attached');
-    } else {
-        console.warn('Leaderboard button not found');
     }
 
     // Say GM - открываем модалку GM
