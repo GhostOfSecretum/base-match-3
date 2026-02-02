@@ -1948,7 +1948,9 @@ class LeaderboardManager {
         this.storageKey = 'match3Leaderboard';
         this.walletManager = walletManager;
         this.leaderboard = []; // Кеш для локального использования
-        this.apiUrl = '/api/leaderboard'; // API endpoint
+        // В мини-приложении (iframe) используем полный URL, иначе относительный может вести не туда
+        const origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : '';
+        this.apiUrl = origin ? (origin.replace(/\/$/, '') + '/api/leaderboard') : '/api/leaderboard';
         this.isLoading = false;
         this.lastFetchTime = 0;
         this.cacheTimeout = 5000; // Кеш на 5 секунд
@@ -2146,6 +2148,7 @@ class LeaderboardManager {
         this.lastError = null;
 
         try {
+            if (typeof debugLog === 'function') debugLog('fetchLeaderboard: ' + this.apiUrl + ' filter=' + filter);
             const response = await fetch(`${this.apiUrl}?filter=${filter}&limit=${limit}`);
             let data;
             try {
@@ -2153,10 +2156,10 @@ class LeaderboardManager {
             } catch (parseErr) {
                 this.lastError = 'storage_not_configured';
                 console.error('Leaderboard: invalid JSON (API not available?)', parseErr);
+                if (typeof debugLog === 'function') debugLog('fetchLeaderboard: parse JSON failed ' + (parseErr && parseErr.message ? parseErr.message : ''));
                 return this.leaderboard.length > 0 ? this.getTopResults(limit, filter) : [];
             }
 
-            // Проверяем специфичные ошибки от сервера
             if (!response.ok) {
                 if (response.status === 503 && data && data.setup_instructions) {
                     this.lastError = 'storage_not_configured';
@@ -2164,11 +2167,13 @@ class LeaderboardManager {
                 } else {
                     this.lastError = data && data.error ? data.error : `api_error_${response.status}`;
                 }
+                if (typeof debugLog === 'function') debugLog('fetchLeaderboard: !ok status=' + response.status + ' lastError=' + this.lastError);
                 return this.leaderboard.length > 0 ? this.getTopResults(limit, filter) : [];
             }
 
             if (data.success) {
                 const results = Array.isArray(data.results) ? data.results : [];
+                if (typeof debugLog === 'function') debugLog('fetchLeaderboard: success, results=' + results.length);
                 this.leaderboard = results;
                 this.lastFetchTime = now;
                 this.totalPlayers = data.totalPlayers != null ? data.totalPlayers : (new Set(results.map(r => (r.walletAddress || r.playerName || '').toLowerCase()).filter(Boolean))).size;
@@ -2185,6 +2190,7 @@ class LeaderboardManager {
         } catch (error) {
             console.error('Error fetching leaderboard:', error);
             this.lastError = error.message || 'network_error';
+            if (typeof debugLog === 'function') debugLog('fetchLeaderboard catch: ' + (error && error.message ? error.message : String(error)));
             return this.leaderboard.length > 0 ? this.getTopResults(limit, filter) : [];
         } finally {
             this.isLoading = false;
@@ -5076,11 +5082,13 @@ class MatchThreePro {
         const list = document.getElementById('leaderboardList');
         const totalPlayers = document.getElementById('totalPlayers');
         const totalGames = document.getElementById('totalGames');
-
-        // Показываем модалку сразу
+        if (typeof debugLog === 'function') debugLog('showLeaderboard: modal=' + !!modal + ' list=' + !!list);
+        if (!modal || !list) {
+            if (typeof debugLog === 'function') debugLog('showLeaderboard: missing modal or list');
+            return;
+        }
         modal.classList.add('show');
-
-        // Показываем индикатор загрузки
+        modal.style.zIndex = '99999';
         list.innerHTML = '<div class="leaderboard-empty">Loading leaderboard...</div>';
 
         // Обновляем активную вкладку
@@ -5089,8 +5097,9 @@ class MatchThreePro {
         });
 
         try {
-            // Получаем топ результаты с сервера
+            if (typeof debugLog === 'function') debugLog('showLeaderboard: fetching ' + this.leaderboard.apiUrl);
             const topResults = await this.leaderboard.fetchLeaderboard(filter, 20);
+            if (typeof debugLog === 'function') debugLog('showLeaderboard: got ' + (topResults && topResults.length) + ' results, lastError=' + this.leaderboard.getLastError());
             
             // Обновляем high score из загруженных результатов
             this.updateHighScoreFromLeaderboard();
@@ -5245,8 +5254,7 @@ class MatchThreePro {
             this.resolveLeaderboardNames();
         } catch (error) {
             console.error('Error loading leaderboard:', error);
-            
-            // Проверяем тип ошибки
+            if (typeof debugLog === 'function') debugLog('showLeaderboard error: ' + (error && error.message ? error.message : String(error)));
             const lastError = this.leaderboard.getLastError();
             if (lastError === 'storage_not_configured') {
                 list.innerHTML = `
@@ -5916,17 +5924,26 @@ function initStartMenu() {
         const list = document.getElementById('leaderboardList');
         const totalPlayersEl = document.getElementById('totalPlayers');
         const totalGamesEl = document.getElementById('totalGames');
-        if (!modal || !list) return;
+        if (typeof debugLog === 'function') debugLog('openLeaderboard: modal=' + !!modal + ' list=' + !!list);
+        if (!modal || !list) {
+            if (typeof debugLog === 'function') debugLog('openLeaderboard: missing modal or list, abort');
+            return;
+        }
+        const apiBase = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin.replace(/\/$/, '') : '';
+        const apiUrl = apiBase ? (apiBase + '/api/leaderboard') : '/api/leaderboard';
         modal.classList.add('show');
+        modal.style.zIndex = '99999';
         list.innerHTML = '<div class="leaderboard-empty">Loading leaderboard...</div>';
         document.querySelectorAll('.tab-btn').forEach(btn => {
             btn.classList.toggle('active', btn.dataset.tab === filter);
         });
         if (window.game && typeof window.game.showLeaderboard === 'function') {
+            if (typeof debugLog === 'function') debugLog('openLeaderboard: using game.showLeaderboard');
             window.game.showLeaderboard(filter);
             return;
         }
-        fetch('/api/leaderboard?filter=' + encodeURIComponent(filter) + '&limit=20')
+        if (typeof debugLog === 'function') debugLog('openLeaderboard: fallback fetch ' + apiUrl);
+        fetch(apiUrl + '?filter=' + encodeURIComponent(filter) + '&limit=20')
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 if (totalPlayersEl) totalPlayersEl.textContent = data.totalPlayers != null ? data.totalPlayers : 0;
@@ -5952,6 +5969,7 @@ function initStartMenu() {
             })
             .catch(function(err) {
                 console.error('Leaderboard fetch error:', err);
+                if (typeof debugLog === 'function') debugLog('openLeaderboard fetch error: ' + (err && err.message ? err.message : String(err)));
                 list.innerHTML = '<div class="leaderboard-empty">Cannot reach leaderboard. Check your connection or deploy the app with the API.</div>';
                 if (totalPlayersEl) totalPlayersEl.textContent = '0';
                 if (totalGamesEl) totalGamesEl.textContent = '0';
