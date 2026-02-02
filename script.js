@@ -5431,12 +5431,16 @@ class MatchThreePro {
                     const rDate = new Date(r.date).getTime();
                     return Math.abs(rDate - lastDate) < 60000;
                 });
-                if (!isLastInTop) {
-                    lastResultHtml = renderLeaderboardItem(lastResult, -1, {
-                        rankLabel: '—',
-                        datePrefix: 'Your last result',
-                        forceYouBadge: true
-                    });
+                const datePrefix = isLastInTop ? 'Your result (in top 20)' : 'Your last result';
+                lastResultHtml = renderLeaderboardItem(lastResult, -1, {
+                    rankLabel: '—',
+                    datePrefix: datePrefix,
+                    forceYouBadge: true
+                });
+                if (typeof debugLog === 'function') {
+                    const scores = topResults.map(r => (typeof r.score === 'number' ? r.score : Number(r.score))).filter(n => Number.isFinite(n));
+                    const minScore = scores.length ? Math.min(...scores) : null;
+                    debugLog(`showLeaderboard: lastScore=${Number.isFinite(lastScore) ? lastScore : 'n/a'} minTopScore=${minScore != null ? minScore : 'n/a'} inTop=${isLastInTop}`);
                 }
             }
 
