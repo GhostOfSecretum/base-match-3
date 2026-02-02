@@ -2716,7 +2716,7 @@ class MatchThreePro {
         this.numTypes = 6;
         this.board = [];
         this.selectedCell = null;
-        this.baseMoves = 15;
+        this.baseMoves = 20;
         this.score = 0;
         this.moves = this.baseMoves;
         this.combo = 1;
