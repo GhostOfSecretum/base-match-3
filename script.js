@@ -2243,16 +2243,36 @@ class LeaderboardManager {
     }
 
     // Добавить результат на сервер
-    async addResult(score, maxCombo, won) {
+    async addResult(score, maxCombo, won, walletAddressOverride = null) {
         console.log('=== addResult called ===');
         console.log('  score:', score, 'maxCombo:', maxCombo, 'won:', won);
+        if (typeof debugLog === 'function') debugLog(`addResult: score=${score} maxCombo=${maxCombo} won=${won}`);
         
-        const walletAddress = this.getPlayerIdentifier();
+        let walletAddress = null;
+        if (walletAddressOverride) {
+            try {
+                if (typeof walletAddressOverride.then === 'function') {
+                    walletAddressOverride = await walletAddressOverride;
+                }
+                if (typeof walletAddressOverride === 'string') {
+                    walletAddress = walletAddressOverride.toLowerCase();
+                    window.__userAddress = walletAddress;
+                }
+            } catch (e) {}
+        }
+        
+        if (!walletAddress) {
+            walletAddress = this.getPlayerIdentifier();
+        }
         console.log('  walletAddress:', walletAddress);
+        if (typeof debugLog === 'function') {
+            debugLog(`addResult: walletAddress=${walletAddress ? walletAddress.slice(0, 10) + '...' : 'null'}`);
+        }
 
         if (!walletAddress) {
             // Если кошелек не подключен, не сохраняем результат
             console.log('  ABORT: no wallet address');
+            if (typeof debugLog === 'function') debugLog('addResult: ABORT no wallet address');
             return null;
         }
         
@@ -2355,6 +2375,7 @@ class LeaderboardManager {
                 this.lastError = null;
                 console.log('=== RESULT SAVED SUCCESSFULLY ===');
                 console.log('Saved result ID:', data.result.id);
+                if (typeof debugLog === 'function') debugLog('addResult: ✅ saved to server');
                 return data.result;
             } else {
                 console.error('=== SAVE FAILED ===');
@@ -2365,6 +2386,7 @@ class LeaderboardManager {
             console.error('=== CATCH ERROR ===');
             console.error('Error:', error.message);
             console.error('Full error:', error);
+            if (typeof debugLog === 'function') debugLog(`addResult: ❌ error ${error?.message || error}`);
             // В случае ошибки создаем локальный результат (только для текущей сессии)
             const result = {
                 id: Date.now() + Math.random(),
@@ -2380,6 +2402,7 @@ class LeaderboardManager {
             };
             this.leaderboard.push(result);
             console.log('Created local result instead:', result);
+            if (typeof debugLog === 'function') debugLog('addResult: ⚠️ saved locally only');
             return result;
         }
     }
@@ -4897,6 +4920,14 @@ class MatchThreePro {
                     }
                 } catch (e) { console.log('SDK context error:', e); }
             }
+            if (!playerAddress && window.__userAddress && typeof window.__userAddress === 'string') {
+                playerAddress = window.__userAddress;
+                if (this.walletManager && !this.walletManager.isConnected()) {
+                    try {
+                        await this.walletManager.connectViaBaseAccount(playerAddress);
+                    } catch (e) {}
+                }
+            }
 
             if (!playerAddress) {
                 window.__gameEndDebug.step = 'no_address';
@@ -4910,7 +4941,7 @@ class MatchThreePro {
             window.__gameEndDebug.step = 'saving';
             let savedResult = null;
             try {
-                savedResult = await this.leaderboard.addResult(this.score, this.maxCombo, won);
+                savedResult = await this.leaderboard.addResult(this.score, this.maxCombo, won, playerAddress);
                 // Обновляем high score после сохранения результата
                 this.saveHighScore(this.score);
             } catch (saveError) {
