@@ -5162,9 +5162,9 @@ class MatchThreePro {
             }
             
             if (!currentPlayerName && this.walletManager) {
-                currentPlayerName = this.walletManager.getUsername();
-                if (currentPlayerName) {
-                    currentPlayerName = this.formatBasename(currentPlayerName);
+                const walletName = this.walletManager.getUsername();
+                if (typeof walletName === 'string' && walletName) {
+                    currentPlayerName = this.formatBasename(walletName);
                 }
             }
 
@@ -5212,6 +5212,10 @@ class MatchThreePro {
                     displayName = currentPlayerName;
                 }
                 
+                if (typeof displayName !== 'string') {
+                    displayName = '';
+                }
+                
                 // Никогда не показываем адреса - только имя или "Player"
                 if (!displayName || displayName.startsWith('0x') || displayName.includes('...')) {
                     displayName = 'Player';
@@ -5230,10 +5234,16 @@ class MatchThreePro {
                                 window.__farcasterContext?.user?.pfpUrl ||
                                 window.__userAvatar;
                 }
+                if (typeof avatarUrl !== 'string') {
+                    avatarUrl = null;
+                }
                 
                 // Проверяем кеш аватаров
                 if (!avatarUrl && resultAddress && this.leaderboard.avatarCache && this.leaderboard.avatarCache[resultAddress]) {
                     avatarUrl = this.leaderboard.avatarCache[resultAddress];
+                }
+                if (typeof avatarUrl !== 'string') {
+                    avatarUrl = null;
                 }
                 
                 // Нужно ли резолвить аватар? (для всех игроков без аватара, кроме текущего)
@@ -5982,6 +5992,7 @@ function initStartMenu() {
                     var dateStr = isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                     var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
                     var name = (typeof r.playerName === 'string' && !r.playerName.startsWith('0x')) ? r.playerName : 'Player';
+                    if (typeof name !== 'string') name = 'Player';
                     var scoreValue = 0;
                     if (typeof r.score === 'number') scoreValue = r.score;
                     else if (typeof r.score === 'string') { var ps = Number(r.score); if (isFinite(ps)) scoreValue = ps; }
