@@ -5098,6 +5098,18 @@ class MatchThreePro {
 
         try {
             if (typeof debugLog === 'function') debugLog('showLeaderboard: fetching ' + this.leaderboard.apiUrl);
+            /** @type {Array<{
+             *  walletAddress?: string,
+             *  playerName?: string,
+             *  avatar?: string,
+             *  avatarUrl?: string,
+             *  pfpUrl?: string,
+             *  pfp?: string,
+             *  score?: number|string,
+             *  maxCombo?: number|string,
+             *  date?: string|number,
+             *  won?: boolean
+             * }>} */
             const topResults = await this.leaderboard.fetchLeaderboard(filter, 20);
             if (typeof debugLog === 'function') debugLog('showLeaderboard: got ' + (topResults && topResults.length) + ' results, lastError=' + this.leaderboard.getLastError());
             
@@ -5228,32 +5240,40 @@ class MatchThreePro {
                 const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
                 
                 // Получаем аватар - либо из результата, либо текущего игрока
-                let avatarUrl = typeof result.avatar === 'string' ? result.avatar : null;
+                const rawAvatar =
+                    (typeof result.avatar === 'string' && result.avatar) ||
+                    (typeof result.avatarUrl === 'string' && result.avatarUrl) ||
+                    (typeof result.pfpUrl === 'string' && result.pfpUrl) ||
+                    (typeof result.pfp === 'string' && result.pfp) ||
+                    null;
+                let avatarUrl = this.normalizeAvatarUrl(rawAvatar);
                 if (isCurrentPlayer && !avatarUrl) {
-                    avatarUrl = this.walletManager?.avatar || 
-                                window.__farcasterContext?.user?.pfpUrl ||
-                                window.__userAvatar;
-                }
-                if (typeof avatarUrl !== 'string') {
-                    avatarUrl = null;
+                    const currentAvatarCandidates = [
+                        this.walletManager?.avatar,
+                        window.__farcasterContext?.user?.pfpUrl,
+                        window.__userAvatar
+                    ];
+                    for (const candidate of currentAvatarCandidates) {
+                        avatarUrl = this.normalizeAvatarUrl(candidate);
+                        if (avatarUrl) break;
+                    }
                 }
                 
                 // Проверяем кеш аватаров
                 if (!avatarUrl && resultAddress && this.leaderboard.avatarCache && this.leaderboard.avatarCache[resultAddress]) {
-                    avatarUrl = this.leaderboard.avatarCache[resultAddress];
-                }
-                if (typeof avatarUrl !== 'string') {
-                    avatarUrl = null;
+                    const cachedAvatar = this.normalizeAvatarUrl(this.leaderboard.avatarCache[resultAddress]);
+                    if (cachedAvatar) {
+                        avatarUrl = cachedAvatar;
+                    } else {
+                        delete this.leaderboard.avatarCache[resultAddress];
+                    }
                 }
                 
                 // Нужно ли резолвить аватар? (для всех игроков без аватара, кроме текущего)
                 const needsResolveAvatar = !avatarUrl && resultAddress && !isCurrentPlayer;
                 
                 // Генерируем HTML для аватара
-                const avatarHtml = avatarUrl 
-                    ? `<img src="${this.escapeHtml(avatarUrl)}" alt="" class="player-avatar" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                       <div class="player-avatar-placeholder" style="display:none;">👤</div>`
-                    : `<div class="player-avatar-placeholder">👤</div>`;
+                const avatarHtml = this.buildLeaderboardAvatarHtml(avatarUrl, displayName);
 
                 return `
                     <div class="leaderboard-item ${isCurrentPlayer ? 'current-player' : ''}" ${needsResolve ? `data-resolve-address="${resultAddress}"` : ''} ${needsResolveAvatar ? `data-resolve-avatar="${resultAddress}"` : ''}>
@@ -5305,6 +5325,100 @@ class MatchThreePro {
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    normalizeAvatarUrl(raw) {
+        if (typeof raw !== 'string') return null;
+        const trimmed = raw.trim();
+        if (!trimmed) return null;
+        const lowered = trimmed.toLowerCase();
+        if (lowered === 'null' || lowered === 'undefined') return null;
+        if (trimmed.startsWith('ipfs://')) {
+            const ipfsPath = trimmed.slice('ipfs://'.length).replace(/^\/+/, '');
+            return ipfsPath ? `https://ipfs.io/ipfs/${ipfsPath}` : null;
+        }
+        try {
+            const base = (typeof window !== 'undefined' && window.location && window.location.origin)
+                ? window.location.origin
+                : 'https://example.com';
+            const url = new URL(trimmed, base);
+            const protocol = url.protocol.toLowerCase();
+            if (protocol === 'http:' || protocol === 'https:' || protocol === 'data:' || protocol === 'blob:') {
+                return url.href;
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    getAvatarAltText(displayName) {
+        const name = (typeof displayName === 'string' ? displayName.trim() : '') || 'Player';
+        return `${name} avatar`;
+    }
+
+    buildLeaderboardAvatarHtml(avatarUrl, displayName) {
+        const safeUrl = this.normalizeAvatarUrl(avatarUrl);
+        const placeholderHtml = '<div class="player-avatar-placeholder" aria-hidden="true">👤</div>';
+        if (!safeUrl) {
+            return placeholderHtml;
+        }
+        const altText = this.escapeHtml(this.getAvatarAltText(displayName));
+        return `
+            <img src="${this.escapeHtml(safeUrl)}"
+                 alt="${altText}"
+                 class="player-avatar"
+                 loading="lazy"
+                 decoding="async"
+                 width="36"
+                 height="36"
+                 referrerpolicy="no-referrer"
+                 style="display:none;"
+                 onload="this.style.display='block'; if (this.nextElementSibling) this.nextElementSibling.style.display='none';"
+                 onerror="this.style.display='none'; if (this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+            ${placeholderHtml}
+        `;
+    }
+
+    applyLeaderboardAvatar(container, avatarUrl, displayName) {
+        if (!container) return false;
+        const safeUrl = this.normalizeAvatarUrl(avatarUrl);
+        let placeholder = container.querySelector('.player-avatar-placeholder');
+        if (!placeholder) {
+            placeholder = document.createElement('div');
+            placeholder.className = 'player-avatar-placeholder';
+            placeholder.textContent = '👤';
+            placeholder.setAttribute('aria-hidden', 'true');
+            container.appendChild(placeholder);
+        }
+        const altText = this.getAvatarAltText(displayName);
+        let img = container.querySelector('img.player-avatar');
+        if (!safeUrl) {
+            if (img) img.style.display = 'none';
+            placeholder.style.display = 'flex';
+            return false;
+        }
+        if (!img) {
+            img = document.createElement('img');
+            img.className = 'player-avatar';
+            img.loading = 'lazy';
+            img.decoding = 'async';
+            img.width = 36;
+            img.height = 36;
+            img.referrerPolicy = 'no-referrer';
+            img.style.display = 'none';
+            container.insertBefore(img, placeholder);
+        }
+        img.alt = altText;
+        img.onerror = function() {
+            this.style.display = 'none';
+            if (placeholder) placeholder.style.display = 'flex';
+        };
+        img.onload = function() {
+            this.style.display = 'block';
+            if (placeholder) placeholder.style.display = 'none';
+        };
+        placeholder.style.display = 'flex';
+        img.src = safeUrl;
+        return true;
     }
     
     // Резолвинг имён для записей лидерборда с "Player"
@@ -5369,37 +5483,14 @@ class MatchThreePro {
                     // Обновляем DOM - находим элемент аватара
                     const avatarContainer = item.querySelector('.leaderboard-avatar');
                     if (avatarContainer) {
-                        // Удаляем placeholder если есть
-                        const placeholder = avatarContainer.querySelector('.player-avatar-placeholder');
-                        const existingImg = avatarContainer.querySelector('.player-avatar');
-                        
-                        if (placeholder && !existingImg) {
-                            // Создаем новый img элемент
-                            const img = document.createElement('img');
-                            img.src = avatar;
-                            img.alt = '';
-                            img.className = 'player-avatar';
-                            img.onerror = function() {
-                                this.style.display = 'none';
-                                if (placeholder) placeholder.style.display = 'flex';
-                            };
-                            img.onload = function() {
-                                if (placeholder) placeholder.style.display = 'none';
-                            };
-                            
-                            placeholder.style.display = 'none';
-                            avatarContainer.insertBefore(img, placeholder);
+                        const nameSpan = item.querySelector('.player-name');
+                        const displayName = nameSpan ? nameSpan.textContent : 'Player';
+                        const applied = this.applyLeaderboardAvatar(avatarContainer, avatar, displayName);
+                        if (applied) {
+                            // Убираем атрибут чтобы не резолвить повторно
+                            item.removeAttribute('data-resolve-avatar');
                             if (typeof debugLog === 'function') debugLog(`  ✅ Avatar updated`);
-                        } else if (existingImg) {
-                            // Обновляем существующий img
-                            existingImg.src = avatar;
-                            existingImg.style.display = 'block';
-                            if (placeholder) placeholder.style.display = 'none';
-                            if (typeof debugLog === 'function') debugLog(`  ✅ Avatar updated (existing img)`);
                         }
-                        
-                        // Убираем атрибут чтобы не резолвить повторно
-                        item.removeAttribute('data-resolve-avatar');
                     }
                 }
             } catch (e) {
