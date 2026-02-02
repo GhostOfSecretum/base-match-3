@@ -12,7 +12,7 @@ import { Redis } from '@upstash/redis';
 
 const LEADERBOARD_KEY = 'leaderboard:results';
 const MAX_RESULTS = 1000;
-const API_VERSION = '1.0.87';
+const API_VERSION = '1.0.88';
 
 function formatAddress(address) {
   if (!address) return 'Guest';
