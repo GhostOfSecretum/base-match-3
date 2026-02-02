@@ -2147,17 +2147,24 @@ class LeaderboardManager {
 
         try {
             const response = await fetch(`${this.apiUrl}?filter=${filter}&limit=${limit}`);
-            const data = await response.json();
-            
+            let data;
+            try {
+                data = await response.json();
+            } catch (parseErr) {
+                this.lastError = 'storage_not_configured';
+                console.error('Leaderboard: invalid JSON (API not available?)', parseErr);
+                return this.leaderboard.length > 0 ? this.getTopResults(limit, filter) : [];
+            }
+
             // Проверяем специфичные ошибки от сервера
             if (!response.ok) {
-                if (response.status === 503 && data.setup_instructions) {
-                    // KV не настроен
+                if (response.status === 503 && data && data.setup_instructions) {
                     this.lastError = 'storage_not_configured';
                     console.error('Leaderboard storage not configured. Please set up Vercel KV.');
-                    console.error('Instructions:', data.setup_instructions);
+                } else {
+                    this.lastError = data && data.error ? data.error : `api_error_${response.status}`;
                 }
-                throw new Error(data.error || `HTTP error! status: ${response.status}`);
+                return this.leaderboard.length > 0 ? this.getTopResults(limit, filter) : [];
             }
 
             if (data.success && data.results) {
@@ -2166,17 +2173,17 @@ class LeaderboardManager {
                 this.totalPlayers = data.totalPlayers || 0;
                 this.totalGames = data.totalGames || 0;
                 this.lastError = null;
-                // Обновляем high score из leaderboard
                 if (window.game && typeof window.game.updateHighScoreFromLeaderboard === 'function') {
                     window.game.updateHighScoreFromLeaderboard();
                 }
                 return data.results;
-            } else {
-                throw new Error(data.error || 'Invalid response format');
             }
+
+            this.lastError = (data && data.error) || 'Invalid response format';
+            return this.leaderboard.length > 0 ? this.getTopResults(limit, filter) : [];
         } catch (error) {
             console.error('Error fetching leaderboard:', error);
-            // В случае ошибки возвращаем кешированные данные или пустой массив
+            this.lastError = error.message || 'network_error';
             return this.leaderboard.length > 0 ? this.getTopResults(limit, filter) : [];
         } finally {
             this.isLoading = false;
@@ -5087,7 +5094,7 @@ class MatchThreePro {
             // Обновляем high score из загруженных результатов
             this.updateHighScoreFromLeaderboard();
             
-            // Проверяем ошибку конфигурации
+            // Проверяем ошибку конфигурации или любую ошибку загрузки
             const lastError = this.leaderboard.getLastError();
             if (lastError === 'storage_not_configured') {
                 list.innerHTML = `
@@ -5105,10 +5112,20 @@ class MatchThreePro {
                 totalGames.textContent = '0';
                 return;
             }
+            if (topResults.length === 0 && lastError) {
+                const isNetwork = lastError === 'network_error' || lastError.includes('Failed to fetch');
+                const msg = isNetwork
+                    ? 'Cannot reach leaderboard. Check your connection or run the app with the API (e.g. deploy to Vercel).'
+                    : 'Error loading leaderboard. Please try again later.';
+                list.innerHTML = `<div class="leaderboard-empty">${msg}</div>`;
+                totalPlayers.textContent = '0';
+                totalGames.textContent = '0';
+                return;
+            }
 
             // Отображаем статистику
             totalPlayers.textContent = this.leaderboard.getTotalPlayers();
-            totalGames.textContent = this.leaderboard.totalGames || this.leaderboard.leaderboard.length;
+            totalGames.textContent = (this.leaderboard.totalGames != null ? this.leaderboard.totalGames : this.leaderboard.leaderboard.length) || '0';
 
             // Отображаем лидерборд
             if (topResults.length === 0) {
@@ -5139,13 +5156,15 @@ class MatchThreePro {
             }
 
             list.innerHTML = topResults.map((result, index) => {
-                const date = new Date(result.date);
-                const dateStr = date.toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
+                const date = new Date(result.date != null ? result.date : Date.now());
+                const dateStr = Number.isNaN(date.getTime())
+                    ? '—'
+                    : date.toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
 
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
 
@@ -5214,8 +5233,8 @@ class MatchThreePro {
                             <div class="player-date">${dateStr}</div>
                         </div>
                         <div class="leaderboard-score">
-                            <div class="score-value">${result.score.toLocaleString()}</div>
-                            <div class="combo-value">Combo: ${result.maxCombo}x</div>
+                            <div class="score-value">${(result.score != null ? result.score : 0).toLocaleString()}</div>
+                            <div class="combo-value">Combo: ${(result.maxCombo != null ? result.maxCombo : 1)}x</div>
                         </div>
                     </div>
                 `;
