@@ -5971,7 +5971,11 @@ function initStartMenu() {
         const ged = window.__gameEndDebug || {};
         const info = `Game end: step=${ged.step || '-'} won=${ged.won ?? '-'} score=${ged.score ?? '-'} maxCombo=${ged.maxCombo ?? '-'} error=${ged.error || 'none'}`;
         if (debugGameEndInfo) debugGameEndInfo.textContent = info;
-        if (debugModal) debugModal.classList.add('show');
+        if (debugModal) {
+            // Ensure debug modal appears above leaderboard modal
+            debugModal.style.zIndex = '100000';
+            debugModal.classList.add('show');
+        }
     }
     
     // Make openDebugModal globally accessible
