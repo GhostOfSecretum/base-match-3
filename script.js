@@ -5144,8 +5144,11 @@ class MatchThreePro {
             }
 
             // Используем адрес кошелька текущего игрока для проверки
-            const currentAddress = this.walletManager.isConnected()
-                ? this.walletManager.getAccount().toLowerCase()
+            const rawCurrentAddress = this.walletManager.isConnected()
+                ? this.walletManager.getAccount()
+                : null;
+            const currentAddress = typeof rawCurrentAddress === 'string'
+                ? rawCurrentAddress.toLowerCase()
                 : null;
 
             // Получаем имя текущего игрока из разных источников
@@ -5154,7 +5157,7 @@ class MatchThreePro {
                 currentPlayerName = localStorage.getItem('playerDisplayName');
             } catch (e) {}
             
-            if (!currentPlayerName && window.__userName) {
+            if (!currentPlayerName && typeof window.__userName === 'string') {
                 currentPlayerName = this.formatBasename(window.__userName);
             }
             
@@ -5166,7 +5169,10 @@ class MatchThreePro {
             }
 
             list.innerHTML = topResults.map((result, index) => {
-                const date = new Date(result.date != null ? result.date : Date.now());
+                const rawDate = (typeof result.date === 'string' || typeof result.date === 'number')
+                    ? result.date
+                    : Date.now();
+                const date = new Date(rawDate);
                 const dateStr = Number.isNaN(date.getTime())
                     ? '—'
                     : date.toLocaleDateString('en-US', {
@@ -5178,10 +5184,23 @@ class MatchThreePro {
 
                 const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
 
-                const resultAddress = (result.walletAddress || '').toLowerCase();
+                const walletAddress = typeof result.walletAddress === 'string' ? result.walletAddress : '';
+                const resultAddress = walletAddress ? walletAddress.toLowerCase() : '';
+                let scoreValue = 0;
+                if (typeof result.score === 'number') scoreValue = result.score;
+                else if (typeof result.score === 'string') {
+                    const parsed = Number(result.score);
+                    if (Number.isFinite(parsed)) scoreValue = parsed;
+                }
+                let maxComboValue = 1;
+                if (typeof result.maxCombo === 'number') maxComboValue = result.maxCombo;
+                else if (typeof result.maxCombo === 'string') {
+                    const parsedCombo = parseInt(result.maxCombo, 10);
+                    if (!Number.isNaN(parsedCombo)) maxComboValue = parsedCombo;
+                }
                 
                 // Получаем имя для отображения
-                let displayName = result.playerName;
+                let displayName = typeof result.playerName === 'string' ? result.playerName : '';
                 
                 // Проверяем кеш резолвленных имён
                 if (resultAddress && this.leaderboard.nameCache && this.leaderboard.nameCache[resultAddress]) {
@@ -5205,7 +5224,7 @@ class MatchThreePro {
                 const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
                 
                 // Получаем аватар - либо из результата, либо текущего игрока
-                let avatarUrl = result.avatar;
+                let avatarUrl = typeof result.avatar === 'string' ? result.avatar : null;
                 if (isCurrentPlayer && !avatarUrl) {
                     avatarUrl = this.walletManager?.avatar || 
                                 window.__farcasterContext?.user?.pfpUrl ||
@@ -5238,13 +5257,13 @@ class MatchThreePro {
                             <div class="player-name-row">
                                 <span class="player-name">${this.escapeHtml(displayName)}</span>
                                 ${isCurrentPlayer ? '<span class="you-badge">You</span>' : ''}
-                                ${result.won ? '<span class="win-badge">✓</span>' : ''}
+                                ${result.won === true ? '<span class="win-badge">✓</span>' : ''}
                             </div>
                             <div class="player-date">${dateStr}</div>
                         </div>
                         <div class="leaderboard-score">
-                            <div class="score-value">${(result.score != null ? result.score : 0).toLocaleString()}</div>
-                            <div class="combo-value">Combo: ${(result.maxCombo != null ? result.maxCombo : 1)}x</div>
+                            <div class="score-value">${scoreValue.toLocaleString()}</div>
+                            <div class="combo-value">Combo: ${maxComboValue}x</div>
                         </div>
                     </div>
                 `;
@@ -5958,13 +5977,18 @@ function initStartMenu() {
                 }
                 function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
                 list.innerHTML = data.results.map(function(r, i) {
-                    var d = r.date != null ? new Date(r.date) : new Date();
+                    var rawDate = (typeof r.date === 'string' || typeof r.date === 'number') ? r.date : Date.now();
+                    var d = new Date(rawDate);
                     var dateStr = isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
                     var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
-                    var name = (r.playerName && !String(r.playerName).startsWith('0x')) ? r.playerName : 'Player';
-                    var score = (r.score != null ? r.score : 0).toLocaleString();
-                    var combo = (r.maxCombo != null ? r.maxCombo : 1);
-                    return '<div class="leaderboard-item"><div class="leaderboard-rank">' + (medal || '<span class="rank-number">' + (i + 1) + '</span>') + '</div><div class="leaderboard-avatar"><div class="player-avatar-placeholder">👤</div></div><div class="leaderboard-player"><div class="player-name-row"><span class="player-name">' + esc(name) + '</span>' + (r.won ? '<span class="win-badge">✓</span>' : '') + '</div><div class="player-date">' + dateStr + '</div></div><div class="leaderboard-score"><div class="score-value">' + score + '</div><div class="combo-value">Combo: ' + combo + 'x</div></div></div>';
+                    var name = (typeof r.playerName === 'string' && !r.playerName.startsWith('0x')) ? r.playerName : 'Player';
+                    var scoreValue = 0;
+                    if (typeof r.score === 'number') scoreValue = r.score;
+                    else if (typeof r.score === 'string') { var ps = Number(r.score); if (isFinite(ps)) scoreValue = ps; }
+                    var comboValue = 1;
+                    if (typeof r.maxCombo === 'number') comboValue = r.maxCombo;
+                    else if (typeof r.maxCombo === 'string') { var pc = parseInt(r.maxCombo, 10); if (!isNaN(pc)) comboValue = pc; }
+                    return '<div class="leaderboard-item"><div class="leaderboard-rank">' + (medal || '<span class="rank-number">' + (i + 1) + '</span>') + '</div><div class="leaderboard-avatar"><div class="player-avatar-placeholder">👤</div></div><div class="leaderboard-player"><div class="player-name-row"><span class="player-name">' + esc(name) + '</span>' + (r.won === true ? '<span class="win-badge">✓</span>' : '') + '</div><div class="player-date">' + dateStr + '</div></div><div class="leaderboard-score"><div class="score-value">' + scoreValue.toLocaleString() + '</div><div class="combo-value">Combo: ' + comboValue + 'x</div></div></div>';
                 }).join('');
             })
             .catch(function(err) {
