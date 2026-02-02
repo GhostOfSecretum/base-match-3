@@ -1401,9 +1401,12 @@ class WalletManager {
             
             // Сохраняем аватар
             if (this.avatar) {
+                this.baseAppAvatar = this.avatar;
                 window.__userAvatar = this.avatar;
+                window.__baseAppAvatar = this.avatar;
                 try {
                     localStorage.setItem('playerAvatar', this.avatar);
+                    localStorage.setItem('playerBaseAppAvatar', this.avatar);
                 } catch (e) {}
             }
 
@@ -1467,9 +1470,12 @@ class WalletManager {
                         } catch (e) {}
                     }
                     if (this.avatar) {
+                        this.baseAppAvatar = this.avatar;
                         window.__userAvatar = this.avatar;
+                        window.__baseAppAvatar = this.avatar;
                         try {
                             localStorage.setItem('playerAvatar', this.avatar);
+                            localStorage.setItem('playerBaseAppAvatar', this.avatar);
                         } catch (e) {}
                     }
                     
@@ -1557,9 +1563,12 @@ class WalletManager {
                     localStorage.setItem('playerDisplayName', displayName);
                 } catch (e) {}
                 if (this.avatar) {
+                    this.baseAppAvatar = this.avatar;
                     window.__userAvatar = this.avatar;
+                    window.__baseAppAvatar = this.avatar;
                     try {
                         localStorage.setItem('playerAvatar', this.avatar);
+                        localStorage.setItem('playerBaseAppAvatar', this.avatar);
                     } catch (e) {}
                 }
                 
@@ -1619,9 +1628,12 @@ class WalletManager {
                         localStorage.setItem('playerDisplayName', displayName);
                     } catch (e) {}
                     if (this.avatar) {
+                        this.baseAppAvatar = this.avatar;
                         window.__userAvatar = this.avatar;
+                        window.__baseAppAvatar = this.avatar;
                         try {
                             localStorage.setItem('playerAvatar', this.avatar);
+                            localStorage.setItem('playerBaseAppAvatar', this.avatar);
                         } catch (e) {}
                     }
                     
@@ -2202,6 +2214,34 @@ class LeaderboardManager {
         return this.lastError;
     }
 
+    sanitizeAvatarCandidate(value) {
+        if (typeof value !== 'string') return null;
+        const trimmed = value.trim();
+        if (!trimmed) return null;
+        const lowered = trimmed.toLowerCase();
+        if (lowered === 'null' || lowered === 'undefined') return null;
+        return trimmed;
+    }
+
+    getBaseAppAvatar() {
+        const candidates = [];
+        if (typeof window !== 'undefined' && window.__baseAppAvatar) {
+            candidates.push(window.__baseAppAvatar);
+        }
+        if (this.walletManager && this.walletManager.baseAppAvatar) {
+            candidates.push(this.walletManager.baseAppAvatar);
+        }
+        try {
+            const stored = localStorage.getItem('playerBaseAppAvatar');
+            if (stored) candidates.push(stored);
+        } catch (e) {}
+        for (const candidate of candidates) {
+            const cleaned = this.sanitizeAvatarCandidate(candidate);
+            if (cleaned) return cleaned;
+        }
+        return null;
+    }
+
     // Добавить результат на сервер
     async addResult(score, maxCombo, won) {
         console.log('=== addResult called ===');
@@ -2251,22 +2291,24 @@ class LeaderboardManager {
         const displayName = playerName || 'Player';
         
         // Получаем аватар из разных источников
-        let avatar = null;
+        let avatar = this.getBaseAppAvatar();
         
         // 1. Из WalletManager
-        if (this.walletManager && this.walletManager.avatar) {
-            avatar = this.walletManager.avatar;
+        if (!avatar && this.walletManager) {
+            const sdkAvatar = this.walletManager.getAvatar ? this.walletManager.getAvatar() : this.walletManager.avatar;
+            avatar = this.sanitizeAvatarCandidate(sdkAvatar);
         }
         
         // 2. Из Farcaster контекста
         if (!avatar && window.__farcasterContext?.user) {
-            avatar = window.__farcasterContext.user.pfpUrl || 
-                     window.__farcasterContext.user.avatarUrl;
+            avatar = this.sanitizeAvatarCandidate(
+                window.__farcasterContext.user.pfpUrl || window.__farcasterContext.user.avatarUrl
+            );
         }
         
         // 3. Из window.__userAvatar
         if (!avatar && window.__userAvatar) {
-            avatar = window.__userAvatar;
+            avatar = this.sanitizeAvatarCandidate(window.__userAvatar);
         }
         
         const requestBody = {
@@ -3172,6 +3214,8 @@ class MatchThreePro {
                     let sources = window.__avatarSources || [];
                     
                     // Добавляем другие источники если есть
+                    const baseAppAvatar = this.getBaseAppAvatar();
+                    if (baseAppAvatar && !sources.includes(baseAppAvatar)) sources.unshift(baseAppAvatar);
                     const sdkAvatar = this.walletManager.getAvatar();
                     if (sdkAvatar && !sources.includes(sdkAvatar)) sources.unshift(sdkAvatar);
                     if (window.__userAvatar && !sources.includes(window.__userAvatar)) sources.push(window.__userAvatar);
@@ -5249,6 +5293,7 @@ class MatchThreePro {
                 let avatarUrl = this.normalizeAvatarUrl(rawAvatar);
                 if (isCurrentPlayer && !avatarUrl) {
                     const currentAvatarCandidates = [
+                        this.getBaseAppAvatar(),
                         this.walletManager?.avatar,
                         window.__farcasterContext?.user?.pfpUrl,
                         window.__userAvatar
@@ -5353,6 +5398,22 @@ class MatchThreePro {
     getAvatarAltText(displayName) {
         const name = (typeof displayName === 'string' ? displayName.trim() : '') || 'Player';
         return `${name} avatar`;
+    }
+
+    getBaseAppAvatar() {
+        const candidates = [];
+        if (typeof window !== 'undefined' && window.__baseAppAvatar) {
+            candidates.push(window.__baseAppAvatar);
+        }
+        try {
+            const stored = localStorage.getItem('playerBaseAppAvatar');
+            if (stored) candidates.push(stored);
+        } catch (e) {}
+        for (const candidate of candidates) {
+            const normalized = this.normalizeAvatarUrl(candidate);
+            if (normalized) return normalized;
+        }
+        return null;
     }
 
     buildLeaderboardAvatarHtml(avatarUrl, displayName) {

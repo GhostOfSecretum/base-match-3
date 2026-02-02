@@ -394,6 +394,9 @@
             if (avatarEl) {
                 // Собираем все возможные источники аватара
                 let sources = avatarSources || [];
+                if (window.__baseAppAvatar && !sources.includes(window.__baseAppAvatar)) {
+                    sources.unshift(window.__baseAppAvatar);
+                }
                 if (avatar && !sources.includes(avatar)) sources.unshift(avatar);
                 if (window.__userAvatar && !sources.includes(window.__userAvatar)) sources.push(window.__userAvatar);
                 
@@ -793,8 +796,10 @@
                         if (userAvatar) {
                             debugLog(`  ✅ Got avatar from context: ${userAvatar.slice(0, 50)}...`);
                             window.__userAvatar = userAvatar;
+                            window.__baseAppAvatar = userAvatar;
                             try {
                                 localStorage.setItem('playerAvatar', userAvatar);
+                                localStorage.setItem('playerBaseAppAvatar', userAvatar);
                             } catch (e) {}
                             
                             // Обновляем отображение
