@@ -2242,6 +2242,30 @@ class LeaderboardManager {
         return null;
     }
 
+    saveLastResult(result) {
+        if (!result || typeof result !== 'object') return;
+        try {
+            localStorage.setItem('lastLeaderboardResult', JSON.stringify(result));
+        } catch (e) {}
+        try {
+            window.__lastLeaderboardResult = result;
+        } catch (e) {}
+    }
+
+    getLastResult() {
+        if (window.__lastLeaderboardResult && typeof window.__lastLeaderboardResult === 'object') {
+            return window.__lastLeaderboardResult;
+        }
+        try {
+            const raw = localStorage.getItem('lastLeaderboardResult');
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === 'object') return parsed;
+            }
+        } catch (e) {}
+        return null;
+    }
+
     // Добавить результат на сервер
     async addResult(score, maxCombo, won, walletAddressOverride = null) {
         console.log('=== addResult called ===');
@@ -2376,6 +2400,7 @@ class LeaderboardManager {
                 console.log('=== RESULT SAVED SUCCESSFULLY ===');
                 console.log('Saved result ID:', data.result.id);
                 if (typeof debugLog === 'function') debugLog('addResult: ✅ saved to server');
+                this.saveLastResult(data.result);
                 return data.result;
             } else {
                 console.error('=== SAVE FAILED ===');
@@ -2403,6 +2428,7 @@ class LeaderboardManager {
             this.leaderboard.push(result);
             console.log('Created local result instead:', result);
             if (typeof debugLog === 'function') debugLog('addResult: ⚠️ saved locally only');
+            this.saveLastResult(result);
             return result;
         }
     }
@@ -5234,9 +5260,12 @@ class MatchThreePro {
             const rawCurrentAddress = this.walletManager.isConnected()
                 ? this.walletManager.getAccount()
                 : null;
+            const fallbackAddress = (window.__userAddress && typeof window.__userAddress === 'string')
+                ? window.__userAddress.toLowerCase()
+                : null;
             const currentAddress = typeof rawCurrentAddress === 'string'
                 ? rawCurrentAddress.toLowerCase()
-                : null;
+                : fallbackAddress;
 
             // Получаем имя текущего игрока из разных источников
             let currentPlayerName = null;
@@ -5255,7 +5284,11 @@ class MatchThreePro {
                 }
             }
 
-            list.innerHTML = topResults.map((result, index) => {
+            const renderLeaderboardItem = (result, index, options = {}) => {
+                const rankLabel = typeof options.rankLabel === 'string' ? options.rankLabel : null;
+                const datePrefix = typeof options.datePrefix === 'string' ? options.datePrefix : '';
+                const forceYouBadge = options.forceYouBadge === true;
+
                 const rawDate = (typeof result.date === 'string' || typeof result.date === 'number')
                     ? result.date
                     : Date.now();
@@ -5268,8 +5301,12 @@ class MatchThreePro {
                         hour: '2-digit',
                         minute: '2-digit'
                     });
+                const finalDateStr = datePrefix ? `${datePrefix} • ${dateStr}` : dateStr;
 
-                const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '';
+                const medal = rankLabel ? '' : (index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '');
+                const rankHtml = rankLabel
+                    ? `<span class="rank-number">${this.escapeHtml(rankLabel)}</span>`
+                    : (medal || `<span class="rank-number">${index + 1}</span>`);
 
                 const walletAddress = typeof result.walletAddress === 'string' ? result.walletAddress : '';
                 const resultAddress = walletAddress ? walletAddress.toLowerCase() : '';
@@ -5312,7 +5349,7 @@ class MatchThreePro {
                 const needsResolve = displayName === 'Player' && resultAddress;
                 
                 // Проверяем, является ли это текущий игрок по адресу кошелька
-                const isCurrentPlayer = currentAddress && resultAddress === currentAddress;
+                const isCurrentPlayer = forceYouBadge || (currentAddress && resultAddress === currentAddress);
                 
                 // Получаем аватар - либо из результата, либо текущего игрока
                 const rawAvatar =
@@ -5354,7 +5391,7 @@ class MatchThreePro {
                 return `
                     <div class="leaderboard-item ${isCurrentPlayer ? 'current-player' : ''}" ${needsResolve ? `data-resolve-address="${resultAddress}"` : ''} ${needsResolveAvatar ? `data-resolve-avatar="${resultAddress}"` : ''}>
                         <div class="leaderboard-rank">
-                            ${medal || `<span class="rank-number">${index + 1}</span>`}
+                            ${rankHtml}
                         </div>
                         <div class="leaderboard-avatar">
                             ${avatarHtml}
@@ -5365,7 +5402,7 @@ class MatchThreePro {
                                 ${isCurrentPlayer ? '<span class="you-badge">You</span>' : ''}
                                 ${result.won === true ? '<span class="win-badge">✓</span>' : ''}
                             </div>
-                            <div class="player-date">${dateStr}</div>
+                            <div class="player-date">${finalDateStr}</div>
                         </div>
                         <div class="leaderboard-score">
                             <div class="score-value">${scoreValue.toLocaleString()}</div>
@@ -5373,7 +5410,37 @@ class MatchThreePro {
                         </div>
                     </div>
                 `;
-            }).join('');
+            };
+
+            const topResultsHtml = topResults.map((result, index) => renderLeaderboardItem(result, index)).join('');
+            let lastResultHtml = '';
+            const lastResult = this.leaderboard.getLastResult ? this.leaderboard.getLastResult() : null;
+            const lastResultAddress = (lastResult && typeof lastResult.walletAddress === 'string')
+                ? lastResult.walletAddress.toLowerCase()
+                : null;
+            if (lastResult && currentAddress && lastResultAddress === currentAddress) {
+                const lastScore = typeof lastResult.score === 'number' ? lastResult.score : Number(lastResult.score);
+                const lastDate = lastResult.date ? new Date(lastResult.date).getTime() : null;
+                const isLastInTop = topResults.some(r => {
+                    const addr = (r.walletAddress || '').toLowerCase();
+                    if (!addr || addr !== lastResultAddress) return false;
+                    const rScore = typeof r.score === 'number' ? r.score : Number(r.score);
+                    if (!Number.isFinite(rScore) || !Number.isFinite(lastScore)) return false;
+                    if (rScore !== lastScore) return false;
+                    if (!lastDate || !r.date) return true;
+                    const rDate = new Date(r.date).getTime();
+                    return Math.abs(rDate - lastDate) < 60000;
+                });
+                if (!isLastInTop) {
+                    lastResultHtml = renderLeaderboardItem(lastResult, -1, {
+                        rankLabel: '—',
+                        datePrefix: 'Your last result',
+                        forceYouBadge: true
+                    });
+                }
+            }
+
+            list.innerHTML = lastResultHtml + topResultsHtml;
             
             // После рендеринга запускаем резолвинг имён для записей с "Player"
             this.resolveLeaderboardNames();
