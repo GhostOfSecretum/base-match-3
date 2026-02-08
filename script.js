@@ -5289,6 +5289,28 @@ class MatchThreePro {
                 }
             }
 
+            // Собираем аватар текущего игрока заранее (для надежного fallback)
+            let currentPlayerAvatar = this.getBaseAppAvatar();
+            if (!currentPlayerAvatar) {
+                const avatarCandidates = [
+                    this.walletManager?.avatar,
+                    window.__farcasterContext?.user?.pfpUrl,
+                    window.__farcasterContext?.user?.avatarUrl,
+                    window.__userAvatar
+                ];
+                try {
+                    const savedAvatar = localStorage.getItem('playerAvatar');
+                    if (savedAvatar) avatarCandidates.push(savedAvatar);
+                } catch (e) {}
+                for (const candidate of avatarCandidates) {
+                    const normalized = this.normalizeAvatarUrl(candidate);
+                    if (normalized) {
+                        currentPlayerAvatar = normalized;
+                        break;
+                    }
+                }
+            }
+
             const renderLeaderboardItem = (result, index, options = {}) => {
                 const rankLabel = typeof options.rankLabel === 'string' ? options.rankLabel : null;
                 const datePrefix = typeof options.datePrefix === 'string' ? options.datePrefix : '';
@@ -5364,17 +5386,8 @@ class MatchThreePro {
                     (typeof result.pfp === 'string' && result.pfp) ||
                     null;
                 let avatarUrl = this.normalizeAvatarUrl(rawAvatar);
-                if (isCurrentPlayer && !avatarUrl) {
-                    const currentAvatarCandidates = [
-                        this.getBaseAppAvatar(),
-                        this.walletManager?.avatar,
-                        window.__farcasterContext?.user?.pfpUrl,
-                        window.__userAvatar
-                    ];
-                    for (const candidate of currentAvatarCandidates) {
-                        avatarUrl = this.normalizeAvatarUrl(candidate);
-                        if (avatarUrl) break;
-                    }
+                if (!avatarUrl && currentPlayerAvatar && (isCurrentPlayer || (currentPlayerName && displayName === currentPlayerName))) {
+                    avatarUrl = currentPlayerAvatar;
                 }
                 
                 // Проверяем кеш аватаров
@@ -5388,7 +5401,7 @@ class MatchThreePro {
                 }
                 
                 // Нужно ли резолвить аватар? (для всех игроков без аватара, кроме текущего)
-                const needsResolveAvatar = !avatarUrl && resultAddress && !isCurrentPlayer;
+                const needsResolveAvatar = !avatarUrl && resultAddress;
                 
                 // Генерируем HTML для аватара
                 const avatarHtml = this.buildLeaderboardAvatarHtml(avatarUrl, displayName);
