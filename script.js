@@ -2234,6 +2234,8 @@ class LeaderboardManager {
         try {
             const stored = localStorage.getItem('playerBaseAppAvatar');
             if (stored) candidates.push(stored);
+            const savedAvatar = localStorage.getItem('playerAvatar');
+            if (savedAvatar) candidates.push(savedAvatar);
         } catch (e) {}
         for (const candidate of candidates) {
             const cleaned = this.sanitizeAvatarCandidate(candidate);
@@ -5513,6 +5515,8 @@ class MatchThreePro {
         try {
             const stored = localStorage.getItem('playerBaseAppAvatar');
             if (stored) candidates.push(stored);
+            const savedAvatar = localStorage.getItem('playerAvatar');
+            if (savedAvatar) candidates.push(savedAvatar);
         } catch (e) {}
         for (const candidate of candidates) {
             const normalized = this.normalizeAvatarUrl(candidate);
