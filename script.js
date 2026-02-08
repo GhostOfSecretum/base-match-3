@@ -2883,6 +2883,9 @@ class MatchThreePro {
         
         // Флаг для предотвращения повторной установки обработчиков событий
         this.eventListenersInitialized = false;
+
+        // Флаг для предотвращения повторной подписи транзакции старта игры
+        this.isStartingNewGame = false;
     }
 
     // Методы для работы с именем игрока
@@ -5704,6 +5707,97 @@ class MatchThreePro {
         this.updateUI();
     }
 
+    async startNewGameWithSignature({ afterStart, triggerButton } = {}) {
+        if (this.isStartingNewGame) return false;
+        this.isStartingNewGame = true;
+
+        if (triggerButton) {
+            triggerButton.disabled = true;
+        }
+
+        try {
+            const txHash = await this.signNewGameTransaction();
+            if (typeof debugLog === 'function') {
+                debugLog(`New game TX: ${txHash || 'sent'}`);
+            }
+
+            if (typeof afterStart === 'function') {
+                await afterStart();
+            } else {
+                await this.newGame();
+            }
+
+            return true;
+        } catch (error) {
+            console.error('New game signature error:', error);
+
+            let errorMsg = 'Transaction failed. Please try again.';
+            if (error?.message) {
+                const msg = error.message.toLowerCase();
+                if (msg.includes('reject') || msg.includes('denied') || msg.includes('cancelled')) {
+                    errorMsg = 'Transaction cancelled';
+                } else if (msg.includes('insufficient')) {
+                    errorMsg = 'Insufficient ETH for gas';
+                } else if (msg.includes('wallet') || msg.includes('account') || msg.includes('connect')) {
+                    errorMsg = 'Please connect your wallet';
+                } else {
+                    errorMsg = error.message;
+                }
+            }
+
+            if (this.walletManager && typeof this.walletManager.showWalletModal === 'function') {
+                this.walletManager.showWalletModal(errorMsg);
+            }
+
+            return false;
+        } finally {
+            if (triggerButton) {
+                triggerButton.disabled = false;
+            }
+            this.isStartingNewGame = false;
+        }
+    }
+
+    async signNewGameTransaction() {
+        let provider = null;
+        const sdk = (typeof SponsoredTransactions !== 'undefined' && SponsoredTransactions.getFarcasterSDK)
+            ? SponsoredTransactions.getFarcasterSDK()
+            : (window.sdk || (typeof frame !== 'undefined' && frame.sdk) || window.__farcasterSDK);
+
+        if (sdk?.wallet?.ethProvider) {
+            provider = sdk.wallet.ethProvider;
+        } else if (sdk?.wallet?.getEthereumProvider) {
+            provider = await sdk.wallet.getEthereumProvider();
+        } else if (window.ethereum) {
+            provider = window.ethereum;
+        }
+
+        if (!provider || typeof provider.request !== 'function') {
+            throw new Error('No wallet found. Please connect your wallet.');
+        }
+
+        if (typeof debugLog === 'function') debugLog('New game: connecting to wallet...');
+        const accounts = await provider.request({ method: 'eth_requestAccounts' });
+        const from = accounts?.[0];
+
+        if (!from) {
+            throw new Error('No account connected');
+        }
+
+        if (typeof debugLog === 'function') debugLog('New game: awaiting transaction signature...');
+        const txHash = await provider.request({
+            method: 'eth_sendTransaction',
+            params: [{
+                from: from,
+                to: from,
+                value: '0x0',
+                data: '0x'
+            }]
+        });
+
+        return txHash;
+    }
+
     setupEventListeners() {
         // Защита от повторной установки обработчиков событий
         if (this.eventListenersInitialized) {
@@ -5721,9 +5815,9 @@ class MatchThreePro {
 
         const newGameBtn = document.getElementById('newGameBtn');
         if (newGameBtn) {
-            newGameBtn.addEventListener('click', () => {
+            newGameBtn.addEventListener('click', async () => {
                 activateSoundsOnce();
-                this.newGame();
+                await this.startNewGameWithSignature({ triggerButton: newGameBtn });
             });
         }
 
@@ -5762,9 +5856,9 @@ class MatchThreePro {
 
         const restartBtn = document.getElementById('restartBtn');
         if (restartBtn) {
-            restartBtn.addEventListener('click', () => {
+            restartBtn.addEventListener('click', async () => {
                 activateSoundsOnce();
-                this.newGame();
+                await this.startNewGameWithSignature({ triggerButton: restartBtn });
             });
         }
 
@@ -6082,11 +6176,25 @@ function initStartMenu() {
 
     // New Game - начинаем новую игру
     if (menuNewGameBtn) {
-        menuNewGameBtn.addEventListener('click', () => {
-            showGame();
-            if (window.game && typeof window.game.newGame === 'function') {
-                window.game.newGame();
+        menuNewGameBtn.addEventListener('click', async () => {
+            const game = window.game;
+            if (!game || typeof game.startNewGameWithSignature !== 'function') {
+                showGame();
+                if (game && typeof game.newGame === 'function') {
+                    game.newGame();
+                }
+                return;
             }
+
+            await game.startNewGameWithSignature({
+                triggerButton: menuNewGameBtn,
+                afterStart: () => {
+                    showGame();
+                    if (typeof game.newGame === 'function') {
+                        return game.newGame();
+                    }
+                }
+            });
         });
     }
 
