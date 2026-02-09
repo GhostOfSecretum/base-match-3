@@ -25,10 +25,12 @@ export default async function handler(req, res) {
     
     try {
         let name = null;
+        let farcasterUsername = null;
         let avatar = null;
         let source = null;
         
         // 1. Пробуем Warpcast (Farcaster) - главный источник для Base App
+        // Приоритет: username (farcaster handle) для формата username.farcaster(base).eth
         try {
             const warpcastResponse = await fetch(
                 `https://api.warpcast.com/v2/user-by-verification?address=${normalizedAddress}`,
@@ -38,10 +40,12 @@ export default async function handler(req, res) {
             if (warpcastResponse.ok) {
                 const data = await warpcastResponse.json();
                 if (data.result?.user) {
-                    name = data.result.user.displayName || data.result.user.username;
+                    // Используем username (farcaster handle) для лидерборда
+                    farcasterUsername = data.result.user.username || null;
+                    name = farcasterUsername || data.result.user.displayName;
                     avatar = data.result.user.pfp?.url;
                     source = 'warpcast';
-                    console.log(`Warpcast resolved ${normalizedAddress} to ${name}`);
+                    console.log(`Warpcast resolved ${normalizedAddress} to username: ${farcasterUsername}, name: ${name}`);
                 }
             }
         } catch (e) {
@@ -64,10 +68,12 @@ export default async function handler(req, res) {
                 if (neynarResponse.ok) {
                     const data = await neynarResponse.json();
                     if (data.user) {
-                        name = data.user.display_name || data.user.username;
+                        // Используем username (farcaster handle) для лидерборда
+                        farcasterUsername = data.user.username || null;
+                        name = farcasterUsername || data.user.display_name;
                         avatar = data.user.pfp_url || data.user.pfp?.url;
                         source = 'neynar';
-                        console.log(`Neynar resolved ${normalizedAddress} to ${name}`);
+                        console.log(`Neynar resolved ${normalizedAddress} to username: ${farcasterUsername}, name: ${name}`);
                     }
                 }
             } catch (e) {
@@ -119,10 +125,24 @@ export default async function handler(req, res) {
             }
         }
         
+        // Формируем имя в формате username.farcaster(base).eth
+        let formattedName = name;
+        if (farcasterUsername) {
+            formattedName = `${farcasterUsername}.farcaster(base).eth`;
+        } else if (name) {
+            // Убираем суффиксы если есть
+            let baseName = name;
+            if (baseName.includes('.base.eth')) baseName = baseName.replace('.base.eth', '');
+            else if (baseName.endsWith('.eth')) baseName = baseName.replace('.eth', '');
+            if (baseName.startsWith('@')) baseName = baseName.substring(1);
+            formattedName = `${baseName}.farcaster(base).eth`;
+        }
+        
         return res.status(200).json({
             success: true,
             address: normalizedAddress,
-            name: name,
+            name: formattedName,
+            farcasterUsername: farcasterUsername,
             avatar: avatar,
             source: source
         });

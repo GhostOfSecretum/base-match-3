@@ -299,7 +299,12 @@
                         debugLog(`  Warpcast data: ${JSON.stringify(warpcastData).slice(0,150)}`);
                         if (warpcastData.result?.user) {
                             const user = warpcastData.result.user;
-                            if (!foundName) foundName = user.displayName || user.username;
+                            // Приоритет: username (farcaster handle) для формата .farcaster(base).eth
+                            if (!foundName) foundName = user.username || user.displayName;
+                            if (user.username) {
+                                window.__farcasterUsername = user.username;
+                                try { localStorage.setItem('farcasterUsername', user.username); } catch(e) {}
+                            }
                             if (user.pfp?.url) {
                                 // Добавляем Farcaster аватар в начало - приоритет!
                                 avatarSources.unshift(user.pfp.url);
@@ -343,7 +348,12 @@
                         const data = await response.json();
                         if (data.user) {
                             const user = data.user;
-                            if (!foundName) foundName = user.display_name || user.username;
+                            // Приоритет: username (farcaster handle) для формата .farcaster(base).eth
+                            if (!foundName) foundName = user.username || user.display_name;
+                            if (user.username && !window.__farcasterUsername) {
+                                window.__farcasterUsername = user.username;
+                                try { localStorage.setItem('farcasterUsername', user.username); } catch(e) {}
+                            }
                             const neynarAvatar = user.pfp_url || user.pfp?.url;
                             if (neynarAvatar) {
                                 avatarSources.push(neynarAvatar);
@@ -441,26 +451,38 @@
             }
         }
 
-        // Форматирование имени (без суффикса .base.eth)
+        // Форматирование имени в формат имя.farcaster(base).eth
         function formatBasename(name) {
             if (!name) return 'Player';
             
-            // Убираем .base.eth если есть
-            if (name.includes('.base.eth')) {
-                return name.replace('.base.eth', '');
-            }
-            
-            // Убираем .eth если есть (ENS)
-            if (name.endsWith('.eth')) {
-                return name.replace('.eth', '');
-            }
-            
             // Если это адрес - возвращаем Player
-            if (name.startsWith('0x')) {
+            if (name.startsWith('0x') || name.includes('...')) {
                 return 'Player';
             }
             
-            return name;
+            // Если уже в нужном формате
+            if (name.includes('.farcaster(base).eth')) {
+                return name;
+            }
+            
+            // Извлекаем базовое имя
+            let baseName = name;
+            if (baseName.includes('.base.eth')) {
+                baseName = baseName.replace('.base.eth', '');
+            }
+            if (baseName.endsWith('.eth')) {
+                baseName = baseName.replace('.eth', '');
+            }
+            if (baseName.startsWith('@')) {
+                baseName = baseName.substring(1);
+            }
+            
+            // Форматируем в нужный формат
+            if (baseName && baseName !== 'Player') {
+                return `${baseName}.farcaster(base).eth`;
+            }
+            
+            return 'Player';
         }
 
         // Загрузить сохраненное имя при старте
@@ -741,6 +763,7 @@
                         }
                         
                         // Пробуем получить данные из resolved user
+                        let farcasterUsername = null;
                         if (resolvedUser && typeof resolvedUser === 'object') {
                             // Структура: resolvedUser = { user, client, location, features }
                             // Данные пользователя в resolvedUser.user!
@@ -756,22 +779,30 @@
                                     Object.entries(actualUser).forEach(([k, v]) => {
                                         const val = typeof v === 'string' ? v.slice(0, 50) : typeof v;
                                         debugLog(`      ${k}: ${val}`);
-                                        if (k === 'displayName' && typeof v === 'string') userName = v;
-                                        if (k === 'username' && typeof v === 'string' && !userName) userName = v;
+                                        // Приоритет: username (farcaster handle) для лидерборда
+                                        if (k === 'username' && typeof v === 'string') {
+                                            farcasterUsername = v;
+                                            if (!userName) userName = v;
+                                        }
+                                        if (k === 'displayName' && typeof v === 'string' && !userName) userName = v;
                                         if ((k === 'pfpUrl' || k === 'avatarUrl' || k === 'pfp') && typeof v === 'string') userAvatar = v;
                                     });
                                 } catch (e) {
                                     debugLog(`    actualUser entries error: ${e.message}`);
                                 }
                                 
-                                // Прямой доступ к свойствам
-                                if (!userName && actualUser.displayName) {
-                                    userName = actualUser.displayName;
-                                    debugLog(`    direct displayName: ${userName}`);
+                                // Прямой доступ к свойствам — приоритет username для лидерборда
+                                if (!farcasterUsername && actualUser.username) {
+                                    farcasterUsername = actualUser.username;
+                                    debugLog(`    direct farcaster username: ${farcasterUsername}`);
                                 }
                                 if (!userName && actualUser.username) {
                                     userName = actualUser.username;
                                     debugLog(`    direct username: ${userName}`);
+                                }
+                                if (!userName && actualUser.displayName) {
+                                    userName = actualUser.displayName;
+                                    debugLog(`    direct displayName: ${userName}`);
                                 }
                                 if (!userAvatar && actualUser.pfpUrl) {
                                     userAvatar = actualUser.pfpUrl;
@@ -784,12 +815,20 @@
                             }
                         }
                         
+                        // Используем farcaster username для лидерборда
+                        // Имя будет в формате username.farcaster(base).eth
+                        const leaderboardName = farcasterUsername || userName;
+                        
                         // Сохраняем найденные данные
-                        if (userName) {
-                            debugLog(`  ✅ Got username from context: ${userName}`);
-                            window.__userName = userName;
+                        if (leaderboardName) {
+                            debugLog(`  ✅ Got farcaster username from context: ${farcasterUsername || 'null'}, display: ${userName || 'null'}`);
+                            window.__userName = leaderboardName;
+                            window.__farcasterUsername = farcasterUsername;
                             try {
-                                localStorage.setItem('playerDisplayName', userName);
+                                localStorage.setItem('playerDisplayName', leaderboardName);
+                                if (farcasterUsername) {
+                                    localStorage.setItem('farcasterUsername', farcasterUsername);
+                                }
                             } catch (e) {}
                         }
                         
