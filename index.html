@@ -264,6 +264,7 @@
                 debugLog(`🌐 Fetching profile for ${address.slice(0,10)}...`);
                 
                 let foundName = null;
+                let basenamesDomain = null; // Доменное имя из Basenames (приоритет!)
                 let avatarSources = []; // Собираем все возможные источники аватаров
 
                 // 1. Добавляем Stamp.fyi - универсальный резолвер аватаров (работает всегда)
@@ -271,60 +272,28 @@
                 avatarSources.push(stampUrl);
                 debugLog(`  Added Stamp.fyi to sources`);
 
-                // 2. Пробуем ENS для получения ИМЕНИ
+                // 2. Пробуем Basenames ПЕРВЫМ - приоритет доменного имени из профиля Base App
                 try {
-                    debugLog(`  Trying ENS for name...`);
-                    const ensResponse = await fetch(`https://api.ensideas.com/ens/resolve/${address}`);
-                    if (ensResponse.ok) {
-                        const ensData = await ensResponse.json();
-                        debugLog(`  ENS data: ${JSON.stringify(ensData).slice(0,100)}`);
-                        if (ensData.name) {
-                            foundName = ensData.name;
-                            debugLog(`  ✅ Got ENS name: ${foundName}`);
-                            // Добавляем euc.li если есть имя
-                            avatarSources.push(`https://euc.li/${ensData.name}`);
-                            debugLog(`  Added euc.li to sources`);
-                        }
-                    }
-                } catch (e) {
-                    debugLog(`  ENS error: ${e.message}`);
-                }
-
-                // 3. Пробуем Warpcast API (Farcaster) - главный источник для Farcaster
-                try {
-                    debugLog(`  Trying Warpcast...`);
-                    const warpcastResponse = await fetch(`https://api.warpcast.com/v2/user-by-verification?address=${address}`);
-                    if (warpcastResponse.ok) {
-                        const warpcastData = await warpcastResponse.json();
-                        debugLog(`  Warpcast data: ${JSON.stringify(warpcastData).slice(0,150)}`);
-                        if (warpcastData.result?.user) {
-                            const user = warpcastData.result.user;
-                            // Приоритет: username (farcaster handle) для формата .farcaster(base).eth
-                            if (!foundName) foundName = user.username || user.displayName;
-                            if (user.username) {
-                                window.__farcasterUsername = user.username;
-                                try { localStorage.setItem('farcasterUsername', user.username); } catch(e) {}
-                            }
-                            if (user.pfp?.url) {
-                                // Добавляем Farcaster аватар в начало - приоритет!
-                                avatarSources.unshift(user.pfp.url);
-                                debugLog(`  ✅ Got Warpcast/Farcaster avatar (priority)`);
-                            }
-                        }
-                    }
-                } catch (e) {
-                    debugLog(`  Warpcast error: ${e.message}`);
-                }
-
-                // 4. Пробуем Basenames
-                try {
-                    debugLog(`  Trying Basenames...`);
+                    debugLog(`  Trying Basenames (priority)...`);
                     const basenameResponse = await fetch(`https://resolver-api.basename.app/v1/addresses/${address}`);
                     if (basenameResponse.ok) {
                         const basenameData = await basenameResponse.json();
                         debugLog(`  Basename data: ${JSON.stringify(basenameData).slice(0,150)}`);
                         if (basenameData.name || basenameData.basename) {
-                            if (!foundName) foundName = basenameData.name || basenameData.basename;
+                            const rawBasename = basenameData.name || basenameData.basename;
+                            // Сохраняем доменное имя как есть (например: username.base.eth)
+                            if (rawBasename.endsWith('.base.eth')) {
+                                basenamesDomain = rawBasename;
+                            } else if (rawBasename.endsWith('.eth')) {
+                                basenamesDomain = rawBasename;
+                            } else {
+                                // Если API вернул просто имя без суффикса - добавляем .base.eth
+                                basenamesDomain = `${rawBasename}.base.eth`;
+                            }
+                            foundName = basenamesDomain;
+                            window.__basenamesDomain = basenamesDomain;
+                            try { localStorage.setItem('basenamesDomain', basenamesDomain); } catch(e) {}
+                            debugLog(`  ✅ Got Basename domain: ${basenamesDomain}`);
                             if (basenameData.avatar) avatarSources.push(basenameData.avatar);
                             if (basenameData.avatar_url) avatarSources.push(basenameData.avatar_url);
                             if (basenameData.image) avatarSources.push(basenameData.image);
@@ -334,7 +303,52 @@
                     debugLog(`  Basename error: ${e.message}`);
                 }
 
-                // 6. Пробуем Neynar (Farcaster)
+                // 3. Пробуем ENS (если нет Basename)
+                if (!foundName) {
+                    try {
+                        debugLog(`  Trying ENS for name...`);
+                        const ensResponse = await fetch(`https://api.ensideas.com/ens/resolve/${address}`);
+                        if (ensResponse.ok) {
+                            const ensData = await ensResponse.json();
+                            debugLog(`  ENS data: ${JSON.stringify(ensData).slice(0,100)}`);
+                            if (ensData.name) {
+                                foundName = ensData.name; // ENS имя уже в формате name.eth
+                                debugLog(`  ✅ Got ENS name: ${foundName}`);
+                                avatarSources.push(`https://euc.li/${ensData.name}`);
+                                debugLog(`  Added euc.li to sources`);
+                            }
+                        }
+                    } catch (e) {
+                        debugLog(`  ENS error: ${e.message}`);
+                    }
+                }
+
+                // 4. Пробуем Warpcast API (Farcaster) - для аватара и fallback имени
+                try {
+                    debugLog(`  Trying Warpcast...`);
+                    const warpcastResponse = await fetch(`https://api.warpcast.com/v2/user-by-verification?address=${address}`);
+                    if (warpcastResponse.ok) {
+                        const warpcastData = await warpcastResponse.json();
+                        debugLog(`  Warpcast data: ${JSON.stringify(warpcastData).slice(0,150)}`);
+                        if (warpcastData.result?.user) {
+                            const user = warpcastData.result.user;
+                            // Farcaster username как fallback (если нет Basename/ENS)
+                            if (!foundName) foundName = user.username || user.displayName;
+                            if (user.username) {
+                                window.__farcasterUsername = user.username;
+                                try { localStorage.setItem('farcasterUsername', user.username); } catch(e) {}
+                            }
+                            if (user.pfp?.url) {
+                                avatarSources.unshift(user.pfp.url);
+                                debugLog(`  ✅ Got Warpcast/Farcaster avatar (priority)`);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    debugLog(`  Warpcast error: ${e.message}`);
+                }
+
+                // 5. Пробуем Neynar (Farcaster) - для аватара и fallback имени
                 try {
                     debugLog(`  Trying Neynar...`);
                     const response = await fetch(`https://api.neynar.com/v2/farcaster/user/by_verification?address=${address}`, {
@@ -348,7 +362,6 @@
                         const data = await response.json();
                         if (data.user) {
                             const user = data.user;
-                            // Приоритет: username (farcaster handle) для формата .farcaster(base).eth
                             if (!foundName) foundName = user.username || user.display_name;
                             if (user.username && !window.__farcasterUsername) {
                                 window.__farcasterUsername = user.username;
@@ -368,7 +381,7 @@
                 }
 
                 // Применяем результаты
-                debugLog(`  📋 Final: name=${foundName}, ${avatarSources.length} avatar sources`);
+                debugLog(`  📋 Final: name=${foundName}, basename=${basenamesDomain}, ${avatarSources.length} avatar sources`);
                 if (foundName || avatarSources.length > 0) {
                     window.__userName = foundName;
                     window.__userAvatar = avatarSources[0] || null;
@@ -451,35 +464,34 @@
             }
         }
 
-        // Форматирование имени в формат имя.farcaster(base).eth
+        // Форматирование имени - показываем доменное имя из профиля Base App
         function formatBasename(name) {
             if (!name) return 'Player';
             
-            // Если это адрес - возвращаем Player
+            // Если это адрес кошелька - возвращаем Player
             if (name.startsWith('0x') || name.includes('...')) {
                 return 'Player';
             }
             
-            // Если уже в нужном формате
-            if (name.includes('.farcaster(base).eth')) {
+            // Если это уже доменное имя (.base.eth или .eth) - показываем как есть
+            if (name.endsWith('.base.eth') || name.endsWith('.eth')) {
                 return name;
             }
             
-            // Извлекаем базовое имя
-            let baseName = name;
-            if (baseName.includes('.base.eth')) {
-                baseName = baseName.replace('.base.eth', '');
-            }
-            if (baseName.endsWith('.eth')) {
-                baseName = baseName.replace('.eth', '');
-            }
-            if (baseName.startsWith('@')) {
-                baseName = baseName.substring(1);
+            // Проверяем сохранённое доменное имя из Basenames
+            const savedBasename = window.__basenamesDomain;
+            if (savedBasename) {
+                return savedBasename;
             }
             
-            // Форматируем в нужный формат
-            if (baseName && baseName !== 'Player') {
-                return `${baseName}.farcaster(base).eth`;
+            // Убираем @ в начале если есть (Farcaster handle)
+            if (name.startsWith('@')) {
+                name = name.substring(1);
+            }
+            
+            // Для Farcaster username без домена - форматируем как .base.eth
+            if (name && name !== 'Player') {
+                return `${name}.base.eth`;
             }
             
             return 'Player';
@@ -488,6 +500,13 @@
         // Загрузить сохраненное имя при старте
         function loadSavedPlayerName() {
             try {
+                // Восстанавливаем доменное имя из Basenames
+                const savedBasename = localStorage.getItem('basenamesDomain');
+                if (savedBasename) {
+                    window.__basenamesDomain = savedBasename;
+                    debugLog(`📦 Loaded saved basename domain: ${savedBasename}`);
+                }
+                
                 const savedName = localStorage.getItem('playerDisplayName');
                 const savedAvatar = localStorage.getItem('playerAvatar');
                 
@@ -815,20 +834,56 @@
                             }
                         }
                         
-                        // Используем farcaster username для лидерборда
-                        // Имя будет в формате username.farcaster(base).eth
-                        const leaderboardName = farcasterUsername || userName;
+                        // Сохраняем farcaster данные
+                        if (farcasterUsername) {
+                            window.__farcasterUsername = farcasterUsername;
+                            try { localStorage.setItem('farcasterUsername', farcasterUsername); } catch (e) {}
+                        }
+                        
+                        // Пробуем получить доменное имя из Basenames по адресу из контекста
+                        const userAddress = resolvedUser?.custodyAddress || 
+                                           resolvedUser?.verifiedAddresses?.ethAddresses?.[0] ||
+                                           actualUser?.custodyAddress ||
+                                           actualUser?.verifiedAddresses?.ethAddresses?.[0];
+                        
+                        if (userAddress && !window.__basenamesDomain) {
+                            try {
+                                debugLog(`  Fetching Basename for address from context: ${userAddress.slice(0,10)}...`);
+                                const bnResp = await fetch(`https://resolver-api.basename.app/v1/addresses/${userAddress.toLowerCase()}`);
+                                if (bnResp.ok) {
+                                    const bnData = await bnResp.json();
+                                    if (bnData.name || bnData.basename) {
+                                        const rawBn = bnData.name || bnData.basename;
+                                        let bnDomain;
+                                        if (rawBn.endsWith('.base.eth') || rawBn.endsWith('.eth')) {
+                                            bnDomain = rawBn;
+                                        } else {
+                                            bnDomain = `${rawBn}.base.eth`;
+                                        }
+                                        window.__basenamesDomain = bnDomain;
+                                        window.__userName = bnDomain;
+                                        userName = bnDomain;
+                                        try {
+                                            localStorage.setItem('basenamesDomain', bnDomain);
+                                            localStorage.setItem('playerDisplayName', bnDomain);
+                                        } catch (e) {}
+                                        debugLog(`  ✅ Got Basename domain from context address: ${bnDomain}`);
+                                    }
+                                }
+                            } catch (e) {
+                                debugLog(`  Basename from context error: ${e.message}`);
+                            }
+                        }
+                        
+                        // Используем доменное имя или farcaster username
+                        const leaderboardName = window.__basenamesDomain || farcasterUsername || userName;
                         
                         // Сохраняем найденные данные
                         if (leaderboardName) {
-                            debugLog(`  ✅ Got farcaster username from context: ${farcasterUsername || 'null'}, display: ${userName || 'null'}`);
+                            debugLog(`  ✅ Got name: basename=${window.__basenamesDomain || 'null'}, farcaster=${farcasterUsername || 'null'}, display: ${userName || 'null'}`);
                             window.__userName = leaderboardName;
-                            window.__farcasterUsername = farcasterUsername;
                             try {
                                 localStorage.setItem('playerDisplayName', leaderboardName);
-                                if (farcasterUsername) {
-                                    localStorage.setItem('farcasterUsername', farcasterUsername);
-                                }
                             } catch (e) {}
                         }
                         
@@ -842,9 +897,9 @@
                             } catch (e) {}
                             
                             // Обновляем отображение
-                            updatePlayerDisplay(userName, userAvatar, [userAvatar]);
-                        } else if (userName) {
-                            updatePlayerDisplay(userName, null, []);
+                            updatePlayerDisplay(leaderboardName || userName, userAvatar, [userAvatar]);
+                        } else if (leaderboardName || userName) {
+                            updatePlayerDisplay(leaderboardName || userName, null, []);
                         }
                     } else {
                         debugLog(`  user: NO`);

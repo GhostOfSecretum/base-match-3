@@ -1392,16 +1392,20 @@ class WalletManager {
             debugLog(`  avatar: ${this.avatar ? 'YES' : 'NO'}`);
             debugLog(`  fid: ${context.user.fid || 'null'}`);
             
-            // ВАЖНО: Сохраняем Farcaster username в глобальные переменные для leaderboard
+            // Сохраняем данные в глобальные переменные (не перезаписываем basename domain)
             if (this.username) {
-                window.__userName = this.username;
+                if (!window.__basenamesDomain) {
+                    window.__userName = this.username;
+                }
                 window.__farcasterUsername = this.farcasterUsername;
                 try {
-                    localStorage.setItem('playerDisplayName', this.username);
+                    if (!window.__basenamesDomain) {
+                        localStorage.setItem('playerDisplayName', this.username);
+                    }
                     if (this.farcasterUsername) {
                         localStorage.setItem('farcasterUsername', this.farcasterUsername);
                     }
-                    debugLog(`  ✅ Saved farcaster username to localStorage: ${this.username}`);
+                    debugLog(`  ✅ Saved username to localStorage: ${this.username}, basename: ${window.__basenamesDomain || 'null'}`);
                 } catch (e) {
                     debugLog(`  ⚠️ Could not save to localStorage: ${e.message}`);
                 }
@@ -1429,6 +1433,35 @@ class WalletManager {
                 if (!this.account) {
                     await this.connectViaBaseAccount(address);
                 }
+                
+                // Пробуем получить доменное имя из Basenames (приоритет для отображения)
+                if (!window.__basenamesDomain) {
+                    try {
+                        debugLog(`  Fetching Basename domain for ${address.slice(0,10)}...`);
+                        const basenameResponse = await fetch(`https://resolver-api.basename.app/v1/addresses/${address.toLowerCase()}`);
+                        if (basenameResponse.ok) {
+                            const basenameData = await basenameResponse.json();
+                            if (basenameData.name || basenameData.basename) {
+                                const rawBasename = basenameData.name || basenameData.basename;
+                                let basenamesDomain;
+                                if (rawBasename.endsWith('.base.eth') || rawBasename.endsWith('.eth')) {
+                                    basenamesDomain = rawBasename;
+                                } else {
+                                    basenamesDomain = `${rawBasename}.base.eth`;
+                                }
+                                window.__basenamesDomain = basenamesDomain;
+                                window.__userName = basenamesDomain;
+                                try {
+                                    localStorage.setItem('basenamesDomain', basenamesDomain);
+                                    localStorage.setItem('playerDisplayName', basenamesDomain);
+                                } catch (e) {}
+                                debugLog(`  ✅ Got Basename domain: ${basenamesDomain}`);
+                            }
+                        }
+                    } catch (e) {
+                        debugLog(`  Basename fetch error: ${e.message}`);
+                    }
+                }
             } else {
                 debugLog('  address: NOT FOUND');
             }
@@ -1442,18 +1475,48 @@ class WalletManager {
         }
     }
 
-    // Получить имя пользователя по адресу через Neynar API
+    // Получить имя пользователя по адресу - приоритет Basenames (доменное имя из профиля Base App)
     async fetchUsernameByAddress(address) {
         if (!address) return null;
         
         try {
             debugLog(`🔍 Fetching username for ${address.slice(0,10)}...`);
             
-            // Пробуем Neynar API (публичный endpoint для lookup по адресу)
+            // 1. Приоритет: Basenames (доменное имя из профиля Base App)
+            if (!window.__basenamesDomain) {
+                try {
+                    debugLog(`  Trying Basenames...`);
+                    const bnResp = await fetch(`https://resolver-api.basename.app/v1/addresses/${address.toLowerCase()}`);
+                    if (bnResp.ok) {
+                        const bnData = await bnResp.json();
+                        if (bnData.name || bnData.basename) {
+                            const rawBn = bnData.name || bnData.basename;
+                            let bnDomain;
+                            if (rawBn.endsWith('.base.eth') || rawBn.endsWith('.eth')) {
+                                bnDomain = rawBn;
+                            } else {
+                                bnDomain = `${rawBn}.base.eth`;
+                            }
+                            window.__basenamesDomain = bnDomain;
+                            window.__userName = bnDomain;
+                            this.username = bnDomain;
+                            try {
+                                localStorage.setItem('basenamesDomain', bnDomain);
+                                localStorage.setItem('playerDisplayName', bnDomain);
+                            } catch (e) {}
+                            debugLog(`  ✅ Got Basename domain: ${bnDomain}`);
+                        }
+                    }
+                } catch (e) {
+                    debugLog(`  Basenames error: ${e.message}`);
+                }
+            }
+            
+            // 2. Пробуем Neynar API для аватара и fallback имени
             const response = await fetch(`https://api.neynar.com/v2/farcaster/user/by_verification?address=${address}`, {
                 headers: {
                     'accept': 'application/json',
-                    'api_key': 'NEYNAR_API_DOCS' // Публичный ключ для документации
+                    'api_key': 'NEYNAR_API_DOCS'
                 }
             });
             
@@ -1463,24 +1526,30 @@ class WalletManager {
                 
                 if (data.user) {
                     const user = data.user;
-                    // Приоритет: username (farcaster handle) для формата .farcaster(base).eth
                     this.farcasterUsername = user.username || null;
-                    this.username = this.farcasterUsername || user.display_name || null;
+                    // Не перезаписываем username если уже есть Basename domain
+                    if (!this.username) {
+                        this.username = this.farcasterUsername || user.display_name || null;
+                    }
                     this.avatar = user.pfp_url || user.pfp?.url || null;
                     
-                    debugLog(`  ✅ Got from Neynar: farcaster=${this.farcasterUsername}, display=${this.username}`);
+                    debugLog(`  ✅ Got from Neynar: farcaster=${this.farcasterUsername}, basename=${window.__basenamesDomain || 'null'}`);
                     debugLog(`  avatar: ${this.avatar ? 'YES' : 'NO'}`);
                     
-                    // ВАЖНО: Сохраняем farcaster username в глобальные переменные для leaderboard
+                    // Сохраняем данные
                     if (this.username) {
-                        window.__userName = this.username;
+                        if (!window.__basenamesDomain) {
+                            window.__userName = this.username;
+                        }
                         window.__farcasterUsername = this.farcasterUsername;
                         try {
-                            localStorage.setItem('playerDisplayName', this.username);
+                            if (!window.__basenamesDomain) {
+                                localStorage.setItem('playerDisplayName', this.username);
+                            }
                             if (this.farcasterUsername) {
                                 localStorage.setItem('farcasterUsername', this.farcasterUsername);
                             }
-                            debugLog(`  ✅ Saved farcaster username to localStorage: ${this.username}`);
+                            debugLog(`  ✅ Saved username to localStorage: ${this.username}`);
                         } catch (e) {}
                     }
                     if (this.avatar) {
@@ -1493,16 +1562,16 @@ class WalletManager {
                         } catch (e) {}
                     }
                     
-                    return this.username;
+                    return window.__basenamesDomain || this.username;
                 }
             } else {
                 debugLog(`  Neynar error: ${response.status}`);
             }
         } catch (e) {
-            debugLog(`  Neynar fetch error: ${e.message}`);
+            debugLog(`  Fetch error: ${e.message}`);
         }
         
-        return null;
+        return window.__basenamesDomain || null;
     }
 
     async connectViaBaseAccount(address) {
@@ -1555,6 +1624,12 @@ class WalletManager {
     }
 
     async getUsernameFromSDK() {
+        // Если уже есть доменное имя из Basenames - возвращаем его
+        if (window.__basenamesDomain) {
+            this.username = window.__basenamesDomain;
+            return this.username;
+        }
+        
         // Возвращаем уже загруженный username, если есть
         if (this.username) {
             return this.username;
@@ -1563,7 +1638,6 @@ class WalletManager {
         // Проверяем ранний контекст из index.html
         if (window.__farcasterContext && window.__farcasterContext.user) {
             const user = window.__farcasterContext.user;
-            // Приоритет: username (farcaster handle) для формата .farcaster(base).eth
             const farcasterHandle = user.username || null;
             const name = farcasterHandle || user.displayName || null;
             if (name) {
@@ -1574,11 +1648,15 @@ class WalletManager {
                     this.avatar = user.pfpUrl || user.avatarUrl;
                 }
                 
-                // ВАЖНО: Сохраняем farcaster username в глобальные переменные для leaderboard
-                window.__userName = name;
+                // Сохраняем данные (не перезаписываем basename domain)
+                if (!window.__basenamesDomain) {
+                    window.__userName = name;
+                }
                 window.__farcasterUsername = farcasterHandle;
                 try {
-                    localStorage.setItem('playerDisplayName', name);
+                    if (!window.__basenamesDomain) {
+                        localStorage.setItem('playerDisplayName', name);
+                    }
                     if (farcasterHandle) {
                         localStorage.setItem('farcasterUsername', farcasterHandle);
                     }
@@ -1594,7 +1672,7 @@ class WalletManager {
                 }
                 
                 console.log('Got farcaster username from early context:', name);
-                return name;
+                return window.__basenamesDomain || name;
             }
         }
         
@@ -1633,23 +1711,25 @@ class WalletManager {
             }
 
             if (context && context.user) {
-                // Приоритет: username (farcaster handle) для формата .farcaster(base).eth
                 const farcasterHandle = context.user.username || null;
                 const name = farcasterHandle || context.user.displayName || null;
                 if (name) {
                     this.farcasterUsername = farcasterHandle;
                     this.username = name;
                     this.userContext = context;
-                    // Также обновляем avatar если доступен
                     if (context.user.pfpUrl || context.user.avatarUrl) {
                         this.avatar = context.user.pfpUrl || context.user.avatarUrl;
                     }
                     
-                    // ВАЖНО: Сохраняем farcaster username в глобальные переменные для leaderboard
-                    window.__userName = name;
+                    // Сохраняем данные (не перезаписываем basename domain)
+                    if (!window.__basenamesDomain) {
+                        window.__userName = name;
+                    }
                     window.__farcasterUsername = farcasterHandle;
                     try {
-                        localStorage.setItem('playerDisplayName', name);
+                        if (!window.__basenamesDomain) {
+                            localStorage.setItem('playerDisplayName', name);
+                        }
                         if (farcasterHandle) {
                             localStorage.setItem('farcasterUsername', farcasterHandle);
                         }
@@ -1665,14 +1745,14 @@ class WalletManager {
                     }
                     
                     console.log('Got farcaster username from SDK:', name);
-                    return name;
+                    return window.__basenamesDomain || name;
                 }
             }
         } catch (error) {
             console.log('Failed to get username from SDK:', error.message);
         }
         
-        return this.username;
+        return window.__basenamesDomain || this.username;
     }
 
     getUsername() {
@@ -2154,36 +2234,34 @@ class LeaderboardManager {
         return 'Player';
     }
 
-    // Форматирование имени в формат имя.farcaster(base).eth
+    // Форматирование имени - показываем доменное имя из профиля Base App
     formatBasename(name) {
         if (!name) return 'Player';
         
-        // Если это адрес - возвращаем "Player"
+        // Если это адрес кошелька - возвращаем "Player"
         if (name.startsWith('0x') || name.includes('...')) {
             return 'Player';
         }
         
-        // Извлекаем базовое имя (без суффиксов)
-        let baseName = name;
-        
-        // Убираем .base.eth если есть
-        if (baseName.includes('.base.eth')) {
-            baseName = baseName.replace('.base.eth', '');
+        // Если это уже доменное имя (.base.eth или .eth) - показываем как есть
+        if (name.endsWith('.base.eth') || name.endsWith('.eth')) {
+            return name;
         }
         
-        // Убираем .eth если есть (ENS)
-        if (baseName.endsWith('.eth')) {
-            baseName = baseName.replace('.eth', '');
+        // Проверяем сохранённое доменное имя из Basenames
+        const savedBasename = window.__basenamesDomain;
+        if (savedBasename) {
+            return savedBasename;
         }
         
-        // Убираем @ в начале если есть
-        if (baseName.startsWith('@')) {
-            baseName = baseName.substring(1);
+        // Убираем @ в начале если есть (Farcaster handle)
+        if (name.startsWith('@')) {
+            name = name.substring(1);
         }
         
-        // Форматируем в нужный формат: имя.farcaster(base).eth
-        if (baseName && baseName !== 'Player') {
-            return `${baseName}.farcaster(base).eth`;
+        // Для username без домена - форматируем как .base.eth
+        if (name && name !== 'Player') {
+            return `${name}.base.eth`;
         }
         
         return 'Player';
@@ -2348,16 +2426,32 @@ class LeaderboardManager {
             return null;
         }
         
-        // Получаем Farcaster username из разных источников для формата .farcaster(base).eth
+        // Получаем доменное имя из профиля Base App (Basenames приоритет)
         let playerName = null;
         
+        // 0. Приоритет: доменное имя из Basenames
+        if (window.__basenamesDomain) {
+            playerName = window.__basenamesDomain;
+        }
+        
+        if (!playerName) {
+            try {
+                const savedBasename = localStorage.getItem('basenamesDomain');
+                if (savedBasename) {
+                    playerName = savedBasename;
+                }
+            } catch (e) {}
+        }
+        
         // 1. Проверяем farcasterUsername (прямо из SDK контекста)
-        try {
-            const farcasterUsername = localStorage.getItem('farcasterUsername') || window.__farcasterUsername;
-            if (farcasterUsername) {
-                playerName = this.formatBasename(farcasterUsername);
-            }
-        } catch (e) {}
+        if (!playerName) {
+            try {
+                const farcasterUsername = localStorage.getItem('farcasterUsername') || window.__farcasterUsername;
+                if (farcasterUsername) {
+                    playerName = this.formatBasename(farcasterUsername);
+                }
+            } catch (e) {}
+        }
         
         // 2. Проверяем localStorage (сохранённое имя)
         if (!playerName) {
@@ -3280,14 +3374,33 @@ class MatchThreePro {
             if (this.walletManager.isConnected()) {
                 let displayName = null;
                 
+                // 0. Приоритет: доменное имя из Basenames (профиль Base App)
+                if (window.__basenamesDomain) {
+                    displayName = window.__basenamesDomain;
+                    debugLog(`Using basename domain: ${displayName}`);
+                }
+                
                 // 1. Проверяем сохраненное имя в localStorage
-                try {
-                    const savedName = localStorage.getItem('playerDisplayName');
-                    if (savedName) {
-                        displayName = savedName;
-                        debugLog(`Using saved name: ${displayName}`);
-                    }
-                } catch (e) {}
+                if (!displayName) {
+                    try {
+                        const savedBasename = localStorage.getItem('basenamesDomain');
+                        if (savedBasename) {
+                            displayName = savedBasename;
+                            window.__basenamesDomain = savedBasename;
+                            debugLog(`Using saved basename domain: ${displayName}`);
+                        }
+                    } catch (e) {}
+                }
+                
+                if (!displayName) {
+                    try {
+                        const savedName = localStorage.getItem('playerDisplayName');
+                        if (savedName) {
+                            displayName = savedName;
+                            debugLog(`Using saved name: ${displayName}`);
+                        }
+                    } catch (e) {}
+                }
                 
                 // 2. Проверяем window.__userName (установлен из index.html)
                 if (!displayName && window.__userName) {
@@ -3406,36 +3519,34 @@ class MatchThreePro {
         }
     }
 
-    // Форматирование имени в формат имя.farcaster(base).eth
+    // Форматирование имени - показываем доменное имя из профиля Base App
     formatBasename(name) {
         if (!name) return 'Player';
         
-        // Если это адрес - возвращаем "Player"
+        // Если это адрес кошелька - возвращаем "Player"
         if (name.startsWith('0x') || name.includes('...')) {
             return 'Player';
         }
         
-        // Извлекаем базовое имя (без суффиксов)
-        let baseName = name;
-        
-        // Убираем .base.eth если есть
-        if (baseName.includes('.base.eth')) {
-            baseName = baseName.replace('.base.eth', '');
+        // Если это уже доменное имя (.base.eth или .eth) - показываем как есть
+        if (name.endsWith('.base.eth') || name.endsWith('.eth')) {
+            return name;
         }
         
-        // Убираем .eth если есть (ENS)
-        if (baseName.endsWith('.eth')) {
-            baseName = baseName.replace('.eth', '');
+        // Проверяем сохранённое доменное имя из Basenames
+        const savedBasename = window.__basenamesDomain;
+        if (savedBasename) {
+            return savedBasename;
         }
         
-        // Убираем @ в начале если есть
-        if (baseName.startsWith('@')) {
-            baseName = baseName.substring(1);
+        // Убираем @ в начале если есть (Farcaster handle)
+        if (name.startsWith('@')) {
+            name = name.substring(1);
         }
         
-        // Форматируем в нужный формат: имя.farcaster(base).eth
-        if (baseName && baseName !== 'Player') {
-            return `${baseName}.farcaster(base).eth`;
+        // Для username без домена - форматируем как .base.eth
+        if (name && name !== 'Player') {
+            return `${name}.base.eth`;
         }
         
         return 'Player';
