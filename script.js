@@ -8976,6 +8976,18 @@ function mintDebug(message) {
     if (typeof debugLog === 'function') debugLog(formatted);
 }
 
+function isIgnorableEstimateError(error) {
+    const msg = (error?.message || '').toLowerCase();
+    const code = error?.code;
+    return (
+        code === -32601 ||
+        msg.includes('unknown provider rpc error') ||
+        msg.includes('method not found') ||
+        msg.includes('unsupported') ||
+        msg.includes('does not exist')
+    );
+}
+
 function getMintAmount() {
     return MINT_AMOUNTS[currentMintAmountIndex];
 }
@@ -9164,7 +9176,12 @@ async function sendMintNFT() {
             mintDebug(`Preflight gas estimate: ${estimatedGas}`);
         } catch (estimateError) {
             mintDebug(`Preflight estimate failed: ${estimateError.message}`);
-            throw new Error(`Mint call simulation failed: ${estimateError.message}`);
+            // Some Mini App providers do not support estimateGas consistently.
+            // In that case we continue and let wallet_sendCalls/eth_sendTransaction handle it.
+            if (!isIgnorableEstimateError(estimateError)) {
+                throw new Error(`Mint call simulation failed: ${estimateError.message}`);
+            }
+            mintDebug('Preflight failure ignored, proceeding to wallet confirmation');
         }
         
         // Use our ERC-7677 proxy URL for CDP sponsorship
