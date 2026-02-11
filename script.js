@@ -2578,7 +2578,7 @@ class LeaderboardManager {
         // Никогда не отправляем адрес - только доменное имя (.base.eth) или "Player"
         const displayName = playerName || 'Player';
         
-        // Получаем аватар из разных источников
+        // Получаем аватар из разных источников (приоритет: Base App > SDK > Farcaster > localStorage > stamp.fyi)
         let avatar = this.getBaseAppAvatar();
         
         // 1. Из WalletManager
@@ -2597,6 +2597,19 @@ class LeaderboardManager {
         // 3. Из window.__userAvatar
         if (!avatar && window.__userAvatar) {
             avatar = this.sanitizeAvatarCandidate(window.__userAvatar);
+        }
+        
+        // 4. Из localStorage
+        if (!avatar) {
+            try {
+                const savedAvatar = localStorage.getItem('playerAvatar');
+                if (savedAvatar) avatar = this.sanitizeAvatarCandidate(savedAvatar);
+            } catch (e) {}
+        }
+        
+        // 5. Fallback: stamp.fyi — универсальный резолвер аватаров по адресу кошелька
+        if (!avatar && walletAddress && walletAddress.startsWith('0x')) {
+            avatar = `https://stamp.fyi/avatar/${walletAddress}?s=128`;
         }
         
         const requestBody = {
@@ -5721,8 +5734,13 @@ class MatchThreePro {
                     }
                 }
                 
-                // Нужно ли резолвить аватар? (для всех игроков без аватара, кроме текущего)
-                const needsResolveAvatar = !avatarUrl && resultAddress;
+                // Fallback: stamp.fyi — универсальный резолвер аватаров по адресу кошелька
+                if (!avatarUrl && resultAddress && resultAddress.startsWith('0x')) {
+                    avatarUrl = `https://stamp.fyi/avatar/${resultAddress}?s=128`;
+                }
+                
+                // Нужно ли резолвить аватар через API? (для получения более качественного аватара из Farcaster/Basenames)
+                const needsResolveAvatar = resultAddress && !rawAvatar;
                 
                 // Генерируем HTML для аватара
                 const avatarHtml = this.buildLeaderboardAvatarHtml(avatarUrl, displayName);
@@ -5982,7 +6000,7 @@ class MatchThreePro {
             }
         }
         
-        // Резолвим аватары последовательно
+        // Резолвим аватары последовательно — заменяем stamp.fyi fallback на реальный аватар из Farcaster/Basenames
         for (const item of itemsToResolveAvatar) {
             const address = item.getAttribute('data-resolve-avatar');
             if (!address) continue;
@@ -5993,16 +6011,26 @@ class MatchThreePro {
                 if (typeof debugLog === 'function') debugLog(`  Avatar result: ${avatar ? 'found' : 'null'}`);
                 
                 if (avatar) {
+                    // Проверяем, что это не stamp.fyi (мы хотим заменить stamp.fyi на реальный аватар)
+                    const isStampFallback = avatar.includes('stamp.fyi');
+                    
                     // Обновляем DOM - находим элемент аватара
                     const avatarContainer = item.querySelector('.leaderboard-avatar');
                     if (avatarContainer) {
                         const nameSpan = item.querySelector('.player-name');
                         const displayName = nameSpan ? nameSpan.textContent : 'Player';
-                        const applied = this.applyLeaderboardAvatar(avatarContainer, avatar, displayName);
-                        if (applied) {
-                            // Убираем атрибут чтобы не резолвить повторно
+                        
+                        // Если получили реальный аватар (не stamp.fyi) — обновляем
+                        if (!isStampFallback) {
+                            const applied = this.applyLeaderboardAvatar(avatarContainer, avatar, displayName);
+                            if (applied) {
+                                item.removeAttribute('data-resolve-avatar');
+                                if (typeof debugLog === 'function') debugLog(`  ✅ Avatar upgraded from stamp.fyi to real avatar`);
+                            }
+                        } else {
+                            // stamp.fyi уже показывается, убираем атрибут
                             item.removeAttribute('data-resolve-avatar');
-                            if (typeof debugLog === 'function') debugLog(`  ✅ Avatar updated`);
+                            if (typeof debugLog === 'function') debugLog(`  ℹ️ Only stamp.fyi available, keeping current`);
                         }
                     }
                 }

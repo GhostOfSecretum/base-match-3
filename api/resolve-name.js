@@ -139,6 +139,13 @@ export default async function handler(req, res) {
             }
         }
         
+        // Fallback: если аватар не найден ни в одном источнике, используем stamp.fyi
+        if (!avatar && normalizedAddress && normalizedAddress.startsWith('0x')) {
+            avatar = `https://stamp.fyi/avatar/${normalizedAddress}?s=128`;
+            if (!source) source = 'stamp';
+            console.log(`Using stamp.fyi fallback avatar for ${normalizedAddress}`);
+        }
+        
         return res.status(200).json({
             success: true,
             address: normalizedAddress,
