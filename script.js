@@ -3679,20 +3679,35 @@ class MatchThreePro {
                 playerNameDisplay.textContent = displayName;
                 playerNameDisplay.classList.remove('wallet-address');
                 
-                // Показываем аватар если есть сохраненный
+                // Показываем аватар если есть сохраненный (приоритет: Base App)
                 if (playerAvatarDisplay) {
-                    let avatarUrl = window.__userAvatar;
+                    const sources = [];
+                    const baseAppAvatar = this.getBaseAppAvatar();
+                    if (baseAppAvatar) sources.push(baseAppAvatar);
+                    if (window.__userAvatar && !sources.includes(window.__userAvatar)) sources.push(window.__userAvatar);
                     try {
                         const savedAvatar = localStorage.getItem('playerAvatar');
-                        if (savedAvatar) avatarUrl = savedAvatar;
+                        if (savedAvatar && !sources.includes(savedAvatar)) sources.push(savedAvatar);
                     } catch (e) {}
-                    
-                    if (avatarUrl) {
-                        playerAvatarDisplay.src = avatarUrl;
-                        playerAvatarDisplay.style.display = 'block';
-                        playerAvatarDisplay.onerror = function() {
-                            this.style.display = 'none';
+
+                    if (sources.length > 0) {
+                        let currentIndex = 0;
+                        const tryNextAvatar = () => {
+                            if (currentIndex >= sources.length) {
+                                playerAvatarDisplay.style.display = 'none';
+                                return;
+                            }
+                            playerAvatarDisplay.src = sources[currentIndex];
+                            playerAvatarDisplay.style.display = 'block';
+                            currentIndex++;
                         };
+
+                        playerAvatarDisplay.onerror = tryNextAvatar;
+                        playerAvatarDisplay.onload = () => {
+                            try { localStorage.setItem('playerAvatar', playerAvatarDisplay.src); } catch (e) {}
+                        };
+
+                        tryNextAvatar();
                     } else {
                         playerAvatarDisplay.style.display = 'none';
                     }
@@ -7158,17 +7173,47 @@ function initStartMenu() {
             }
         }
 
-        // Аватар
+        // Аватар (приоритет: Base App)
         if (profileAvatar && profileAvatarPlaceholder) {
-            const avatarUrl = window.__userAvatar || localStorage.getItem('playerAvatar');
-            if (avatarUrl) {
-                profileAvatar.src = avatarUrl;
-                profileAvatar.style.display = 'block';
-                profileAvatarPlaceholder.style.display = 'none';
-                profileAvatar.onerror = function() {
-                    profileAvatar.style.display = 'none';
-                    profileAvatarPlaceholder.style.display = 'flex';
+            const avatarSources = [];
+            const pushUnique = (value) => {
+                if (typeof value !== 'string') return;
+                const trimmed = value.trim();
+                if (!trimmed || avatarSources.includes(trimmed)) return;
+                avatarSources.push(trimmed);
+            };
+
+            if (window.game && typeof window.game.getBaseAppAvatar === 'function') {
+                pushUnique(window.game.getBaseAppAvatar());
+            }
+            pushUnique(window.__baseAppAvatar);
+            if (window.walletManager && window.walletManager.baseAppAvatar) {
+                pushUnique(window.walletManager.baseAppAvatar);
+            }
+            try { pushUnique(localStorage.getItem('playerBaseAppAvatar')); } catch (e) {}
+            pushUnique(window.__userAvatar);
+            try { pushUnique(localStorage.getItem('playerAvatar')); } catch (e) {}
+
+            if (avatarSources.length > 0) {
+                let currentIndex = 0;
+                const tryNextAvatar = () => {
+                    if (currentIndex >= avatarSources.length) {
+                        profileAvatar.style.display = 'none';
+                        profileAvatarPlaceholder.style.display = 'flex';
+                        return;
+                    }
+                    profileAvatar.src = avatarSources[currentIndex];
+                    profileAvatar.style.display = 'block';
+                    profileAvatarPlaceholder.style.display = 'none';
+                    currentIndex++;
                 };
+
+                profileAvatar.onerror = tryNextAvatar;
+                profileAvatar.onload = () => {
+                    try { localStorage.setItem('playerAvatar', profileAvatar.src); } catch (e) {}
+                };
+
+                tryNextAvatar();
             } else {
                 profileAvatar.style.display = 'none';
                 profileAvatarPlaceholder.style.display = 'flex';
