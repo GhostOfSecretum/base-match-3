@@ -5884,18 +5884,20 @@ class MatchThreePro {
             return placeholderHtml;
         }
         const altText = this.escapeHtml(this.getAvatarAltText(displayName));
+        // НЕ используем loading="lazy" — в комбинации с display:none браузер не загрузит картинку
+        // Показываем placeholder по умолчанию, при onload показываем img и скрываем placeholder
         return `
             <img src="${this.escapeHtml(safeUrl)}"
                  alt="${altText}"
                  class="player-avatar"
-                 loading="lazy"
                  decoding="async"
                  width="36"
                  height="36"
                  referrerpolicy="no-referrer"
-                 style="display:none;"
-                 onload="this.style.display='block'; if (this.nextElementSibling) this.nextElementSibling.style.display='none';"
-                 onerror="this.style.display='none'; if (this.nextElementSibling) this.nextElementSibling.style.display='flex';">
+                 crossorigin="anonymous"
+                 style="position:absolute;opacity:0;width:36px;height:36px;"
+                 onload="this.style.position='';this.style.opacity='1';this.style.width='';this.style.height=''; var p=this.nextElementSibling; if(p)p.style.display='none';"
+                 onerror="this.style.display='none'; var p=this.nextElementSibling; if(p)p.style.display='flex';">
             ${placeholderHtml}
         `;
     }
@@ -5921,12 +5923,13 @@ class MatchThreePro {
         if (!img) {
             img = document.createElement('img');
             img.className = 'player-avatar';
-            img.loading = 'lazy';
             img.decoding = 'async';
             img.width = 36;
             img.height = 36;
             img.referrerPolicy = 'no-referrer';
-            img.style.display = 'none';
+            img.crossOrigin = 'anonymous';
+            // НЕ используем display:none — вместо этого opacity:0, чтобы браузер загрузил картинку
+            img.style.cssText = 'position:absolute;opacity:0;width:36px;height:36px;';
             container.insertBefore(img, placeholder);
         }
         img.alt = altText;
@@ -5935,6 +5938,7 @@ class MatchThreePro {
             if (placeholder) placeholder.style.display = 'flex';
         };
         img.onload = function() {
+            this.style.cssText = '';
             this.style.display = 'block';
             if (placeholder) placeholder.style.display = 'none';
         };

@@ -1697,6 +1697,9 @@ body::before {
     width: 36px;
     height: 36px;
     flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+    border-radius: 50%;
 }
 
 .player-avatar {
