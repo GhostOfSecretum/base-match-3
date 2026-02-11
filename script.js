@@ -1,5 +1,5 @@
 // НЕМЕДЛЕННОЕ ЛОГИРОВАНИЕ - должно выполниться первым
-const APP_VERSION = '1.0.104';
+const APP_VERSION = '1.0.105';
 console.log('=== SCRIPT.JS VERSION', APP_VERSION, '===');
 console.log('Timestamp:', new Date().toISOString());
 
