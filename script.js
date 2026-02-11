@@ -1151,10 +1151,12 @@ const SponsoredTransactions = {
         // === Strategy 4: eth_sendTransaction (legacy fallback) ===
         const txRequest = {
             from: fromAddress,
-            to: txParams.to || fromAddress,
             value: txParams.value || '0x0',
             data: txParams.data || '0x'
         };
+        if (txParams.to) {
+            txRequest.to = txParams.to;
+        }
         
         log(`[4/4] Fallback eth_sendTransaction: ${JSON.stringify(txRequest)}`);
         
@@ -6242,94 +6244,20 @@ class MatchThreePro {
         }
 
         if (typeof debugLog === 'function') debugLog('New game: preparing sponsored transaction...');
-        
-        // Use our ERC-7677 proxy URL so the wallet knows the paymaster immediately
-        const paymasterProxyUrl = SponsoredTransactions.getPaymasterProxyUrl();
-        const paymasterCapability = { url: paymasterProxyUrl };
-        
-        if (typeof debugLog === 'function') debugLog('New game: awaiting transaction signature...');
-        
-        let txHash;
-        
-        // === Strategy 1: wallet_sendCalls + CDP paymasterService URL ===
-        try {
-            if (typeof debugLog === 'function') debugLog('[1/4] New game: trying wallet_sendCalls with CDP paymasterService...');
-            const bundleId = await provider.request({
-                method: 'wallet_sendCalls',
-                params: [{
-                    version: '1.0',
-                    chainId: '0x2105',
-                    from: from,
-                    calls: [{ to: from, value: '0x0', data: '0x' }],
-                    capabilities: {
-                        paymasterService: paymasterCapability
-                    }
-                }]
-            });
-            
-            if (typeof debugLog === 'function') debugLog(`[1/4] New game: CDP paymaster success, bundle: ${bundleId}`);
-            
-            txHash = bundleId;
-            try {
-                const resolvedHash = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId, 30);
-                if (resolvedHash) txHash = resolvedHash;
-            } catch (e) {
-                if (typeof debugLog === 'function') debugLog(`New game: bundle receipt polling failed: ${e.message}`);
-            }
-        } catch (sendCallsError) {
-            if (typeof debugLog === 'function') debugLog(`[1/4] New game: CDP paymaster failed: ${sendCallsError.message}`);
-            
-            if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied')) {
-                throw sendCallsError;
-            }
-            
-            // === Strategy 2: wallet_sendCalls + paymasterService: true (wallet-native sponsorship) ===
-            try {
-                if (typeof debugLog === 'function') debugLog('[2/4] New game: trying wallet_sendCalls with paymasterService: true...');
-                const bundleId1b = await provider.request({
-                    method: 'wallet_sendCalls',
-                    params: [{
-                        version: '1.0',
-                        chainId: '0x2105',
-                        from: from,
-                        calls: [{ to: from, value: '0x0', data: '0x' }],
-                        capabilities: {
-                            paymasterService: true
-                        }
-                    }]
-                });
-                
-                if (typeof debugLog === 'function') debugLog(`[2/4] New game: wallet-native sponsorship success: ${bundleId1b}`);
-                
-                txHash = bundleId1b;
-                try {
-                    const resolved1b = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId1b, 30);
-                    if (resolved1b) txHash = resolved1b;
-                } catch (e) {
-                    if (typeof debugLog === 'function') debugLog(`New game: bundle receipt polling failed: ${e.message}`);
-                }
-            } catch (nativeSponsorError) {
-                if (typeof debugLog === 'function') debugLog(`[2/4] New game: wallet-native sponsorship failed: ${nativeSponsorError.message}`);
-                
-                if (nativeSponsorError.message?.includes('reject') || nativeSponsorError.message?.includes('denied')) {
-                    throw nativeSponsorError;
-                }
-                
-                // === Strategy 3: eth_sendTransaction (legacy fallback) ===
-                if (typeof debugLog === 'function') debugLog('[3/4] New game: falling back to eth_sendTransaction...');
-                txHash = await provider.request({
-                    method: 'eth_sendTransaction',
-                    params: [{
-                        from: from,
-                        to: from,
-                        value: '0x0',
-                        data: '0x'
-                    }]
-                });
-            }
-        }
 
-        return txHash;
+        const result = await SponsoredTransactions.sendViaFarcasterSDK(
+            {
+                from: from,
+                to: from,
+                value: '0x0',
+                data: '0x'
+            },
+            (status) => {
+                if (typeof debugLog === 'function') debugLog(`New game: ${status}`);
+            }
+        );
+
+        return result?.txHash;
     }
 
     setupEventListeners() {
@@ -8781,119 +8709,21 @@ async function sendSimpleGM() {
     if (gmStatus) gmStatus.textContent = 'Connecting to wallet...';
     
     try {
-        // Get provider
-        let provider = null;
-        const sdk = window.sdk || (typeof frame !== 'undefined' && frame.sdk) || window.__farcasterSDK;
-        
-        if (sdk?.wallet?.ethProvider) {
-            provider = sdk.wallet.ethProvider;
-        } else if (window.ethereum) {
-            provider = window.ethereum;
-        }
-        
-        if (!provider) {
-            throw new Error('No wallet found');
-        }
-        
-        // Get account
-        if (gmStatus) gmStatus.textContent = 'Getting account...';
-        const accounts = await provider.request({ method: 'eth_requestAccounts' });
-        const from = accounts[0];
-        
-        if (!from) {
-            throw new Error('No account connected');
-        }
-        
-        // Send sponsored transaction via wallet_sendCalls (instant "Free" in wallet UI)
-        // Use our ERC-7677 proxy URL so the wallet knows the paymaster immediately
-        const paymasterProxyUrl = SponsoredTransactions.getPaymasterProxyUrl();
-        const paymasterCapability = { url: paymasterProxyUrl };
-        
+        const contractTxParams = {
+            to: GM_CONTRACT.address,
+            value: '0x0',
+            data: GM_CONTRACT.sayGMSelector
+        };
+
         if (gmStatus) gmStatus.textContent = 'Please confirm transaction...';
-        
-        let txHash;
-        
-        // === Strategy 1: wallet_sendCalls + CDP paymasterService URL ===
-        try {
-            console.log('GM [1/4]: Trying wallet_sendCalls with CDP paymasterService:', JSON.stringify(paymasterCapability));
-            const bundleId = await provider.request({
-                method: 'wallet_sendCalls',
-                params: [{
-                    version: '1.0',
-                    chainId: '0x2105',
-                    from: from,
-                    calls: [{ to: from, value: '0x0', data: '0x' }],
-                    capabilities: {
-                        paymasterService: paymasterCapability
-                    }
-                }]
-            });
-            
-            console.log('GM [1/4]: CDP paymaster success, bundle:', bundleId);
-            if (gmStatus) gmStatus.textContent = '[sendCalls OK] Confirming...';
-            
-            txHash = bundleId;
-            try {
-                const resolvedHash = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId, 30);
-                if (resolvedHash) txHash = resolvedHash;
-            } catch (e) {
-                console.log('GM bundle receipt polling failed, using bundle ID:', e.message);
-            }
-        } catch (sendCallsError) {
-            console.log('GM [1/4]: CDP paymaster failed:', sendCallsError.message);
-            
-            if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied')) {
-                throw sendCallsError;
-            }
-            
-            // === Strategy 2: wallet_sendCalls + paymasterService: true (wallet-native sponsorship) ===
-            try {
-                console.log('GM [2/4]: Trying wallet_sendCalls with paymasterService: true...');
-                if (gmStatus) gmStatus.textContent = '[Trying wallet sponsorship...]';
-                const bundleId1b = await provider.request({
-                    method: 'wallet_sendCalls',
-                    params: [{
-                        version: '1.0',
-                        chainId: '0x2105',
-                        from: from,
-                        calls: [{ to: from, value: '0x0', data: '0x' }],
-                        capabilities: {
-                            paymasterService: true
-                        }
-                    }]
-                });
-                
-                console.log('GM [2/4]: Wallet-native sponsorship success:', bundleId1b);
-                if (gmStatus) gmStatus.textContent = '[sendCalls OK] Confirming...';
-                
-                txHash = bundleId1b;
-                try {
-                    const resolved1b = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId1b, 30);
-                    if (resolved1b) txHash = resolved1b;
-                } catch (e) {
-                    console.log('GM bundle receipt polling failed, using bundle ID:', e.message);
-                }
-            } catch (nativeSponsorError) {
-                console.log('GM [2/4]: Wallet-native sponsorship failed:', nativeSponsorError.message);
-                if (gmStatus) gmStatus.textContent = `[sponsorship FAIL] Fallback...`;
-                
-                if (nativeSponsorError.message?.includes('reject') || nativeSponsorError.message?.includes('denied')) {
-                    throw nativeSponsorError;
-                }
-                
-                // === Strategy 3: eth_sendTransaction (legacy fallback) ===
-                console.log('GM [3/4]: Falling back to eth_sendTransaction...');
-                txHash = await provider.request({
-                    method: 'eth_sendTransaction',
-                    params: [{
-                        from: from,
-                        to: from,
-                        data: '0x'
-                    }]
-                });
-            }
-        }
-        
+
+        const result = await SponsoredTransactions.sendViaFarcasterSDK(
+            contractTxParams,
+            (status) => { if (gmStatus) gmStatus.textContent = status; }
+        );
+
+        const txHash = result?.txHash;
+
         console.log('GM TX sent:', txHash);
         
         // Update streak
@@ -8990,116 +8820,18 @@ async function sendSimpleDeploy() {
     }
     
     try {
-        // Get provider
-        let provider = null;
-        const sdk = window.sdk || (typeof frame !== 'undefined' && frame.sdk) || window.__farcasterSDK;
-        
-        if (sdk?.wallet?.ethProvider) {
-            provider = sdk.wallet.ethProvider;
-        } else if (window.ethereum) {
-            provider = window.ethereum;
-        }
-        
-        if (!provider) {
-            throw new Error('No wallet found');
-        }
-        
-        // Get account
-        if (deployStatus) deployStatus.textContent = 'Getting account...';
-        const accounts = await provider.request({ method: 'eth_requestAccounts' });
-        const from = accounts[0];
-        
-        if (!from) {
-            throw new Error('No account connected');
-        }
-        
-        // Deploy contract via wallet_sendCalls with sponsorship (instant "Free" in wallet UI)
-        // Use our ERC-7677 proxy URL so the wallet knows the paymaster immediately
-        const paymasterProxyUrl = SponsoredTransactions.getPaymasterProxyUrl();
-        const paymasterCapability = { url: paymasterProxyUrl };
-        
         if (deployStatus) deployStatus.textContent = 'Please confirm transaction...';
-        
-        let txHash;
-        
-        // === Strategy 1: wallet_sendCalls + CDP paymasterService URL ===
-        try {
-            console.log('Deploy [1/4]: Trying wallet_sendCalls with CDP paymasterService:', JSON.stringify(paymasterCapability));
-            const bundleId = await provider.request({
-                method: 'wallet_sendCalls',
-                params: [{
-                    version: '1.0',
-                    chainId: '0x2105',
-                    from: from,
-                    calls: [{ data: SIMPLE_STORAGE_BYTECODE }],
-                    capabilities: {
-                        paymasterService: paymasterCapability
-                    }
-                }]
-            });
-            
-            console.log('Deploy [1/4]: CDP paymaster success, bundle:', bundleId);
-            if (deployStatus) deployStatus.textContent = 'Transaction sent, confirming...';
-            
-            txHash = bundleId;
-            try {
-                const resolvedHash = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId, 30);
-                if (resolvedHash) txHash = resolvedHash;
-            } catch (e) {
-                console.log('Deploy bundle receipt polling failed, using bundle ID:', e.message);
-            }
-        } catch (sendCallsError) {
-            console.log('Deploy [1/4]: CDP paymaster failed:', sendCallsError.message);
-            
-            if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied')) {
-                throw sendCallsError;
-            }
-            
-            // === Strategy 2: wallet_sendCalls + paymasterService: true (wallet-native sponsorship) ===
-            try {
-                console.log('Deploy [2/4]: Trying wallet_sendCalls with paymasterService: true...');
-                const bundleId1b = await provider.request({
-                    method: 'wallet_sendCalls',
-                    params: [{
-                        version: '1.0',
-                        chainId: '0x2105',
-                        from: from,
-                        calls: [{ data: SIMPLE_STORAGE_BYTECODE }],
-                        capabilities: {
-                            paymasterService: true
-                        }
-                    }]
-                });
-                
-                console.log('Deploy [2/4]: Wallet-native sponsorship success:', bundleId1b);
-                if (deployStatus) deployStatus.textContent = 'Transaction sent, confirming...';
-                
-                txHash = bundleId1b;
-                try {
-                    const resolved1b = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId1b, 30);
-                    if (resolved1b) txHash = resolved1b;
-                } catch (e) {
-                    console.log('Deploy bundle receipt polling failed, using bundle ID:', e.message);
-                }
-            } catch (nativeSponsorError) {
-                console.log('Deploy [2/4]: Wallet-native sponsorship failed:', nativeSponsorError.message);
-                
-                if (nativeSponsorError.message?.includes('reject') || nativeSponsorError.message?.includes('denied')) {
-                    throw nativeSponsorError;
-                }
-                
-                // === Strategy 3: eth_sendTransaction (legacy fallback) ===
-                console.log('Deploy [3/4]: Falling back to eth_sendTransaction...');
-                txHash = await provider.request({
-                    method: 'eth_sendTransaction',
-                    params: [{
-                        from: from,
-                        data: SIMPLE_STORAGE_BYTECODE
-                    }]
-                });
-            }
-        }
-        
+
+        const result = await SponsoredTransactions.sendViaFarcasterSDK(
+            {
+                value: '0x0',
+                data: SIMPLE_STORAGE_BYTECODE
+            },
+            (status) => { if (deployStatus) deployStatus.textContent = status; }
+        );
+
+        const txHash = result?.txHash;
+
         console.log('Deploy TX sent:', txHash);
         
         // Save to list
