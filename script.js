@@ -1374,7 +1374,7 @@ class WalletManager {
         debugLog('🎮 Processing user context...');
 
         // Получаем данные пользователя из контекста
-        // Для лидерборда используем Farcaster username (уникальный) в формате username.farcaster(base).eth
+        // Для лидерборда используем доменное имя из профиля Base App (Basenames)
         if (context.user) {
             // Для отображения в UI: displayName > username
             this.displayName = context.user.displayName || context.user.username || null;
@@ -1808,17 +1808,23 @@ class WalletManager {
                 this.userContext = context;
                 // Обновляем username и avatar из контекста
                 if (context.user) {
-                    // Приоритет: username (farcaster handle) для формата .farcaster(base).eth
                     this.farcasterUsername = context.user.username || null;
-                    this.username = this.farcasterUsername || context.user.displayName || null;
+                    // Не перезаписываем username если уже есть basename domain
+                    if (!window.__basenamesDomain) {
+                        this.username = this.farcasterUsername || context.user.displayName || null;
+                    }
                     this.avatar = context.user.pfpUrl || context.user.avatarUrl || null;
                     
-                    // ВАЖНО: Сохраняем farcaster username в глобальные переменные для leaderboard
+                    // Сохраняем данные (не перезаписываем basename domain)
                     if (this.username) {
-                        window.__userName = this.username;
+                        if (!window.__basenamesDomain) {
+                            window.__userName = this.username;
+                        }
                         window.__farcasterUsername = this.farcasterUsername;
                         try {
-                            localStorage.setItem('playerDisplayName', this.username);
+                            if (!window.__basenamesDomain) {
+                                localStorage.setItem('playerDisplayName', this.username);
+                            }
                             if (this.farcasterUsername) {
                                 localStorage.setItem('farcasterUsername', this.farcasterUsername);
                             }
@@ -2486,7 +2492,7 @@ class LeaderboardManager {
             } catch (e) {}
         }
         
-        // Никогда не отправляем адрес - только имя в формате .farcaster(base).eth или "Player"
+        // Никогда не отправляем адрес - только доменное имя (.base.eth) или "Player"
         const displayName = playerName || 'Player';
         
         // Получаем аватар из разных источников
@@ -5455,23 +5461,39 @@ class MatchThreePro {
                 ? rawCurrentAddress.toLowerCase()
                 : fallbackAddress;
 
-            // Получаем имя текущего игрока — farcaster username в формате .farcaster(base).eth
+            // Получаем имя текущего игрока — доменное имя из профиля Base App
             let currentPlayerName = null;
             
-            // 1. Сначала проверяем farcasterUsername
-            try {
-                const farcasterUsername = localStorage.getItem('farcasterUsername') || window.__farcasterUsername;
-                if (farcasterUsername) {
-                    currentPlayerName = this.formatBasename(farcasterUsername);
-                }
-            } catch (e) {}
+            // 0. Приоритет: доменное имя из Basenames
+            if (window.__basenamesDomain) {
+                currentPlayerName = window.__basenamesDomain;
+            }
             
-            // 2. Проверяем localStorage
+            if (!currentPlayerName) {
+                try {
+                    const savedBasename = localStorage.getItem('basenamesDomain');
+                    if (savedBasename) {
+                        currentPlayerName = savedBasename;
+                    }
+                } catch (e) {}
+            }
+            
+            // 1. Проверяем localStorage
             if (!currentPlayerName) {
                 try {
                     const savedName = localStorage.getItem('playerDisplayName');
                     if (savedName) {
                         currentPlayerName = this.formatBasename(savedName);
+                    }
+                } catch (e) {}
+            }
+            
+            // 2. Проверяем farcasterUsername
+            if (!currentPlayerName) {
+                try {
+                    const farcasterUsername = localStorage.getItem('farcasterUsername') || window.__farcasterUsername;
+                    if (farcasterUsername) {
+                        currentPlayerName = this.formatBasename(farcasterUsername);
                     }
                 } catch (e) {}
             }
@@ -5570,23 +5592,21 @@ class MatchThreePro {
                     displayName = 'Player';
                 }
                 
-                // Форматируем имя в формат имя.farcaster(base).eth
+                // Форматируем имя - показываем доменное имя из профиля Base App
                 if (displayName && displayName !== 'Player') {
-                    // Убираем существующие суффиксы если есть
-                    let baseName = displayName;
-                    if (baseName.includes('.farcaster(base).eth')) {
-                        // Уже в нужном формате
+                    // Если уже в формате домена (.base.eth или .eth) - оставляем как есть
+                    if (displayName.endsWith('.base.eth') || displayName.endsWith('.eth')) {
+                        // Уже доменное имя - оставляем
+                    } else if (displayName.includes('.farcaster(base).eth')) {
+                        // Старый формат - конвертируем в .base.eth
+                        displayName = displayName.replace('.farcaster(base).eth', '.base.eth');
                     } else {
-                        if (baseName.includes('.base.eth')) {
-                            baseName = baseName.replace('.base.eth', '');
+                        // Убираем @ если есть
+                        if (displayName.startsWith('@')) {
+                            displayName = displayName.substring(1);
                         }
-                        if (baseName.endsWith('.eth')) {
-                            baseName = baseName.replace('.eth', '');
-                        }
-                        if (baseName.startsWith('@')) {
-                            baseName = baseName.substring(1);
-                        }
-                        displayName = `${baseName}.farcaster(base).eth`;
+                        // Форматируем как .base.eth
+                        displayName = `${displayName}.base.eth`;
                     }
                 }
                 
@@ -5853,9 +5873,12 @@ class MatchThreePro {
                 if (typeof debugLog === 'function') debugLog(`  Result: ${name || 'null'}`);
                 
                 if (name && name !== 'Player') {
-                    // Форматируем имя в формат .farcaster(base).eth если ещё не отформатировано
+                    // Форматируем имя - показываем доменное имя из профиля Base App
                     let formattedName = name;
-                    if (!formattedName.includes('.farcaster(base).eth')) {
+                    if (formattedName.includes('.farcaster(base).eth')) {
+                        // Старый формат - конвертируем в .base.eth
+                        formattedName = formattedName.replace('.farcaster(base).eth', '.base.eth');
+                    } else if (!formattedName.endsWith('.base.eth') && !formattedName.endsWith('.eth')) {
                         formattedName = this.formatBasename(formattedName);
                     }
                     
@@ -6600,6 +6623,10 @@ function initStartMenu() {
                     var medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : '';
                     var name = (typeof r.playerName === 'string' && !r.playerName.startsWith('0x')) ? r.playerName : 'Player';
                     if (typeof name !== 'string') name = 'Player';
+                    // Конвертируем старый формат .farcaster(base).eth в .base.eth
+                    if (name.indexOf('.farcaster(base).eth') !== -1) {
+                        name = name.replace('.farcaster(base).eth', '.base.eth');
+                    }
                     var scoreValue = 0;
                     if (typeof r.score === 'number') scoreValue = r.score;
                     else if (typeof r.score === 'string') { var ps = Number(r.score); if (isFinite(ps)) scoreValue = ps; }
