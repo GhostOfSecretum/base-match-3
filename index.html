@@ -1448,7 +1448,7 @@
                 <div class="modal-body">
                     <div class="mint-nft-content" style="text-align: center; padding: 20px;">
                         <div class="mint-nft-preview" style="margin-bottom: 20px;">
-                            <img src="200.png" alt="Mint NFT" style="width: 120px; height: 120px; margin: 0 auto; border-radius: 16px; object-fit: cover; display: block;" />
+                            <img id="mintNFTPreviewImage" src="mint-preview.png" alt="Mint NFT" style="width: 120px; height: 120px; margin: 0 auto; border-radius: 16px; object-fit: cover; display: block;" onerror="if (!this.dataset.fallback) { this.dataset.fallback = '1'; this.src = '200.png'; } else if (this.dataset.fallback === '1') { this.dataset.fallback = '2'; this.src = '200.PNG'; }" />
                             <div id="mintNFTName" style="font-size: 20px; font-weight: bold; margin-top: 12px; color: #fff;">Match-3 Coin</div>
                             <div style="font-size: 13px; color: #888; margin-top: 4px;">Zora Coin on Base</div>
                         </div>
