@@ -6926,6 +6926,17 @@ function initStartMenu() {
         });
     }
 
+    const mintNFTDebugBtn = document.getElementById('mintNFTDebugBtn');
+    if (mintNFTDebugBtn) {
+        mintNFTDebugBtn.addEventListener('click', () => {
+            if (typeof window.openDebugModal === 'function') {
+                window.openDebugModal();
+            } else {
+                alert('Debug modal is not ready yet. Please try again in a moment.');
+            }
+        });
+    }
+
     // Close mint modal on backdrop click
     if (mintNFTModal) {
         const mintBackdrop = mintNFTModal.querySelector('.modal-backdrop');
@@ -8957,6 +8968,13 @@ const ZORA_COIN_BUY_ABI = [
 // Predefined mint amounts in ETH
 const MINT_AMOUNTS = ['0.0001', '0.0005', '0.001', '0.005', '0.01'];
 let currentMintAmountIndex = 0;
+let mintControlsInitialized = false;
+
+function mintDebug(message) {
+    const formatted = `[MINT] ${message}`;
+    console.log(formatted);
+    if (typeof debugLog === 'function') debugLog(formatted);
+}
 
 function getMintAmount() {
     return MINT_AMOUNTS[currentMintAmountIndex];
@@ -8968,6 +8986,9 @@ function updateMintAmountDisplay() {
 }
 
 function initMintNFTControls() {
+    if (mintControlsInitialized) return;
+    mintControlsInitialized = true;
+
     const amountDown = document.getElementById('mintAmountDown');
     const amountUp = document.getElementById('mintAmountUp');
     
@@ -9003,6 +9024,41 @@ async function updateMintGaslessIndicator() {
     } catch (e) {
         indicator.style.display = 'none';
     }
+}
+
+async function ensureBaseChain(provider) {
+    const chainId = await provider.request({ method: 'eth_chainId' });
+    if (chainId === '0x2105') return;
+
+    mintDebug(`Wrong chain detected: ${chainId}, switching to Base`);
+    try {
+        await provider.request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: '0x2105' }]
+        });
+    } catch (switchError) {
+        if (switchError?.code === 4902) {
+            await provider.request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                    chainId: '0x2105',
+                    chainName: 'Base',
+                    nativeCurrency: { name: 'Ether', symbol: 'ETH', decimals: 18 },
+                    rpcUrls: ['https://mainnet.base.org'],
+                    blockExplorerUrls: ['https://basescan.org']
+                }]
+            });
+        } else {
+            throw switchError;
+        }
+    }
+}
+
+async function checkMintBalance(provider, from, amountWei) {
+    const rawBalance = await provider.request({ method: 'eth_getBalance', params: [from, 'latest'] });
+    const balanceWei = ethers.BigNumber.from(rawBalance);
+    const hasEnough = balanceWei.gte(amountWei);
+    return { hasEnough, balanceWei };
 }
 
 /**
@@ -9068,18 +9124,48 @@ async function sendMintNFT() {
             throw new Error('No account connected');
         }
         
+        // Ensure we are on Base chain
+        await ensureBaseChain(provider);
+
         // Calculate amount in wei
         const amountETH = getMintAmount();
         const amountWei = ethers.utils.parseEther(amountETH);
-        const amountHex = '0x' + amountWei.toBigInt().toString(16);
-        
-        console.log(`Mint NFT: buying Zora coin for ${amountETH} ETH (${amountHex} wei)`);
-        console.log(`Recipient: ${from}, Referrer: ${ZORA_REFERRER_ADDRESS}`);
+        const amountHex = amountWei.toHexString();
+
+        // Sponsorship covers gas only, user still pays purchase amount
+        if (mintStatus) mintStatus.textContent = 'Checking balance...';
+        const { hasEnough, balanceWei } = await checkMintBalance(provider, from, amountWei);
+        const balanceEth = ethers.utils.formatEther(balanceWei);
+        mintDebug(`Account: ${from}`);
+        mintDebug(`Balance: ${balanceEth} ETH`);
+        mintDebug(`Mint amount: ${amountETH} ETH`);
+        mintDebug(`Coin: ${ZORA_COIN_ADDRESS}`);
+        mintDebug(`Referrer: ${ZORA_REFERRER_ADDRESS}`);
+        if (!hasEnough) {
+            throw new Error(`Insufficient ETH for mint value. Balance: ${balanceEth} ETH, required: ${amountETH} ETH`);
+        }
         
         // Encode the buy() function call
         if (mintStatus) mintStatus.textContent = 'Preparing transaction...';
         const buyData = encodeZoraCoinBuy(from, amountWei);
-        console.log('Encoded buy data:', buyData.substring(0, 66) + '...');
+        mintDebug(`Encoded buy data prefix: ${buyData.substring(0, 66)}...`);
+
+        // Preflight call to surface contract-level errors before wallet popup
+        try {
+            const estimatedGas = await provider.request({
+                method: 'eth_estimateGas',
+                params: [{
+                    from: from,
+                    to: ZORA_COIN_ADDRESS,
+                    value: amountHex,
+                    data: buyData
+                }]
+            });
+            mintDebug(`Preflight gas estimate: ${estimatedGas}`);
+        } catch (estimateError) {
+            mintDebug(`Preflight estimate failed: ${estimateError.message}`);
+            throw new Error(`Mint call simulation failed: ${estimateError.message}`);
+        }
         
         // Use our ERC-7677 proxy URL for CDP sponsorship
         const paymasterProxyUrl = SponsoredTransactions.getPaymasterProxyUrl();
@@ -9090,7 +9176,7 @@ async function sendMintNFT() {
         let txHash;
         try {
             // Try wallet_sendCalls with paymasterService for sponsored (gasless) UI
-            console.log('Mint NFT: Trying wallet_sendCalls with paymasterService:', JSON.stringify(paymasterCapability));
+            mintDebug(`Trying wallet_sendCalls with paymasterService: ${JSON.stringify(paymasterCapability)}`);
             const bundleId = await provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
@@ -9108,7 +9194,7 @@ async function sendMintNFT() {
                 }]
             });
             
-            console.log('Mint NFT wallet_sendCalls success, bundle:', bundleId);
+            mintDebug(`wallet_sendCalls success, bundle: ${bundleId}`);
             if (mintStatus) mintStatus.textContent = 'Transaction sent, confirming...';
             
             // Resolve bundle ID to tx hash
@@ -9117,10 +9203,10 @@ async function sendMintNFT() {
                 const resolvedHash = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId, 30);
                 if (resolvedHash) txHash = resolvedHash;
             } catch (e) {
-                console.log('Mint NFT bundle receipt polling failed, using bundle ID:', e.message);
+                mintDebug(`Bundle receipt polling failed, using bundle ID: ${e.message}`);
             }
         } catch (sendCallsError) {
-            console.log('Mint NFT wallet_sendCalls failed, falling back:', sendCallsError.message);
+            mintDebug(`wallet_sendCalls failed: ${sendCallsError.message}`);
             
             // If user rejected, don't fallback
             if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied') || sendCallsError.message?.includes('cancel')) {
@@ -9141,7 +9227,7 @@ async function sendMintNFT() {
             });
         }
         
-        console.log('Mint NFT TX sent:', txHash);
+        mintDebug(`TX sent: ${txHash}`);
         
         // Save mint to local storage
         saveMintNFT(txHash, amountETH);
@@ -9160,6 +9246,7 @@ async function sendMintNFT() {
         }
         
     } catch (error) {
+        mintDebug(`Mint error: ${error.message || 'unknown'}`);
         console.error('Mint NFT error:', error);
         if (mintStatus) {
             mintStatus.textContent = error.message || 'Mint failed';
