@@ -934,7 +934,8 @@ const SponsoredTransactions = {
     },
     
     /**
-     * Send transaction via Base Mini App - user pays gas (no sponsorship)
+     * Send transaction via wallet_sendCalls (EIP-5792) with paymasterService for instant "Free" UI,
+     * with fallback to eth_sendTransaction for wallets that don't support EIP-5792.
      */
     async sendViaFarcasterSDK(txParams, statusCallback) {
         const log = (msg) => {
@@ -945,7 +946,7 @@ const SponsoredTransactions = {
             }
         };
         
-        log('=== sendTransaction (user pays gas) ===');
+        log('=== sendTransaction (with sponsorship) ===');
         if (statusCallback) statusCallback('Connecting to wallet...');
         
         // Get Ethereum provider
@@ -985,17 +986,78 @@ const SponsoredTransactions = {
             throw new Error('No wallet address available.');
         }
         
-        // Send transaction - user pays gas
         if (statusCallback) statusCallback('Please confirm transaction...');
         
+        // Build call object for wallet_sendCalls
+        const call = {
+            to: txParams.to || fromAddress,
+            value: txParams.value || '0x0',
+            data: txParams.data || '0x'
+        };
+        // For contract deployment (no 'to'), omit the 'to' field
+        if (!txParams.to) {
+            delete call.to;
+        }
+        
+        log(`TX Call: ${JSON.stringify(call)}`);
+        
+        // Try wallet_sendCalls with paymasterService: true first (instant "Free" in wallet UI)
+        try {
+            log('Trying wallet_sendCalls with paymasterService: true...');
+            const bundleId = await ethProvider.request({
+                method: 'wallet_sendCalls',
+                params: [{
+                    version: '1.0',
+                    chainId: '0x2105',
+                    from: fromAddress,
+                    calls: [call],
+                    capabilities: {
+                        paymasterService: true
+                    }
+                }]
+            });
+            
+            log(`wallet_sendCalls SUCCESS! Bundle ID: ${bundleId}`);
+            
+            // wallet_sendCalls returns a bundle ID, need to get the actual tx hash
+            if (statusCallback) statusCallback('Transaction sent, waiting for confirmation...');
+            
+            let txHash = bundleId;
+            try {
+                const resolvedHash = await this.waitForBundleReceipt(ethProvider, bundleId, 30);
+                if (resolvedHash) txHash = resolvedHash;
+                log(`Bundle confirmed! TX Hash: ${txHash}`);
+            } catch (receiptError) {
+                log(`Bundle receipt polling failed, using bundle ID as hash: ${receiptError.message}`);
+                // Use bundleId as fallback - it may be the tx hash itself in some wallets
+            }
+            
+            return {
+                success: true,
+                sponsored: true,
+                txHash: txHash
+            };
+        } catch (sendCallsError) {
+            log(`wallet_sendCalls failed: ${sendCallsError.message}`);
+            
+            // If user rejected, don't fallback
+            if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied')) {
+                throw new Error('Transaction cancelled.');
+            }
+            
+            // Fallback to eth_sendTransaction for wallets without EIP-5792 support
+            log('Falling back to eth_sendTransaction...');
+        }
+        
+        // Fallback: regular eth_sendTransaction
         const txRequest = {
             from: fromAddress,
-            to: txParams.to,
+            to: txParams.to || fromAddress,
             value: txParams.value || '0x0',
             data: txParams.data || '0x'
         };
         
-        log(`TX Request: ${JSON.stringify(txRequest)}`);
+        log(`Fallback TX Request: ${JSON.stringify(txRequest)}`);
         
         try {
             const txHash = await ethProvider.request({
@@ -1003,11 +1065,11 @@ const SponsoredTransactions = {
                 params: [txRequest]
             });
             
-            log(`SUCCESS! TX Hash: ${txHash}`);
+            log(`Fallback SUCCESS! TX Hash: ${txHash}`);
             
             return {
                 success: true,
-                sponsored: false, // User paid gas
+                sponsored: false,
                 txHash: txHash
             };
         } catch (txError) {
@@ -6049,15 +6111,54 @@ class MatchThreePro {
         }
 
         if (typeof debugLog === 'function') debugLog('New game: awaiting transaction signature...');
-        const txHash = await provider.request({
-            method: 'eth_sendTransaction',
-            params: [{
-                from: from,
-                to: from,
-                value: '0x0',
-                data: '0x'
-            }]
-        });
+        
+        let txHash;
+        try {
+            // Try wallet_sendCalls with paymasterService for instant sponsored UI
+            if (typeof debugLog === 'function') debugLog('New game: trying wallet_sendCalls with paymasterService...');
+            const bundleId = await provider.request({
+                method: 'wallet_sendCalls',
+                params: [{
+                    version: '1.0',
+                    chainId: '0x2105',
+                    from: from,
+                    calls: [{ to: from, value: '0x0', data: '0x' }],
+                    capabilities: {
+                        paymasterService: true
+                    }
+                }]
+            });
+            
+            if (typeof debugLog === 'function') debugLog(`New game: wallet_sendCalls success, bundle: ${bundleId}`);
+            
+            // Resolve bundle ID to tx hash
+            txHash = bundleId;
+            try {
+                const resolvedHash = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId, 30);
+                if (resolvedHash) txHash = resolvedHash;
+            } catch (e) {
+                if (typeof debugLog === 'function') debugLog(`New game: bundle receipt polling failed: ${e.message}`);
+            }
+        } catch (sendCallsError) {
+            if (typeof debugLog === 'function') debugLog(`New game: wallet_sendCalls failed: ${sendCallsError.message}`);
+            
+            // If user rejected, don't fallback
+            if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied')) {
+                throw sendCallsError;
+            }
+            
+            // Fallback to eth_sendTransaction
+            if (typeof debugLog === 'function') debugLog('New game: falling back to eth_sendTransaction...');
+            txHash = await provider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                    from: from,
+                    to: from,
+                    value: '0x0',
+                    data: '0x'
+                }]
+            });
+        }
 
         return txHash;
     }
@@ -8468,17 +8569,55 @@ async function sendSimpleGM() {
             throw new Error('No account connected');
         }
         
-        // Send minimal transaction (same format as working Deploy)
+        // Send sponsored transaction via wallet_sendCalls (instant "Free" in wallet UI)
         if (gmStatus) gmStatus.textContent = 'Please confirm transaction...';
         
-        const txHash = await provider.request({
-            method: 'eth_sendTransaction',
-            params: [{
-                from: from,
-                to: from,
-                data: '0x'
-            }]
-        });
+        let txHash;
+        try {
+            // Try wallet_sendCalls with paymasterService for instant sponsored UI
+            console.log('GM: Trying wallet_sendCalls with paymasterService: true...');
+            const bundleId = await provider.request({
+                method: 'wallet_sendCalls',
+                params: [{
+                    version: '1.0',
+                    chainId: '0x2105',
+                    from: from,
+                    calls: [{ to: from, value: '0x0', data: '0x' }],
+                    capabilities: {
+                        paymasterService: true
+                    }
+                }]
+            });
+            
+            console.log('GM wallet_sendCalls success, bundle:', bundleId);
+            if (gmStatus) gmStatus.textContent = 'Transaction sent, confirming...';
+            
+            // Resolve bundle ID to tx hash
+            txHash = bundleId;
+            try {
+                const resolvedHash = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId, 30);
+                if (resolvedHash) txHash = resolvedHash;
+            } catch (e) {
+                console.log('GM bundle receipt polling failed, using bundle ID:', e.message);
+            }
+        } catch (sendCallsError) {
+            console.log('GM wallet_sendCalls failed, falling back:', sendCallsError.message);
+            
+            // If user rejected, don't fallback
+            if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied')) {
+                throw sendCallsError;
+            }
+            
+            // Fallback to eth_sendTransaction
+            txHash = await provider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                    from: from,
+                    to: from,
+                    data: '0x'
+                }]
+            });
+        }
         
         console.log('GM TX sent:', txHash);
         
@@ -8599,16 +8738,54 @@ async function sendSimpleDeploy() {
             throw new Error('No account connected');
         }
         
-        // Deploy contract
+        // Deploy contract via wallet_sendCalls with sponsorship (instant "Free" in wallet UI)
         if (deployStatus) deployStatus.textContent = 'Please confirm transaction...';
         
-        const txHash = await provider.request({
-            method: 'eth_sendTransaction',
-            params: [{
-                from: from,
-                data: SIMPLE_STORAGE_BYTECODE
-            }]
-        });
+        let txHash;
+        try {
+            // Try wallet_sendCalls with paymasterService for instant sponsored UI
+            console.log('Deploy: Trying wallet_sendCalls with paymasterService: true...');
+            const bundleId = await provider.request({
+                method: 'wallet_sendCalls',
+                params: [{
+                    version: '1.0',
+                    chainId: '0x2105',
+                    from: from,
+                    calls: [{ data: SIMPLE_STORAGE_BYTECODE }],
+                    capabilities: {
+                        paymasterService: true
+                    }
+                }]
+            });
+            
+            console.log('Deploy wallet_sendCalls success, bundle:', bundleId);
+            if (deployStatus) deployStatus.textContent = 'Transaction sent, confirming...';
+            
+            // Resolve bundle ID to tx hash
+            txHash = bundleId;
+            try {
+                const resolvedHash = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId, 30);
+                if (resolvedHash) txHash = resolvedHash;
+            } catch (e) {
+                console.log('Deploy bundle receipt polling failed, using bundle ID:', e.message);
+            }
+        } catch (sendCallsError) {
+            console.log('Deploy wallet_sendCalls failed, falling back:', sendCallsError.message);
+            
+            // If user rejected, don't fallback
+            if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied')) {
+                throw sendCallsError;
+            }
+            
+            // Fallback to eth_sendTransaction
+            txHash = await provider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                    from: from,
+                    data: SIMPLE_STORAGE_BYTECODE
+                }]
+            });
+        }
         
         console.log('Deploy TX sent:', txHash);
         
