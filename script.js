@@ -8621,7 +8621,7 @@ async function sendSimpleGM() {
             });
             
             console.log('GM wallet_sendCalls success, bundle:', bundleId);
-            if (gmStatus) gmStatus.textContent = 'Transaction sent, confirming...';
+            if (gmStatus) gmStatus.textContent = '[sendCalls OK] Confirming...';
             
             // Resolve bundle ID to tx hash
             txHash = bundleId;
@@ -8633,6 +8633,7 @@ async function sendSimpleGM() {
             }
         } catch (sendCallsError) {
             console.log('GM wallet_sendCalls failed, falling back:', sendCallsError.message);
+            if (gmStatus) gmStatus.textContent = `[sendCalls FAIL: ${sendCallsError.message?.slice(0,40)}] Fallback...`;
             
             // If user rejected, don't fallback
             if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied')) {
