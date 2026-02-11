@@ -663,6 +663,41 @@ const SponsoredTransactions = {
     checkInterval: 60000, // Check eligibility every 60 seconds
     isEligible: null,
     lastError: null,
+    _paymasterServiceUrl: null, // Cached paymaster service URL
+    
+    /**
+     * Get the paymaster service URL from our backend API.
+     * The URL is cached after the first successful fetch.
+     * This URL is passed to wallet_sendCalls so the wallet knows
+     * the transaction is sponsored IMMEDIATELY (no delay).
+     */
+    async getPaymasterServiceUrl() {
+        // Return cached URL if available
+        if (this._paymasterServiceUrl) {
+            return this._paymasterServiceUrl;
+        }
+        
+        try {
+            const response = await fetch(this.paymasterApiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'sendSponsoredTransaction' })
+            });
+            
+            const data = await response.json();
+            if (data.success && data.paymasterServiceUrl) {
+                this._paymasterServiceUrl = data.paymasterServiceUrl;
+                console.log('Paymaster service URL obtained successfully');
+                return this._paymasterServiceUrl;
+            }
+            
+            console.log('Paymaster service URL not available:', data.error || 'unknown');
+            return null;
+        } catch (error) {
+            console.log('Failed to get paymaster service URL:', error.message);
+            return null;
+        }
+    },
     
     /**
      * Get Farcaster SDK instance
@@ -1001,9 +1036,17 @@ const SponsoredTransactions = {
         
         log(`TX Call: ${JSON.stringify(call)}`);
         
-        // Try wallet_sendCalls with paymasterService: true first (instant "Free" in wallet UI)
+        // Get paymaster URL for instant "Free" display in wallet UI
+        const paymasterUrl = await this.getPaymasterServiceUrl();
+        const paymasterCapability = paymasterUrl 
+            ? { url: paymasterUrl }  // ERC-7677: wallet knows paymaster immediately → instant "Free"
+            : true;                   // Fallback: wallet discovers sponsorship itself (may have delay)
+        
+        log(`Paymaster capability: ${JSON.stringify(paymasterCapability)}`);
+        
+        // Try wallet_sendCalls with paymasterService first (instant "Free" in wallet UI)
         try {
-            log('Trying wallet_sendCalls with paymasterService: true...');
+            log('Trying wallet_sendCalls with paymasterService...');
             const bundleId = await ethProvider.request({
                 method: 'wallet_sendCalls',
                 params: [{
@@ -1012,7 +1055,7 @@ const SponsoredTransactions = {
                     from: fromAddress,
                     calls: [call],
                     capabilities: {
-                        paymasterService: true
+                        paymasterService: paymasterCapability
                     }
                 }]
             });
@@ -6110,6 +6153,12 @@ class MatchThreePro {
             throw new Error('No account connected');
         }
 
+        if (typeof debugLog === 'function') debugLog('New game: preparing sponsored transaction...');
+        
+        // Get paymaster URL for instant "Free" display
+        const paymasterUrl = await SponsoredTransactions.getPaymasterServiceUrl();
+        const paymasterCapability = paymasterUrl ? { url: paymasterUrl } : true;
+        
         if (typeof debugLog === 'function') debugLog('New game: awaiting transaction signature...');
         
         let txHash;
@@ -6124,7 +6173,7 @@ class MatchThreePro {
                     from: from,
                     calls: [{ to: from, value: '0x0', data: '0x' }],
                     capabilities: {
-                        paymasterService: true
+                        paymasterService: paymasterCapability
                     }
                 }]
             });
@@ -8570,12 +8619,18 @@ async function sendSimpleGM() {
         }
         
         // Send sponsored transaction via wallet_sendCalls (instant "Free" in wallet UI)
+        if (gmStatus) gmStatus.textContent = 'Preparing sponsored transaction...';
+        
+        // Get paymaster URL for instant "Free" display
+        const paymasterUrl = await SponsoredTransactions.getPaymasterServiceUrl();
+        const paymasterCapability = paymasterUrl ? { url: paymasterUrl } : true;
+        
         if (gmStatus) gmStatus.textContent = 'Please confirm transaction...';
         
         let txHash;
         try {
             // Try wallet_sendCalls with paymasterService for instant sponsored UI
-            console.log('GM: Trying wallet_sendCalls with paymasterService: true...');
+            console.log('GM: Trying wallet_sendCalls with paymasterService:', JSON.stringify(paymasterCapability));
             const bundleId = await provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
@@ -8584,7 +8639,7 @@ async function sendSimpleGM() {
                     from: from,
                     calls: [{ to: from, value: '0x0', data: '0x' }],
                     capabilities: {
-                        paymasterService: true
+                        paymasterService: paymasterCapability
                     }
                 }]
             });
@@ -8739,12 +8794,18 @@ async function sendSimpleDeploy() {
         }
         
         // Deploy contract via wallet_sendCalls with sponsorship (instant "Free" in wallet UI)
+        if (deployStatus) deployStatus.textContent = 'Preparing sponsored transaction...';
+        
+        // Get paymaster URL for instant "Free" display
+        const paymasterUrl = await SponsoredTransactions.getPaymasterServiceUrl();
+        const paymasterCapability = paymasterUrl ? { url: paymasterUrl } : true;
+        
         if (deployStatus) deployStatus.textContent = 'Please confirm transaction...';
         
         let txHash;
         try {
             // Try wallet_sendCalls with paymasterService for instant sponsored UI
-            console.log('Deploy: Trying wallet_sendCalls with paymasterService: true...');
+            console.log('Deploy: Trying wallet_sendCalls with paymasterService:', JSON.stringify(paymasterCapability));
             const bundleId = await provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
@@ -8753,7 +8814,7 @@ async function sendSimpleDeploy() {
                     from: from,
                     calls: [{ data: SIMPLE_STORAGE_BYTECODE }],
                     capabilities: {
-                        paymasterService: true
+                        paymasterService: paymasterCapability
                     }
                 }]
             });
