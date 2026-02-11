@@ -56,6 +56,9 @@
     },
     "api/leaderboard.js": {
       "maxDuration": 10
+    },
+    "api/zora-quote.js": {
+      "maxDuration": 15
     }
   }
 }

@@ -8953,17 +8953,11 @@ async function sendSimpleDeploy() {
 }
 
 // ==================== MINT NFT (ZORA COIN) SYSTEM ====================
-// Buys a Zora Coin on Base via the coin's buy() function
-// Transaction is sponsored via CDP Paymaster through wallet_sendCalls
+// Buys a Zora Coin on Base via Zora SDK (server-side quote → client-side signing)
+// Gas is sponsored via CDP Paymaster through wallet_sendCalls
 
 const ZORA_COIN_ADDRESS = '0x5721264ac8f502df0ab6267bb231c203e4971865';
 const ZORA_REFERRER_ADDRESS = '0xf61c92d1e92dd05d955e281332829292582571a5';
-
-// Zora Coin buy() function ABI
-// buy(address recipient, uint256 orderSize, uint256 minAmountOut, uint160 sqrtPriceLimitX96, address tradeReferrer)
-const ZORA_COIN_BUY_ABI = [
-    'function buy(address recipient, uint256 orderSize, uint256 minAmountOut, uint160 sqrtPriceLimitX96, address tradeReferrer) external payable returns (uint256, uint256)'
-];
 
 // Predefined mint amounts in ETH
 const MINT_AMOUNTS = ['0.0001', '0.0005', '0.001', '0.005', '0.01'];
@@ -8974,18 +8968,6 @@ function mintDebug(message) {
     const formatted = `[MINT] ${message}`;
     console.log(formatted);
     if (typeof debugLog === 'function') debugLog(formatted);
-}
-
-function isIgnorableEstimateError(error) {
-    const msg = (error?.message || '').toLowerCase();
-    const code = error?.code;
-    return (
-        code === -32601 ||
-        msg.includes('unknown provider rpc error') ||
-        msg.includes('method not found') ||
-        msg.includes('unsupported') ||
-        msg.includes('does not exist')
-    );
 }
 
 function isUserRejectedError(error) {
@@ -9097,27 +9079,34 @@ async function checkMintBalance(provider, from, amountWei) {
 }
 
 /**
- * Encode the Zora Coin buy() function call using ethers.js
+ * Get trade calldata from our server-side Zora SDK quote endpoint
  */
-function encodeZoraCoinBuy(recipient, amountWei) {
-    // Use ethers.js to encode the function call
-    const iface = new ethers.utils.Interface(ZORA_COIN_BUY_ABI);
-    
-    // Parameters:
-    // recipient - address receiving the coins
-    // orderSize - amount of ETH to spend (in wei)
-    // minAmountOut - 0 for no slippage protection (small amounts)
-    // sqrtPriceLimitX96 - 0 for no price limit
-    // tradeReferrer - referrer address for fee distribution
-    const data = iface.encodeFunctionData('buy', [
-        recipient,           // recipient
-        amountWei,          // orderSize
-        0,                  // minAmountOut (no slippage protection for small amounts)
-        0,                  // sqrtPriceLimitX96 (no price limit)
-        ZORA_REFERRER_ADDRESS // tradeReferrer
-    ]);
-    
-    return data;
+async function getZoraTradeQuote(coinAddress, sender, amountWei) {
+    const apiBase = (typeof window !== 'undefined' && window.location?.origin)
+        ? window.location.origin.replace(/\/$/, '')
+        : '';
+    const apiUrl = apiBase + '/api/zora-quote';
+
+    mintDebug(`Fetching Zora trade quote from ${apiUrl}`);
+    const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            coinAddress: coinAddress,
+            sender: sender,
+            amountIn: amountWei.toString(),
+            slippage: 0.05
+        })
+    });
+
+    const data = await response.json();
+    mintDebug(`Zora quote response: success=${data.success}, target=${data.call?.target || 'N/A'}`);
+
+    if (!data.success || !data.call) {
+        throw new Error(`Zora quote failed: ${data.error || 'Unknown error'}`);
+    }
+
+    return data.call; // { target, data, value }
 }
 
 async function sendMintNFT() {
@@ -9165,9 +9154,8 @@ async function sendMintNFT() {
         // Calculate amount in wei
         const amountETH = getMintAmount();
         const amountWei = ethers.utils.parseEther(amountETH);
-        const amountHex = amountWei.toHexString();
 
-        // Sponsorship covers gas only, user still pays purchase amount
+        // Check balance
         if (mintStatus) mintStatus.textContent = 'Checking balance...';
         const { hasEnough, balanceWei } = await checkMintBalance(provider, from, amountWei);
         const balanceEth = ethers.utils.formatEther(balanceWei);
@@ -9175,37 +9163,21 @@ async function sendMintNFT() {
         mintDebug(`Balance: ${balanceEth} ETH`);
         mintDebug(`Mint amount: ${amountETH} ETH`);
         mintDebug(`Coin: ${ZORA_COIN_ADDRESS}`);
-        mintDebug(`Referrer: ${ZORA_REFERRER_ADDRESS}`);
         if (!hasEnough) {
-            throw new Error(`Insufficient ETH for mint value. Balance: ${balanceEth} ETH, required: ${amountETH} ETH`);
+            throw new Error(`Insufficient ETH. Balance: ${balanceEth} ETH, required: ${amountETH} ETH`);
         }
         
-        // Encode the buy() function call
-        if (mintStatus) mintStatus.textContent = 'Preparing transaction...';
-        const buyData = encodeZoraCoinBuy(from, amountWei);
-        mintDebug(`Encoded buy data prefix: ${buyData.substring(0, 66)}...`);
-
-        // Preflight call to surface contract-level errors before wallet popup
-        try {
-            const estimatedGas = await provider.request({
-                method: 'eth_estimateGas',
-                params: [{
-                    from: from,
-                    to: ZORA_COIN_ADDRESS,
-                    value: amountHex,
-                    data: buyData
-                }]
-            });
-            mintDebug(`Preflight gas estimate: ${estimatedGas}`);
-        } catch (estimateError) {
-            mintDebug(`Preflight estimate failed: ${estimateError.message}`);
-            // Some Mini App providers do not support estimateGas consistently.
-            // In that case we continue and let wallet_sendCalls/eth_sendTransaction handle it.
-            if (!isIgnorableEstimateError(estimateError)) {
-                throw new Error(`Mint call simulation failed: ${estimateError.message}`);
-            }
-            mintDebug('Preflight failure ignored, proceeding to wallet confirmation');
-        }
+        // Get trade calldata from Zora SDK via server-side endpoint
+        if (mintStatus) mintStatus.textContent = 'Getting trade quote...';
+        const tradeCall = await getZoraTradeQuote(ZORA_COIN_ADDRESS, from, amountWei);
+        
+        const txTarget = tradeCall.target;
+        const txData = tradeCall.data;
+        const txValue = '0x' + BigInt(tradeCall.value).toString(16);
+        
+        mintDebug(`Trade target: ${txTarget}`);
+        mintDebug(`Trade data prefix: ${txData.substring(0, 66)}...`);
+        mintDebug(`Trade value: ${txValue} (${tradeCall.value} wei)`);
         
         // Use our ERC-7677 proxy URL for CDP sponsorship
         const paymasterProxyUrl = SponsoredTransactions.getPaymasterProxyUrl();
@@ -9216,7 +9188,7 @@ async function sendMintNFT() {
         let txHash;
         try {
             // Try wallet_sendCalls with paymasterService for sponsored (gasless) UI
-            mintDebug(`Trying wallet_sendCalls with paymasterService: ${JSON.stringify(paymasterCapability)}`);
+            mintDebug(`Trying wallet_sendCalls with paymasterService`);
             const bundleId = await provider.request({
                 method: 'wallet_sendCalls',
                 params: [{
@@ -9224,9 +9196,9 @@ async function sendMintNFT() {
                     chainId: '0x2105',
                     from: from,
                     calls: [{
-                        to: ZORA_COIN_ADDRESS,
-                        value: amountHex,
-                        data: buyData
+                        to: txTarget,
+                        value: txValue,
+                        data: txData
                     }],
                     capabilities: {
                         paymasterService: paymasterCapability
@@ -9237,60 +9209,57 @@ async function sendMintNFT() {
             mintDebug(`wallet_sendCalls success, bundle: ${bundleId}`);
             if (mintStatus) mintStatus.textContent = 'Transaction sent, confirming...';
             
-            // Resolve bundle ID to tx hash
             txHash = bundleId;
             try {
                 const resolvedHash = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId, 30);
                 if (resolvedHash) txHash = resolvedHash;
             } catch (e) {
-                mintDebug(`Bundle receipt polling failed, using bundle ID: ${e.message}`);
+                mintDebug(`Bundle receipt polling failed: ${e.message}`);
             }
         } catch (sendCallsError) {
             mintDebug(`wallet_sendCalls with paymaster failed: ${stringifyErrorMeta(sendCallsError)}`);
-            if (mintStatus) mintStatus.textContent = 'Primary flow failed, trying fallback...';
 
-            // Fallback #1: wallet_sendCalls without paymaster capability
+            // Fallback #1: wallet_sendCalls without paymaster
             try {
-                mintDebug('Trying wallet_sendCalls without paymaster capability');
-                const bundleIdNoPaymaster = await provider.request({
+                mintDebug('Trying wallet_sendCalls without paymaster');
+                const bundleId2 = await provider.request({
                     method: 'wallet_sendCalls',
                     params: [{
                         version: '1.0',
                         chainId: '0x2105',
                         from: from,
                         calls: [{
-                            to: ZORA_COIN_ADDRESS,
-                            value: amountHex,
-                            data: buyData
+                            to: txTarget,
+                            value: txValue,
+                            data: txData
                         }]
                     }]
                 });
-                mintDebug(`wallet_sendCalls (no paymaster) success, bundle: ${bundleIdNoPaymaster}`);
-                txHash = bundleIdNoPaymaster;
+                mintDebug(`wallet_sendCalls (no paymaster) success: ${bundleId2}`);
+                txHash = bundleId2;
                 try {
-                    const resolvedHashNoPaymaster = await SponsoredTransactions.waitForBundleReceipt(provider, bundleIdNoPaymaster, 30);
-                    if (resolvedHashNoPaymaster) txHash = resolvedHashNoPaymaster;
+                    const resolved2 = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId2, 30);
+                    if (resolved2) txHash = resolved2;
                 } catch (e) {
-                    mintDebug(`Bundle receipt polling failed (no paymaster), using bundle ID: ${e.message}`);
+                    mintDebug(`Bundle receipt polling failed: ${e.message}`);
                 }
-            } catch (sendCallsNoPaymasterError) {
-                mintDebug(`wallet_sendCalls without paymaster failed: ${stringifyErrorMeta(sendCallsNoPaymasterError)}`);
-                if (mintStatus) mintStatus.textContent = 'Trying legacy transaction flow...';
+            } catch (sendCalls2Error) {
+                mintDebug(`wallet_sendCalls (no paymaster) failed: ${stringifyErrorMeta(sendCalls2Error)}`);
 
-                // Fallback #2: eth_sendTransaction (user may pay gas)
+                // Fallback #2: eth_sendTransaction
                 try {
                     txHash = await provider.request({
                         method: 'eth_sendTransaction',
                         params: [{
                             from: from,
-                            to: ZORA_COIN_ADDRESS,
-                            value: amountHex,
-                            data: buyData
+                            to: txTarget,
+                            value: txValue,
+                            data: txData
                         }]
                     });
                 } catch (legacyError) {
                     mintDebug(`eth_sendTransaction failed: ${stringifyErrorMeta(legacyError)}`);
-                    if (isUserRejectedError(legacyError) || isUserRejectedError(sendCallsNoPaymasterError) || isUserRejectedError(sendCallsError)) {
+                    if (isUserRejectedError(legacyError) || isUserRejectedError(sendCalls2Error) || isUserRejectedError(sendCallsError)) {
                         throw new Error('Transaction cancelled by user.');
                     }
                     throw legacyError;

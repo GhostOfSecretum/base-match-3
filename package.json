@@ -9,11 +9,19 @@
     "start": "python3 -m http.server 8000",
     "push": "node update-version.cjs && git add script.js package.json api/leaderboard.js index.html && git commit -m 'chore: bump version [auto]' --allow-empty && git push"
   },
-  "keywords": ["base", "miniapp", "match-3", "puzzle", "crypto"],
+  "keywords": [
+    "base",
+    "miniapp",
+    "match-3",
+    "puzzle",
+    "crypto"
+  ],
   "author": "",
   "license": "ISC",
   "dependencies": {
     "@farcaster/miniapp-sdk": "^0.2.1",
-    "@upstash/redis": "^1.34.3"
+    "@upstash/redis": "^1.34.3",
+    "@zoralabs/coins-sdk": "^0.4.3",
+    "viem": "^2.22.12"
   }
 }
