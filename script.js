@@ -8988,6 +8988,29 @@ function isIgnorableEstimateError(error) {
     );
 }
 
+function isUserRejectedError(error) {
+    const msg = (error?.message || '').toLowerCase();
+    return (
+        error?.code === 4001 ||
+        msg.includes('user rejected') ||
+        msg.includes('rejected the request') ||
+        msg.includes('denied') ||
+        msg.includes('cancel')
+    );
+}
+
+function stringifyErrorMeta(error) {
+    try {
+        return JSON.stringify({
+            code: error?.code,
+            message: error?.message,
+            data: error?.data
+        });
+    } catch (_) {
+        return String(error?.message || error || 'unknown');
+    }
+}
+
 function getMintAmount() {
     return MINT_AMOUNTS[currentMintAmountIndex];
 }
@@ -9223,25 +9246,56 @@ async function sendMintNFT() {
                 mintDebug(`Bundle receipt polling failed, using bundle ID: ${e.message}`);
             }
         } catch (sendCallsError) {
-            mintDebug(`wallet_sendCalls failed: ${sendCallsError.message}`);
-            
-            // If user rejected, don't fallback
-            if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied') || sendCallsError.message?.includes('cancel')) {
-                throw new Error('Transaction cancelled by user.');
+            mintDebug(`wallet_sendCalls with paymaster failed: ${stringifyErrorMeta(sendCallsError)}`);
+            if (mintStatus) mintStatus.textContent = 'Primary flow failed, trying fallback...';
+
+            // Fallback #1: wallet_sendCalls without paymaster capability
+            try {
+                mintDebug('Trying wallet_sendCalls without paymaster capability');
+                const bundleIdNoPaymaster = await provider.request({
+                    method: 'wallet_sendCalls',
+                    params: [{
+                        version: '1.0',
+                        chainId: '0x2105',
+                        from: from,
+                        calls: [{
+                            to: ZORA_COIN_ADDRESS,
+                            value: amountHex,
+                            data: buyData
+                        }]
+                    }]
+                });
+                mintDebug(`wallet_sendCalls (no paymaster) success, bundle: ${bundleIdNoPaymaster}`);
+                txHash = bundleIdNoPaymaster;
+                try {
+                    const resolvedHashNoPaymaster = await SponsoredTransactions.waitForBundleReceipt(provider, bundleIdNoPaymaster, 30);
+                    if (resolvedHashNoPaymaster) txHash = resolvedHashNoPaymaster;
+                } catch (e) {
+                    mintDebug(`Bundle receipt polling failed (no paymaster), using bundle ID: ${e.message}`);
+                }
+            } catch (sendCallsNoPaymasterError) {
+                mintDebug(`wallet_sendCalls without paymaster failed: ${stringifyErrorMeta(sendCallsNoPaymasterError)}`);
+                if (mintStatus) mintStatus.textContent = 'Trying legacy transaction flow...';
+
+                // Fallback #2: eth_sendTransaction (user may pay gas)
+                try {
+                    txHash = await provider.request({
+                        method: 'eth_sendTransaction',
+                        params: [{
+                            from: from,
+                            to: ZORA_COIN_ADDRESS,
+                            value: amountHex,
+                            data: buyData
+                        }]
+                    });
+                } catch (legacyError) {
+                    mintDebug(`eth_sendTransaction failed: ${stringifyErrorMeta(legacyError)}`);
+                    if (isUserRejectedError(legacyError) || isUserRejectedError(sendCallsNoPaymasterError) || isUserRejectedError(sendCallsError)) {
+                        throw new Error('Transaction cancelled by user.');
+                    }
+                    throw legacyError;
+                }
             }
-            
-            if (mintStatus) mintStatus.textContent = 'Trying alternative method...';
-            
-            // Fallback to eth_sendTransaction (user pays gas)
-            txHash = await provider.request({
-                method: 'eth_sendTransaction',
-                params: [{
-                    from: from,
-                    to: ZORA_COIN_ADDRESS,
-                    value: amountHex,
-                    data: buyData
-                }]
-            });
         }
         
         mintDebug(`TX sent: ${txHash}`);
