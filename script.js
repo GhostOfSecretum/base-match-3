@@ -6549,6 +6549,9 @@ function initStartMenu() {
     const closeRulesBtn = document.getElementById('closeRulesBtn');
     const closeDeployBtn = document.getElementById('closeDeployBtn');
     const closeProfileBtn = document.getElementById('closeProfileBtn');
+    const menuMintNFTBtn = document.getElementById('menuMintNFTBtn');
+    const mintNFTModal = document.getElementById('mintNFTModal');
+    const closeMintNFTBtn = document.getElementById('closeMintNFTBtn');
     
     // Проверяем наличие необходимых элементов
     if (!startMenu || !gameContainer) {
@@ -6879,6 +6882,58 @@ function initStartMenu() {
         deployBtn.addEventListener('click', () => {
             sendSimpleDeploy();
         });
+    }
+
+    // Mint NFT - открываем модалку минта
+    if (menuMintNFTBtn && mintNFTModal) {
+        menuMintNFTBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            console.log('Mint NFT button clicked');
+            // Reset status
+            const mintStatus = document.getElementById('mintNFTStatus');
+            const mintResult = document.getElementById('mintNFTResult');
+            const mintBtn = document.getElementById('mintNFTBtn');
+            if (mintStatus) {
+                mintStatus.textContent = '';
+                mintStatus.style.color = '';
+            }
+            if (mintResult) mintResult.textContent = '';
+            if (mintBtn) {
+                mintBtn.disabled = false;
+                mintBtn.textContent = 'Mint NFT';
+            }
+            // Initialize controls and show modal
+            initMintNFTControls();
+            updateMintAmountDisplay();
+            updateMintGaslessIndicator();
+            mintNFTModal.classList.add('show');
+        });
+        console.log('Mint NFT button handler attached');
+    }
+
+    if (closeMintNFTBtn && mintNFTModal) {
+        closeMintNFTBtn.addEventListener('click', () => {
+            mintNFTModal.classList.remove('show');
+        });
+    }
+
+    // Mint NFT button inside modal
+    const mintNFTBtn = document.getElementById('mintNFTBtn');
+    if (mintNFTBtn) {
+        mintNFTBtn.addEventListener('click', () => {
+            sendMintNFT();
+        });
+    }
+
+    // Close mint modal on backdrop click
+    if (mintNFTModal) {
+        const mintBackdrop = mintNFTModal.querySelector('.modal-backdrop');
+        if (mintBackdrop) {
+            mintBackdrop.addEventListener('click', () => {
+                mintNFTModal.classList.remove('show');
+            });
+        }
     }
 
     // Profile - открываем профиль игрока
@@ -8885,6 +8940,268 @@ async function sendSimpleDeploy() {
         }
     }
 }
+
+// ==================== MINT NFT (ZORA COIN) SYSTEM ====================
+// Buys a Zora Coin on Base via the coin's buy() function
+// Transaction is sponsored via CDP Paymaster through wallet_sendCalls
+
+const ZORA_COIN_ADDRESS = '0x5721264ac8f502df0ab6267bb231c203e4971865';
+const ZORA_REFERRER_ADDRESS = '0xf61c92d1e92dd05d955e281332829292582571a5';
+
+// Zora Coin buy() function ABI
+// buy(address recipient, uint256 orderSize, uint256 minAmountOut, uint160 sqrtPriceLimitX96, address tradeReferrer)
+const ZORA_COIN_BUY_ABI = [
+    'function buy(address recipient, uint256 orderSize, uint256 minAmountOut, uint160 sqrtPriceLimitX96, address tradeReferrer) external payable returns (uint256, uint256)'
+];
+
+// Predefined mint amounts in ETH
+const MINT_AMOUNTS = ['0.0001', '0.0005', '0.001', '0.005', '0.01'];
+let currentMintAmountIndex = 0;
+
+function getMintAmount() {
+    return MINT_AMOUNTS[currentMintAmountIndex];
+}
+
+function updateMintAmountDisplay() {
+    const input = document.getElementById('mintAmountInput');
+    if (input) input.value = getMintAmount();
+}
+
+function initMintNFTControls() {
+    const amountDown = document.getElementById('mintAmountDown');
+    const amountUp = document.getElementById('mintAmountUp');
+    
+    if (amountDown) {
+        amountDown.addEventListener('click', () => {
+            if (currentMintAmountIndex > 0) {
+                currentMintAmountIndex--;
+                updateMintAmountDisplay();
+            }
+        });
+    }
+    
+    if (amountUp) {
+        amountUp.addEventListener('click', () => {
+            if (currentMintAmountIndex < MINT_AMOUNTS.length - 1) {
+                currentMintAmountIndex++;
+                updateMintAmountDisplay();
+            }
+        });
+    }
+    
+    // Show gasless indicator if sponsorship is available
+    updateMintGaslessIndicator();
+}
+
+async function updateMintGaslessIndicator() {
+    const indicator = document.getElementById('mintNFTGasless');
+    if (!indicator) return;
+    
+    try {
+        const isAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
+        indicator.style.display = isAvailable ? 'block' : 'none';
+    } catch (e) {
+        indicator.style.display = 'none';
+    }
+}
+
+/**
+ * Encode the Zora Coin buy() function call using ethers.js
+ */
+function encodeZoraCoinBuy(recipient, amountWei) {
+    // Use ethers.js to encode the function call
+    const iface = new ethers.utils.Interface(ZORA_COIN_BUY_ABI);
+    
+    // Parameters:
+    // recipient - address receiving the coins
+    // orderSize - amount of ETH to spend (in wei)
+    // minAmountOut - 0 for no slippage protection (small amounts)
+    // sqrtPriceLimitX96 - 0 for no price limit
+    // tradeReferrer - referrer address for fee distribution
+    const data = iface.encodeFunctionData('buy', [
+        recipient,           // recipient
+        amountWei,          // orderSize
+        0,                  // minAmountOut (no slippage protection for small amounts)
+        0,                  // sqrtPriceLimitX96 (no price limit)
+        ZORA_REFERRER_ADDRESS // tradeReferrer
+    ]);
+    
+    return data;
+}
+
+async function sendMintNFT() {
+    const mintStatus = document.getElementById('mintNFTStatus');
+    const mintResult = document.getElementById('mintNFTResult');
+    const mintBtn = document.getElementById('mintNFTBtn');
+    
+    if (mintBtn) {
+        mintBtn.disabled = true;
+        mintBtn.textContent = 'Minting...';
+    }
+    if (mintStatus) {
+        mintStatus.textContent = 'Connecting to wallet...';
+        mintStatus.style.color = '';
+    }
+    if (mintResult) mintResult.textContent = '';
+    
+    try {
+        // Get provider
+        let provider = null;
+        const sdk = window.sdk || (typeof frame !== 'undefined' && frame.sdk) || window.__farcasterSDK;
+        
+        if (sdk?.wallet?.ethProvider) {
+            provider = sdk.wallet.ethProvider;
+        } else if (window.ethereum) {
+            provider = window.ethereum;
+        }
+        
+        if (!provider) {
+            throw new Error('No wallet found. Open in Base app.');
+        }
+        
+        // Get account
+        if (mintStatus) mintStatus.textContent = 'Getting account...';
+        const accounts = await provider.request({ method: 'eth_requestAccounts' });
+        const from = accounts[0];
+        
+        if (!from) {
+            throw new Error('No account connected');
+        }
+        
+        // Calculate amount in wei
+        const amountETH = getMintAmount();
+        const amountWei = ethers.utils.parseEther(amountETH);
+        const amountHex = '0x' + amountWei.toBigInt().toString(16);
+        
+        console.log(`Mint NFT: buying Zora coin for ${amountETH} ETH (${amountHex} wei)`);
+        console.log(`Recipient: ${from}, Referrer: ${ZORA_REFERRER_ADDRESS}`);
+        
+        // Encode the buy() function call
+        if (mintStatus) mintStatus.textContent = 'Preparing transaction...';
+        const buyData = encodeZoraCoinBuy(from, amountWei);
+        console.log('Encoded buy data:', buyData.substring(0, 66) + '...');
+        
+        // Use our ERC-7677 proxy URL for CDP sponsorship
+        const paymasterProxyUrl = SponsoredTransactions.getPaymasterProxyUrl();
+        const paymasterCapability = { url: paymasterProxyUrl };
+        
+        if (mintStatus) mintStatus.textContent = 'Please confirm in your wallet...';
+        
+        let txHash;
+        try {
+            // Try wallet_sendCalls with paymasterService for sponsored (gasless) UI
+            console.log('Mint NFT: Trying wallet_sendCalls with paymasterService:', JSON.stringify(paymasterCapability));
+            const bundleId = await provider.request({
+                method: 'wallet_sendCalls',
+                params: [{
+                    version: '1.0',
+                    chainId: '0x2105',
+                    from: from,
+                    calls: [{
+                        to: ZORA_COIN_ADDRESS,
+                        value: amountHex,
+                        data: buyData
+                    }],
+                    capabilities: {
+                        paymasterService: paymasterCapability
+                    }
+                }]
+            });
+            
+            console.log('Mint NFT wallet_sendCalls success, bundle:', bundleId);
+            if (mintStatus) mintStatus.textContent = 'Transaction sent, confirming...';
+            
+            // Resolve bundle ID to tx hash
+            txHash = bundleId;
+            try {
+                const resolvedHash = await SponsoredTransactions.waitForBundleReceipt(provider, bundleId, 30);
+                if (resolvedHash) txHash = resolvedHash;
+            } catch (e) {
+                console.log('Mint NFT bundle receipt polling failed, using bundle ID:', e.message);
+            }
+        } catch (sendCallsError) {
+            console.log('Mint NFT wallet_sendCalls failed, falling back:', sendCallsError.message);
+            
+            // If user rejected, don't fallback
+            if (sendCallsError.message?.includes('reject') || sendCallsError.message?.includes('denied') || sendCallsError.message?.includes('cancel')) {
+                throw new Error('Transaction cancelled by user.');
+            }
+            
+            if (mintStatus) mintStatus.textContent = 'Trying alternative method...';
+            
+            // Fallback to eth_sendTransaction (user pays gas)
+            txHash = await provider.request({
+                method: 'eth_sendTransaction',
+                params: [{
+                    from: from,
+                    to: ZORA_COIN_ADDRESS,
+                    value: amountHex,
+                    data: buyData
+                }]
+            });
+        }
+        
+        console.log('Mint NFT TX sent:', txHash);
+        
+        // Save mint to local storage
+        saveMintNFT(txHash, amountETH);
+        
+        if (mintStatus) {
+            mintStatus.innerHTML = `✅ Minted successfully for ${amountETH} ETH!`;
+            mintStatus.style.color = '#4ade80';
+        }
+        if (mintResult) {
+            mintResult.innerHTML = `<a href="https://basescan.org/tx/${txHash}" target="_blank" style="color: #0052ff;">View on BaseScan</a> · <a href="https://zora.co/coin/base:${ZORA_COIN_ADDRESS}" target="_blank" style="color: #7b61ff;">View on Zora</a>`;
+        }
+        
+        if (mintBtn) {
+            mintBtn.disabled = false;
+            mintBtn.textContent = 'Mint Again';
+        }
+        
+    } catch (error) {
+        console.error('Mint NFT error:', error);
+        if (mintStatus) {
+            mintStatus.textContent = error.message || 'Mint failed';
+            mintStatus.style.color = '#ef4444';
+        }
+        if (mintBtn) {
+            mintBtn.disabled = false;
+            mintBtn.textContent = 'Mint NFT';
+        }
+    }
+}
+
+// Mint NFT storage
+const MINT_NFT_STORAGE_KEY = 'minted_nfts';
+
+function getMintedNFTs() {
+    try {
+        const data = localStorage.getItem(MINT_NFT_STORAGE_KEY);
+        if (data) return JSON.parse(data);
+    } catch (e) {
+        console.error('Error reading minted NFTs:', e);
+    }
+    return [];
+}
+
+function saveMintNFT(txHash, amount) {
+    try {
+        const mints = getMintedNFTs();
+        mints.unshift({
+            txHash: txHash,
+            amount: amount,
+            coin: ZORA_COIN_ADDRESS,
+            timestamp: Date.now(),
+            date: new Date().toLocaleString()
+        });
+        localStorage.setItem(MINT_NFT_STORAGE_KEY, JSON.stringify(mints));
+    } catch (e) {
+        console.error('Error saving minted NFT:', e);
+    }
+}
+
+// ==================== END MINT NFT SYSTEM ====================
 
 // Запускаем игру при загрузке DOM
 // Используем несколько способов для максимальной совместимости
