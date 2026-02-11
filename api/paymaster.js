@@ -44,23 +44,43 @@ export default async function handler(req, res) {
     // Handle POST requests for paymaster operations
     if (req.method === 'POST') {
         try {
-            const { action, userOp, calls } = req.body;
-
             // Check if CDP API key is configured
             const apiKey = process.env.CDP_API_KEY;
             if (!apiKey) {
                 console.error('CDP_API_KEY not configured in environment variables');
                 return res.status(500).json({
-                    success: false,
-                    error: 'Paymaster not configured - CDP_API_KEY missing',
-                    sponsored: false,
-                    debug: {
-                        hasKey: false,
-                        message: 'Please add CDP_API_KEY to Vercel environment variables'
-                    }
+                    jsonrpc: '2.0',
+                    id: req.body?.id || 1,
+                    error: { code: -32603, message: 'Paymaster not configured - CDP_API_KEY missing' }
                 });
             }
 
+            // ============================================================
+            // ERC-7677 PROXY: Forward standard JSON-RPC paymaster requests
+            // directly to CDP. This is what Coinbase Smart Wallet sends
+            // when paymasterService: { url: "/api/paymaster" } is used
+            // in wallet_sendCalls capabilities.
+            // ============================================================
+            const { jsonrpc, method, id } = req.body;
+            if (jsonrpc === '2.0' && method && method.startsWith('pm_')) {
+                console.log(`ERC-7677 proxy: ${method}, id=${id}`);
+                const cdpUrl = getCdpPaymasterUrl(apiKey);
+                
+                const cdpResponse = await fetch(cdpUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(req.body)
+                });
+                
+                const cdpData = await cdpResponse.json();
+                console.log(`ERC-7677 proxy response for ${method}:`, JSON.stringify(cdpData).substring(0, 500));
+                return res.status(200).json(cdpData);
+            }
+
+            // ============================================================
+            // LEGACY: Custom action-based requests from our own client code
+            // ============================================================
+            const { action, userOp, calls } = req.body;
             console.log(`Paymaster request: action=${action}, keyLength=${apiKey.length}`);
 
             // Route to appropriate handler based on action

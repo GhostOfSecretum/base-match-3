@@ -663,40 +663,20 @@ const SponsoredTransactions = {
     checkInterval: 60000, // Check eligibility every 60 seconds
     isEligible: null,
     lastError: null,
-    _paymasterServiceUrl: null, // Cached paymaster service URL
-    
     /**
-     * Get the paymaster service URL from our backend API.
-     * The URL is cached after the first successful fetch.
-     * This URL is passed to wallet_sendCalls so the wallet knows
-     * the transaction is sponsored IMMEDIATELY (no delay).
+     * Get the paymaster proxy URL for ERC-7677 compliant requests.
+     * Our /api/paymaster endpoint acts as a transparent proxy to CDP,
+     * forwarding pm_getPaymasterStubData and pm_getPaymasterData requests.
+     * The wallet sends JSON-RPC requests directly to this URL.
+     * Using the proxy URL (not the direct CDP URL) keeps the API key server-side.
      */
-    async getPaymasterServiceUrl() {
-        // Return cached URL if available
-        if (this._paymasterServiceUrl) {
-            return this._paymasterServiceUrl;
+    getPaymasterProxyUrl() {
+        // Use absolute URL so the wallet can reach it
+        // (relative URLs may not work when called from wallet context)
+        if (typeof window !== 'undefined' && window.location?.origin) {
+            return `${window.location.origin}${this.paymasterApiUrl}`;
         }
-        
-        try {
-            const response = await fetch(this.paymasterApiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'sendSponsoredTransaction' })
-            });
-            
-            const data = await response.json();
-            if (data.success && data.paymasterServiceUrl) {
-                this._paymasterServiceUrl = data.paymasterServiceUrl;
-                console.log('Paymaster service URL obtained successfully');
-                return this._paymasterServiceUrl;
-            }
-            
-            console.log('Paymaster service URL not available:', data.error || 'unknown');
-            return null;
-        } catch (error) {
-            console.log('Failed to get paymaster service URL:', error.message);
-            return null;
-        }
+        return this.paymasterApiUrl;
     },
     
     /**
@@ -1036,11 +1016,9 @@ const SponsoredTransactions = {
         
         log(`TX Call: ${JSON.stringify(call)}`);
         
-        // Get paymaster URL for instant "Free" display in wallet UI
-        const paymasterUrl = await this.getPaymasterServiceUrl();
-        const paymasterCapability = paymasterUrl 
-            ? { url: paymasterUrl }  // ERC-7677: wallet knows paymaster immediately → instant "Free"
-            : true;                   // Fallback: wallet discovers sponsorship itself (may have delay)
+        // Use our ERC-7677 proxy URL so the wallet knows the paymaster immediately → instant "Free"
+        const paymasterProxyUrl = this.getPaymasterProxyUrl();
+        const paymasterCapability = { url: paymasterProxyUrl };
         
         log(`Paymaster capability: ${JSON.stringify(paymasterCapability)}`);
         
@@ -6155,9 +6133,9 @@ class MatchThreePro {
 
         if (typeof debugLog === 'function') debugLog('New game: preparing sponsored transaction...');
         
-        // Get paymaster URL for instant "Free" display
-        const paymasterUrl = await SponsoredTransactions.getPaymasterServiceUrl();
-        const paymasterCapability = paymasterUrl ? { url: paymasterUrl } : true;
+        // Use our ERC-7677 proxy URL so the wallet knows the paymaster immediately
+        const paymasterProxyUrl = SponsoredTransactions.getPaymasterProxyUrl();
+        const paymasterCapability = { url: paymasterProxyUrl };
         
         if (typeof debugLog === 'function') debugLog('New game: awaiting transaction signature...');
         
@@ -8619,11 +8597,9 @@ async function sendSimpleGM() {
         }
         
         // Send sponsored transaction via wallet_sendCalls (instant "Free" in wallet UI)
-        if (gmStatus) gmStatus.textContent = 'Preparing sponsored transaction...';
-        
-        // Get paymaster URL for instant "Free" display
-        const paymasterUrl = await SponsoredTransactions.getPaymasterServiceUrl();
-        const paymasterCapability = paymasterUrl ? { url: paymasterUrl } : true;
+        // Use our ERC-7677 proxy URL so the wallet knows the paymaster immediately
+        const paymasterProxyUrl = SponsoredTransactions.getPaymasterProxyUrl();
+        const paymasterCapability = { url: paymasterProxyUrl };
         
         if (gmStatus) gmStatus.textContent = 'Please confirm transaction...';
         
@@ -8794,11 +8770,9 @@ async function sendSimpleDeploy() {
         }
         
         // Deploy contract via wallet_sendCalls with sponsorship (instant "Free" in wallet UI)
-        if (deployStatus) deployStatus.textContent = 'Preparing sponsored transaction...';
-        
-        // Get paymaster URL for instant "Free" display
-        const paymasterUrl = await SponsoredTransactions.getPaymasterServiceUrl();
-        const paymasterCapability = paymasterUrl ? { url: paymasterUrl } : true;
+        // Use our ERC-7677 proxy URL so the wallet knows the paymaster immediately
+        const paymasterProxyUrl = SponsoredTransactions.getPaymasterProxyUrl();
+        const paymasterCapability = { url: paymasterProxyUrl };
         
         if (deployStatus) deployStatus.textContent = 'Please confirm transaction...';
         
