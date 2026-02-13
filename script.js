@@ -596,32 +596,29 @@ async function deployGameResultContract(statusCallback) {
     let wasSponsored = false;
 
     try {
-        const sponsorshipAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
-        if (sponsorshipAvailable) {
-            updateStatus('Sending deployment...');
-            const deployTxParams = {
-                from: userAddress,
-                to: undefined,
-                value: '0x0',
-                data: deployTx.data
-            };
+        updateStatus('Sending deployment (gasless first)...');
+        const deployTxParams = {
+            from: userAddress,
+            to: undefined,
+            value: '0x0',
+            data: deployTx.data
+        };
 
-            const sponsorResult = await SponsoredTransactions.sendTransaction(
-                rawProvider,
-                deployTxParams,
-                userAddress,
-                updateStatus
-            );
+        const sponsorResult = await SponsoredTransactions.sendTransaction(
+            rawProvider,
+            deployTxParams,
+            userAddress,
+            updateStatus
+        );
 
-            if (sponsorResult.success && sponsorResult.txHash) {
-                wasSponsored = sponsorResult.sponsored || false;
-                updateStatus('Waiting for confirmation...');
-                const receipt = await provider.waitForTransaction(sponsorResult.txHash);
-                contractAddress = receipt.contractAddress;
-            }
+        if (sponsorResult.success && sponsorResult.txHash) {
+            wasSponsored = sponsorResult.sponsored || false;
+            updateStatus('Waiting for confirmation...');
+            const receipt = await provider.waitForTransaction(sponsorResult.txHash);
+            contractAddress = receipt.contractAddress;
         }
     } catch (sponsorError) {
-        console.log('Mint contract sponsored deploy failed:', sponsorError.message);
+        console.log('Mint contract sponsored deploy failed, falling back:', sponsorError.message);
     }
 
     if (!contractAddress) {
@@ -1254,14 +1251,15 @@ const SponsoredTransactions = {
     },
     
     /**
-     * Main function to send a transaction (user pays gas)
+     * Main function to send a transaction (gasless-first with fallback)
      */
     async sendTransaction(provider, txParams, userAddress, statusCallback) {
-        console.log('=== sendTransaction (user pays gas) ===');
+        console.log('=== sendTransaction (gasless-first) ===');
         console.log('txParams:', txParams);
         console.log('userAddress:', userAddress);
         
-        // Use sendViaFarcasterSDK which now does simple eth_sendTransaction
+        // Unified pipeline used by mint/gm/deploy:
+        // wallet_sendCalls+paymaster -> wallet_sendCalls native -> wallet_sendCalls no paymaster -> eth_sendTransaction
         return await this.sendViaFarcasterSDK({
             ...txParams,
             from: userAddress
@@ -1272,32 +1270,48 @@ const SponsoredTransactions = {
      * Get UI badge for transactions
      */
     getSponsoredBadge() {
-        return '<span class="sponsored-badge" title="User pays gas fees">Paid</span>';
+        return '<span class="sponsored-badge" title="Gasless sponsorship enabled when available">Gasless</span>';
     },
     
     /**
-     * Update UI indicators - transactions are now paid by user
+     * Update UI indicators for sponsorship availability
      */
     updateUIIndicators() {
         const gmIndicator = document.getElementById('gmGaslessIndicator');
         const deployIndicator = document.getElementById('deployGaslessIndicator');
         const gmButton = document.getElementById('gmButton');
+        const gmSendBtn = document.getElementById('gmSendBtn');
         const deployBtn = document.getElementById('deployContractBtn');
+        const simpleDeployBtn = document.getElementById('deployBtn');
+        const sponsorshipAvailable = this.isEligible === true;
         
-        // Hide gasless indicators since transactions are now paid
+        // Show/hide indicators based on current sponsorship status
         if (gmIndicator) {
-            gmIndicator.style.display = 'none';
+            gmIndicator.style.display = sponsorshipAvailable ? 'inline-flex' : 'none';
         }
         if (deployIndicator) {
-            deployIndicator.style.display = 'none';
+            deployIndicator.style.display = sponsorshipAvailable ? 'inline-flex' : 'none';
         }
         
-        // Update button titles
+        // Update button titles across both old/new modal variants
+        const gmTitle = sponsorshipAvailable
+            ? 'Send GM transaction on Base (gasless sponsorship available)'
+            : 'Send GM transaction on Base (may require ETH for gas)';
+        const deployTitle = sponsorshipAvailable
+            ? 'Deploy contract on Base (gasless sponsorship available)'
+            : 'Deploy contract on Base (may require ETH for gas)';
+
         if (gmButton) {
-            gmButton.title = 'Send GM transaction on Base (requires ETH for gas)';
+            gmButton.title = gmTitle;
+        }
+        if (gmSendBtn) {
+            gmSendBtn.title = gmTitle;
         }
         if (deployBtn) {
-            deployBtn.title = 'Deploy contract on Base (requires ETH for gas)';
+            deployBtn.title = deployTitle;
+        }
+        if (simpleDeployBtn) {
+            simpleDeployBtn.title = deployTitle;
         }
     },
     
@@ -8302,42 +8316,37 @@ async function deployContract(statusCallback = null) {
         const deployTx = factory.getDeployTransaction();
         console.log('Deployment data prepared, length:', deployTx.data.length);
         
-        // Try sponsored deployment via SponsoredTransactions
+        // Try sponsored deployment via the shared gasless-first pipeline
         try {
-            const sponsorshipAvailable = await SponsoredTransactions.checkSponsorshipAvailable();
-            console.log('Sponsorship available:', sponsorshipAvailable, 'Type:', SponsoredTransactions.sponsorType);
+            updateStatus('Sending deployment (gasless first)...');
             
-            if (sponsorshipAvailable && rawProvider) {
-                updateStatus('Sending gasless deployment...');
+            // For contract deployment: to = null/undefined, data = contract bytecode
+            const deployTxParams = {
+                from: userAddress,
+                to: undefined, // undefined/null for contract creation
+                value: '0x0',
+                data: deployTx.data
+            };
+            
+            // Try via SponsoredTransactions
+            const sponsorResult = await SponsoredTransactions.sendTransaction(
+                rawProvider,
+                deployTxParams,
+                userAddress,
+                (status) => { if (deployStatus) deployStatus.textContent = status; }
+            );
+            
+            if (sponsorResult.success && sponsorResult.txHash) {
+                wasSponsored = sponsorResult.sponsored || false;
+                console.log('Deployment transaction sent:', sponsorResult.txHash, wasSponsored ? '(sponsored)' : '(regular)');
                 
-                // For contract deployment: to = null/undefined, data = contract bytecode
-                const deployTxParams = {
-                    from: userAddress,
-                    to: undefined, // undefined/null for contract creation
-                    value: '0x0',
-                    data: deployTx.data
-                };
+                updateStatus('Waiting for confirmation...');
                 
-                // Try via SponsoredTransactions
-                const sponsorResult = await SponsoredTransactions.sendTransaction(
-                    rawProvider,
-                    deployTxParams,
-                    userAddress,
-                    (status) => { if (deployStatus) deployStatus.textContent = status; }
-                );
+                // Wait for transaction receipt to get contract address
+                const receipt = await provider.waitForTransaction(sponsorResult.txHash);
+                contractAddress = receipt.contractAddress;
                 
-                if (sponsorResult.success && sponsorResult.txHash) {
-                    wasSponsored = sponsorResult.sponsored || false;
-                    console.log('Deployment transaction sent:', sponsorResult.txHash, wasSponsored ? '(sponsored)' : '(regular)');
-                    
-                    updateStatus('Waiting for confirmation...');
-                    
-                    // Wait for transaction receipt to get contract address
-                    const receipt = await provider.waitForTransaction(sponsorResult.txHash);
-                    contractAddress = receipt.contractAddress;
-                    
-                    console.log('Contract deployed at:', contractAddress);
-                }
+                console.log('Contract deployed at:', contractAddress);
             }
         } catch (sponsorError) {
             console.log('Sponsored deployment failed, falling back:', sponsorError.message);
