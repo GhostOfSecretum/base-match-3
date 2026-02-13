@@ -384,8 +384,8 @@ const BASE_NETWORK = {
 const GM_CONTRACT = {
     address: '0x56Fa8D9d0Ba5C17350163D8F632f734996F4944A',
     chainId: '0x2105', // Base mainnet
-    // Function selector for sayGM() = keccak256("sayGM()")[:4] = 0x41cf91d1
-    sayGMSelector: '0x41cf91d1',
+    // Function selector for sayGM() = 0x25406903 on deployed GM contract
+    sayGMSelector: '0x25406903',
     // ABI for the contract
     abi: [
         {
@@ -7493,7 +7493,7 @@ async function sendGMTransaction() {
         const contractTxParams = {
             to: GM_CONTRACT.address,
             value: '0x0',
-            data: GM_CONTRACT.sayGMSelector // sayGM() function selector = 0x41cf91d1
+            data: GM_CONTRACT.sayGMSelector // sayGM() function selector = 0x25406903
         };
         
         console.log('GM Contract:', GM_CONTRACT.address);
@@ -7754,7 +7754,7 @@ async function runGMDebugCheck() {
                         sender: userAddress,
                         nonce: '0x0',
                         initCode: '0x',
-                        callData: '0x41cf91d1', // sayGM()
+                        callData: GM_CONTRACT.sayGMSelector, // sayGM()
                         callGasLimit: '0x5208',
                         verificationGasLimit: '0x5208',
                         preVerificationGas: '0x5208',
