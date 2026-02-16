@@ -1404,45 +1404,156 @@ if (typeof window !== 'undefined') {
 class WalletManager {
     constructor() {
         this.provider = null;
+        this.rawProvider = null;
         this.signer = null;
         this.account = null;
         this.chainId = null;
         this.username = null;
         this.avatar = null;
         this.userContext = null;
+        this._providerHandlers = null;
 
-        // Пытаемся автоматически подключиться через Base Account SDK
-        this.initializeBaseAccount();
+        // Запускаем асинхронную инициализацию без гонок.
+        this.initPromise = this.initialize();
+    }
 
-        // Проверяем, есть ли сохраненное подключение
-        this.checkSavedConnection();
+    async initialize() {
+        try {
+            // Пытаемся автоматически подключиться через Base Account SDK.
+            await this.initializeBaseAccount();
 
-        // Подписываемся на события изменения аккаунта и сети
-        if (window.ethereum) {
-            window.ethereum.on('accountsChanged', (accounts) => {
-                if (accounts.length === 0) {
-                    this.disconnect();
-                    if (window.game) {
-                        window.game.updateWalletDisplay();
-                    }
-                } else {
-                    this.account = accounts[0];
-                    this.updateWalletUI();
-                    if (window.game) {
-                        window.game.updateWalletDisplay();
-                    }
-                }
-            });
+            // В браузере кошелек может появиться не сразу после загрузки.
+            await this.checkSavedConnection();
+            setTimeout(() => this.checkSavedConnection().catch(() => {}), 2000);
+        } catch (error) {
+            console.log('Wallet initialization failed (non-critical):', error.message);
+        }
+    }
 
-            window.ethereum.on('chainChanged', (chainId) => {
-                this.chainId = chainId;
-                this.updateWalletUI();
-                this.checkNetwork();
+    getPreferredInjectedProvider() {
+        if (typeof window === 'undefined' || !window.ethereum) return null;
+
+        const injected = window.ethereum;
+        if (Array.isArray(injected.providers) && injected.providers.length > 0) {
+            const coinbaseProvider = injected.providers.find((p) => p && p.isCoinbaseWallet);
+            const metamaskProvider = injected.providers.find((p) => p && p.isMetaMask);
+            return coinbaseProvider || metamaskProvider || injected.providers[0];
+        }
+
+        return injected;
+    }
+
+    async waitForEthereumProvider(timeoutMs = 3000) {
+        const immediate = this.getPreferredInjectedProvider();
+        if (immediate) return immediate;
+
+        return new Promise((resolve) => {
+            let settled = false;
+            const pollInterval = 150;
+            let intervalId = null;
+            let timeoutId = null;
+
+            const cleanup = () => {
+                clearInterval(intervalId);
+                clearTimeout(timeoutId);
+                window.removeEventListener('ethereum#initialized', onInitialized);
+            };
+
+            const finish = (provider) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                resolve(provider || null);
+            };
+
+            const onInitialized = () => {
+                finish(this.getPreferredInjectedProvider());
+            };
+
+            window.addEventListener('ethereum#initialized', onInitialized, { once: true });
+
+            intervalId = setInterval(() => {
+                const provider = this.getPreferredInjectedProvider();
+                if (provider) finish(provider);
+            }, pollInterval);
+
+            timeoutId = setTimeout(() => finish(null), timeoutMs);
+        });
+    }
+
+    async getEthereumProvider(options = {}) {
+        const { waitForInjection = false, timeoutMs = 3000 } = options;
+
+        try {
+            const farcasterSDK = (typeof SponsoredTransactions !== 'undefined' && SponsoredTransactions.getFarcasterSDK)
+                ? SponsoredTransactions.getFarcasterSDK()
+                : (window.sdk || (typeof frame !== 'undefined' && frame.sdk) || window.__farcasterSDK);
+
+            if (farcasterSDK?.wallet?.ethProvider) {
+                return farcasterSDK.wallet.ethProvider;
+            }
+
+            if (farcasterSDK?.wallet?.getEthereumProvider) {
+                const sdkProvider = await farcasterSDK.wallet.getEthereumProvider();
+                if (sdkProvider) return sdkProvider;
+            }
+        } catch (e) {
+            console.log('SDK provider lookup failed:', e.message);
+        }
+
+        if (waitForInjection) {
+            return await this.waitForEthereumProvider(timeoutMs);
+        }
+
+        return this.getPreferredInjectedProvider();
+    }
+
+    detachProviderListeners() {
+        if (!this.rawProvider || !this._providerHandlers || typeof this.rawProvider.removeListener !== 'function') {
+            return;
+        }
+
+        const { accountsChanged, chainChanged } = this._providerHandlers;
+        this.rawProvider.removeListener('accountsChanged', accountsChanged);
+        this.rawProvider.removeListener('chainChanged', chainChanged);
+        this._providerHandlers = null;
+    }
+
+    attachProviderListeners(rawProvider) {
+        if (!rawProvider || typeof rawProvider.on !== 'function') return;
+        if (this.rawProvider === rawProvider && this._providerHandlers) return;
+
+        this.detachProviderListeners();
+        this.rawProvider = rawProvider;
+
+        const accountsChanged = async (accounts) => {
+            if (!accounts || accounts.length === 0) {
+                await this.disconnect();
                 if (window.game) {
                     window.game.updateWalletDisplay();
                 }
-            });
-        }
+                return;
+            }
+
+            this.account = accounts[0];
+            this.updateWalletUI();
+            if (window.game) {
+                window.game.updateWalletDisplay();
+            }
+        };
+
+        const chainChanged = (chainId) => {
+            this.chainId = chainId;
+            this.updateWalletUI();
+            this.checkNetwork();
+            if (window.game) {
+                window.game.updateWalletDisplay();
+            }
+        };
+
+        this._providerHandlers = { accountsChanged, chainChanged };
+        rawProvider.on('accountsChanged', accountsChanged);
+        rawProvider.on('chainChanged', chainChanged);
     }
 
     async initializeBaseAccount() {
@@ -1770,9 +1881,11 @@ class WalletManager {
                 // В Base app wallet подключен автоматически
                 this.account = address.toLowerCase();
 
-                // Получаем provider через window.ethereum или Base Account
-                if (window.ethereum) {
-                    this.provider = new ethers.providers.Web3Provider(window.ethereum);
+                // Получаем provider через SDK или injected wallet
+                const rawProvider = await this.getEthereumProvider({ waitForInjection: true, timeoutMs: 3000 });
+                if (rawProvider && typeof rawProvider.request === 'function') {
+                    this.attachProviderListeners(rawProvider);
+                    this.provider = new ethers.providers.Web3Provider(rawProvider, 'any');
                     this.signer = this.provider.getSigner();
 
                     // Проверяем сеть
@@ -2084,14 +2197,19 @@ class WalletManager {
         document.head.appendChild(script);
     }
 
-    checkSavedConnection() {
-        const saved = localStorage.getItem('walletConnected');
-        if (saved === 'true' && window.ethereum) {
-            this.connect();
+    async checkSavedConnection() {
+        const saved = localStorage.getItem('walletConnected') === 'true';
+        const result = await this.connect({ silent: true, waitForProvider: true });
+
+        // Если флаг есть, но восстановить сессию не удалось - очищаем устаревшее состояние.
+        if (saved && !result.success && !result.skipped) {
+            localStorage.removeItem('walletConnected');
         }
     }
 
-    async connect() {
+    async connect(options = {}) {
+        const { silent = false, provider: providedProvider = null, waitForProvider = false } = options;
+
         try {
             // Проверяем наличие ethers.js
             if (typeof ethers === 'undefined') {
@@ -2105,16 +2223,30 @@ class WalletManager {
                 }
             }
 
-            if (!window.ethereum) {
+            const rawProvider = providedProvider || await this.getEthereumProvider({
+                waitForInjection: waitForProvider || silent,
+                timeoutMs: 3500
+            });
+
+            if (!rawProvider || typeof rawProvider.request !== 'function') {
                 throw new Error('Ethereum wallet not found. Please install MetaMask, Coinbase Wallet, or another compatible wallet.');
             }
 
-            this.provider = new ethers.providers.Web3Provider(window.ethereum);
+            this.attachProviderListeners(rawProvider);
+            this.provider = new ethers.providers.Web3Provider(rawProvider, 'any');
 
-            // Запрашиваем доступ к аккаунтам
-            const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
+            // Для авто-восстановления используем только уже авторизованные аккаунты.
+            const method = silent ? 'eth_accounts' : 'eth_requestAccounts';
+            const accounts = await rawProvider.request({ method: method });
 
             if (accounts.length === 0) {
+                if (silent) {
+                    return {
+                        success: false,
+                        skipped: true,
+                        error: 'No authorized accounts found'
+                    };
+                }
                 throw new Error('No accounts found. Please unlock your wallet.');
             }
 
@@ -2148,7 +2280,11 @@ class WalletManager {
             };
 
         } catch (error) {
-            console.error('Wallet connection error:', error);
+            if (silent) {
+                console.log('Silent wallet restore skipped:', error.message);
+            } else {
+                console.error('Wallet connection error:', error);
+            }
             return {
                 success: false,
                 error: error.message
@@ -2177,10 +2313,11 @@ class WalletManager {
     }
 
     async switchToBase() {
-        if (!window.ethereum) return;
+        const provider = this.rawProvider || await this.getEthereumProvider();
+        if (!provider || typeof provider.request !== 'function') return;
 
         try {
-            await window.ethereum.request({
+            await provider.request({
                 method: 'wallet_switchEthereumChain',
                 params: [{ chainId: BASE_NETWORK.chainId }]
             });
@@ -2188,7 +2325,7 @@ class WalletManager {
             // Если сеть не добавлена, пытаемся добавить её
             if (switchError.code === 4902) {
                 try {
-                    await window.ethereum.request({
+                    await provider.request({
                         method: 'wallet_addEthereumChain',
                         params: [BASE_NETWORK]
                     });
@@ -6598,6 +6735,7 @@ function initStartMenu() {
     const menuRulesBtn = document.getElementById('menuRulesBtn');
     const menuSettingsBtn = document.getElementById('menuSettingsBtn');
     const menuLeaderboardBtn = document.getElementById('menuLeaderboardBtn');
+    const menuWalletConnectBtn = document.getElementById('menuWalletConnectBtn');
     const menuGMBtn = document.getElementById('menuGMBtn');
     const menuDeployBtn = document.getElementById('menuDeployBtn');
     const menuProfileBtn = document.getElementById('menuProfileBtn');
@@ -6890,6 +7028,52 @@ function initStartMenu() {
             e.stopPropagation();
             if (typeof window.openLeaderboard === 'function') {
                 window.openLeaderboard('all');
+            }
+        });
+    }
+
+    // Wallet Connect - ручное подключение EVM-кошелька из главного меню
+    if (menuWalletConnectBtn) {
+        menuWalletConnectBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const gameInstance = window.game;
+            const walletManager = gameInstance?.walletManager;
+            if (!walletManager || typeof walletManager.connect !== 'function') {
+                console.warn('Wallet manager is not ready yet');
+                return;
+            }
+
+            const originalLabel = menuWalletConnectBtn.innerHTML;
+            menuWalletConnectBtn.disabled = true;
+            menuWalletConnectBtn.innerHTML = '<span>Connecting...</span>';
+
+            try {
+                const result = await walletManager.connect({ waitForProvider: true });
+                if (!result?.success) {
+                    const errMsg = result?.error || 'Wallet connection failed. Please try again.';
+                    if (typeof walletManager.showWalletModal === 'function') {
+                        walletManager.showWalletModal(errMsg);
+                    } else {
+                        console.error(errMsg);
+                    }
+                    return;
+                }
+
+                if (gameInstance && typeof gameInstance.updateWalletDisplay === 'function') {
+                    await gameInstance.updateWalletDisplay();
+                }
+            } catch (error) {
+                const errMsg = error?.message || 'Wallet connection failed. Please try again.';
+                if (typeof walletManager.showWalletModal === 'function') {
+                    walletManager.showWalletModal(errMsg);
+                } else {
+                    console.error(errMsg);
+                }
+            } finally {
+                menuWalletConnectBtn.disabled = false;
+                menuWalletConnectBtn.innerHTML = originalLabel;
             }
         });
     }
