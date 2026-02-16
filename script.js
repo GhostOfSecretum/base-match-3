@@ -6748,7 +6748,6 @@ function initStartMenu() {
     const menuRulesBtn = document.getElementById('menuRulesBtn');
     const menuSettingsBtn = document.getElementById('menuSettingsBtn');
     const menuLeaderboardBtn = document.getElementById('menuLeaderboardBtn');
-    const menuWalletConnectBtn = document.getElementById('menuWalletConnectBtn');
     const menuGMBtn = document.getElementById('menuGMBtn');
     const menuDeployBtn = document.getElementById('menuDeployBtn');
     const menuProfileBtn = document.getElementById('menuProfileBtn');
@@ -7041,114 +7040,6 @@ function initStartMenu() {
             e.stopPropagation();
             if (typeof window.openLeaderboard === 'function') {
                 window.openLeaderboard('all');
-            }
-        });
-    }
-
-    // Wallet Connect - ручное подключение EVM-кошелька из главного меню
-    if (menuWalletConnectBtn) {
-        // Функция обновления состояния кнопки
-        function updateWalletBtnState() {
-            const wm = window.walletManager || (window.game && window.game.walletManager);
-            if (wm && wm.isConnected && wm.isConnected()) {
-                const addr = wm.getAccount ? wm.getAccount() : '';
-                const short = addr ? (addr.slice(0, 6) + '...' + addr.slice(-4)) : 'Connected';
-                menuWalletConnectBtn.innerHTML = '<span>' + short + '</span>';
-                menuWalletConnectBtn.classList.add('wallet-connected');
-            }
-        }
-
-        // Проверяем состояние при инициализации и периодически
-        updateWalletBtnState();
-        setTimeout(updateWalletBtnState, 3000);
-        setTimeout(updateWalletBtnState, 6000);
-
-        menuWalletConnectBtn.addEventListener('click', async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            // Ищем walletManager в глобальном скоупе или через game
-            const walletManager = window.walletManager || (window.game && window.game.walletManager);
-
-            if (!walletManager || typeof walletManager.connect !== 'function') {
-                // Если game еще не инициализирован - ждем и пробуем снова
-                menuWalletConnectBtn.disabled = true;
-                menuWalletConnectBtn.innerHTML = '<span>Loading...</span>';
-                await new Promise(r => setTimeout(r, 1500));
-                const wm2 = window.walletManager || (window.game && window.game.walletManager);
-                if (!wm2 || typeof wm2.connect !== 'function') {
-                    menuWalletConnectBtn.disabled = false;
-                    menuWalletConnectBtn.innerHTML = '<span>Wallet Connect</span>';
-                    alert('Game is still loading. Please wait a moment and try again.');
-                    return;
-                }
-                // Продолжаем с найденным walletManager
-                return menuWalletConnectBtn.click();
-            }
-
-            // Если уже подключен — показываем адрес и предлагаем отключить
-            if (walletManager.isConnected && walletManager.isConnected()) {
-                const addr = walletManager.getAccount ? walletManager.getAccount() : '';
-                const short = addr ? (addr.slice(0, 6) + '...' + addr.slice(-4)) : '';
-                if (confirm('Wallet connected: ' + short + '\n\nDisconnect?')) {
-                    await walletManager.disconnect();
-                    menuWalletConnectBtn.innerHTML = '<span>Wallet Connect</span>';
-                    menuWalletConnectBtn.classList.remove('wallet-connected');
-                    if (window.game && typeof window.game.updateWalletDisplay === 'function') {
-                        window.game.updateWalletDisplay();
-                    }
-                }
-                return;
-            }
-
-            menuWalletConnectBtn.disabled = true;
-            menuWalletConnectBtn.innerHTML = '<span>Connecting...</span>';
-
-            try {
-                console.log('Wallet Connect button: calling connect()...');
-                const result = await walletManager.connect({ waitForProvider: true });
-                console.log('Wallet Connect button: result =', result);
-
-                if (!result || !result.success) {
-                    const errMsg = result?.error || 'Wallet not found.';
-                    // Показываем понятное сообщение если нет расширения кошелька
-                    if (errMsg.includes('not found') || errMsg.includes('install')) {
-                        walletManager.showWalletModal(
-                            'No wallet extension detected in your browser.\n\n' +
-                            'To connect, please install one of these browser extensions:\n' +
-                            '• MetaMask (metamask.io)\n' +
-                            '• Coinbase Wallet (coinbase.com/wallet)\n\n' +
-                            'Or open this game inside the Base app on mobile for automatic connection.'
-                        );
-                    } else {
-                        walletManager.showWalletModal(errMsg);
-                    }
-                    return;
-                }
-
-                // Успешное подключение
-                const addr = walletManager.getAccount ? walletManager.getAccount() : '';
-                const short = addr ? (addr.slice(0, 6) + '...' + addr.slice(-4)) : 'Connected';
-                menuWalletConnectBtn.innerHTML = '<span>' + short + '</span>';
-                menuWalletConnectBtn.classList.add('wallet-connected');
-
-                if (window.game && typeof window.game.updateWalletDisplay === 'function') {
-                    await window.game.updateWalletDisplay();
-                }
-            } catch (error) {
-                console.error('Wallet Connect button error:', error);
-                const errMsg = error?.message || 'Connection failed. Please try again.';
-                if (walletManager.showWalletModal) {
-                    walletManager.showWalletModal(errMsg);
-                }
-            } finally {
-                menuWalletConnectBtn.disabled = false;
-                // Если не подключен, восстанавливаем текст
-                const wm = window.walletManager || (window.game && window.game.walletManager);
-                if (!wm || !wm.isConnected || !wm.isConnected()) {
-                    menuWalletConnectBtn.innerHTML = '<span>Wallet Connect</span>';
-                    menuWalletConnectBtn.classList.remove('wallet-connected');
-                }
             }
         });
     }
