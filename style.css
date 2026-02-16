@@ -2102,6 +2102,11 @@ body::before {
     font-weight: 600;
 }
 
+.btn-menu.wallet-connected {
+    background: linear-gradient(135deg, #22c55e, #16a34a) !important;
+    border-color: #16a34a !important;
+}
+
 .day-streak-display {
     margin-top: 20px;
     text-align: center;
