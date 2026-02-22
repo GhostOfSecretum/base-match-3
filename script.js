@@ -660,6 +660,144 @@ const SponsoredTransactions = {
     checkInterval: 60000, // Check eligibility every 60 seconds
     isEligible: null,
     lastError: null,
+
+    // ==================== BUILDER CODES (ERC-8021) ====================
+    // Docs:
+    // - https://docs.base.org/base-chain/builder-codes/builder-codes
+    // - https://docs.base.org/base-chain/builder-codes/app-developers
+    //
+    // Base App auto-appends your Builder Code for in-app transactions once registered on base.dev.
+    // This project also supports appending the ERC-8021 suffix outside Base App.
+    builderCode: null,
+    _builderCodeSuffixCacheKey: null,
+    _builderCodeSuffixCache: null,
+
+    getBuilderCode() {
+        // Priority:
+        // 1) window.__builderCode (manual override)
+        // 2) <meta name="base:builder_code" content="...">
+        // 3) localStorage("builderCode")
+        // 4) this.builderCode (hardcoded)
+        try {
+            if (typeof window !== 'undefined' && typeof window.__builderCode === 'string') {
+                const v = window.__builderCode.trim();
+                if (v) return v;
+            }
+        } catch (e) {}
+
+        try {
+            const el = typeof document !== 'undefined'
+                ? document.querySelector('meta[name="base:builder_code"]')
+                : null;
+            const v = el ? el.getAttribute('content') : null;
+            if (typeof v === 'string' && v.trim()) return v.trim();
+        } catch (e) {}
+
+        try {
+            const v = typeof localStorage !== 'undefined' ? localStorage.getItem('builderCode') : null;
+            if (typeof v === 'string' && v.trim()) return v.trim();
+        } catch (e) {}
+
+        if (typeof this.builderCode === 'string' && this.builderCode.trim()) {
+            return this.builderCode.trim();
+        }
+
+        return null;
+    },
+
+    shouldApplyBuilderCode() {
+        const code = this.getBuilderCode();
+        if (!code) return false;
+
+        // For testing you can force it even inside Base App.
+        try {
+            if (typeof window !== 'undefined' && window.__forceBuilderCode === true) return true;
+        } catch (e) {}
+
+        // Base App auto-appends Builder Codes (per docs), so avoid double-appending
+        // when we detect the injected Base SDK.
+        if (typeof window !== 'undefined' && window.sdk) return false;
+
+        return true;
+    },
+
+    encodeBuilderCodeToDataSuffix(builderCode) {
+        const code = (builderCode || '').trim();
+        if (!code) return null;
+
+        // ERC-8021 encoding (matches Base docs example):
+        // 0x + [1-byte length] + [ASCII bytes of code] + 00 + [0x8021 repeated 8 times]
+        let bytes;
+        if (typeof TextEncoder !== 'undefined') {
+            bytes = new TextEncoder().encode(code);
+        } else {
+            // Fallback for very old browsers (ASCII-only is fine for Builder Codes).
+            bytes = Uint8Array.from(Array.from(code).map((ch) => ch.charCodeAt(0) & 0xff));
+        }
+
+        const len = bytes.length;
+        if (!len) return null;
+        if (len > 255) {
+            throw new Error('Builder Code is too long (max 255 bytes).');
+        }
+
+        const lenHex = len.toString(16).padStart(2, '0');
+        let codeHex = '';
+        for (let i = 0; i < bytes.length; i++) {
+            codeHex += bytes[i].toString(16).padStart(2, '0');
+        }
+
+        const marker = '8021'.repeat(8); // 16 bytes marker
+        return '0x' + lenHex + codeHex + '00' + marker;
+    },
+
+    getBuilderCodeDataSuffix() {
+        const code = this.getBuilderCode();
+        if (!code) return null;
+
+        if (this._builderCodeSuffixCacheKey === code && this._builderCodeSuffixCache) {
+            return this._builderCodeSuffixCache;
+        }
+
+        try {
+            const suffix = this.encodeBuilderCodeToDataSuffix(code);
+            this._builderCodeSuffixCacheKey = code;
+            this._builderCodeSuffixCache = suffix;
+            return suffix;
+        } catch (e) {
+            console.warn('Builder Code suffix generation failed:', e?.message || e);
+            this._builderCodeSuffixCacheKey = code;
+            this._builderCodeSuffixCache = null;
+            return null;
+        }
+    },
+
+    hasErc8021Marker(hexData) {
+        const marker = '8021'.repeat(8);
+        const clean = (typeof hexData === 'string' ? hexData : '')
+            .toLowerCase()
+            .replace(/^0x/, '');
+        return clean.endsWith(marker);
+    },
+
+    appendDataSuffix(calldata, dataSuffix) {
+        if (!dataSuffix || typeof dataSuffix !== 'string') return calldata;
+
+        const base = (typeof calldata === 'string' && calldata.startsWith('0x')) ? calldata : '0x';
+        if (this.hasErc8021Marker(base)) return base;
+
+        const suffixClean = dataSuffix.startsWith('0x') ? dataSuffix.slice(2) : dataSuffix;
+        return base + suffixClean;
+    },
+
+    maybeAppendBuilderCode(calldata) {
+        if (!this.shouldApplyBuilderCode()) return calldata;
+
+        const suffix = this.getBuilderCodeDataSuffix();
+        if (!suffix) return calldata;
+
+        return this.appendDataSuffix(calldata, suffix);
+    },
     /**
      * Get the paymaster proxy URL for ERC-7677 compliant requests.
      * Our /api/paymaster endpoint acts as a transparent proxy to CDP,
@@ -680,16 +818,28 @@ const SponsoredTransactions = {
      * Get Farcaster SDK instance
      */
     getFarcasterSDK() {
-        // Check all possible locations for Farcaster SDK
-        if (typeof window !== 'undefined') {
-            // Farcaster Frame SDK v2 (new)
-            if (window.sdk) return window.sdk;
-            // Frame SDK via frame global
-            if (typeof frame !== 'undefined' && frame.sdk) return frame.sdk;
-            // Legacy locations
-            if (window.__farcasterSDK) return window.__farcasterSDK;
-            if (window.farcaster && window.farcaster.miniapp) return window.farcaster.miniapp;
-        }
+        // IMPORTANT:
+        // `frame.sdk` may exist in any browser if the CDN script is loaded.
+        // That alone does NOT mean we're inside a real Mini App / Frame runtime.
+        if (typeof window === 'undefined') return null;
+
+        // Base/Farcaster injected SDK (most reliable)
+        if (window.sdk) return window.sdk;
+
+        // Native Farcaster object (some clients)
+        if (window.farcaster && window.farcaster.miniapp) return window.farcaster.miniapp;
+
+        // Our cached SDK after a successful ready()/context handshake
+        if (window.__farcasterSDKReady && window.__farcasterSDK) return window.__farcasterSDK;
+        if (window.__farcasterContext?.user && window.__farcasterSDK) return window.__farcasterSDK;
+
+        // Last resort: only trust frame.sdk if it already has context user
+        try {
+            if (typeof frame !== 'undefined' && frame.sdk && frame.sdk.context && frame.sdk.context.user) {
+                return frame.sdk;
+            }
+        } catch (e) {}
+
         return null;
     },
     
@@ -698,23 +848,23 @@ const SponsoredTransactions = {
      */
     isInFarcasterFrame() {
         if (typeof window === 'undefined') return false;
-        
-        // Check various indicators of Farcaster Frame environment
-        const indicators = [
-            window.sdk,
-            typeof frame !== 'undefined' && frame.sdk,
-            window.__farcasterSDK,
-            window.farcaster,
-            // Check if loaded in iframe (common for frames)
-            window.parent !== window,
-            // Check URL params that Farcaster adds
-            new URLSearchParams(window.location.search).has('fid'),
-            // Check for Farcaster-specific context
-            document.referrer.includes('warpcast.com'),
-            document.referrer.includes('farcaster')
-        ];
-        
-        return indicators.some(indicator => !!indicator);
+
+        // Strong indicators (injected/runtime-provided)
+        if (window.sdk) return true;
+        if (window.farcaster) return true;
+        if (window.__farcasterContext?.user) return true;
+        if (window.__farcasterSDKReady && window.__farcasterSDK) return true;
+
+        // URL / referrer hints (we avoid `frame.sdk` presence as a signal)
+        try {
+            const params = new URLSearchParams(window.location.search || '');
+            if (params.has('fid')) return true;
+        } catch (e) {}
+
+        const ref = (typeof document !== 'undefined' ? (document.referrer || '') : '');
+        if (ref.includes('warpcast.com') || ref.includes('farcaster')) return true;
+
+        return false;
     },
     
     /**
@@ -831,6 +981,18 @@ const SponsoredTransactions = {
                 value: call.value || '0x0',
                 data: call.data || '0x'
             }));
+
+            // Builder Code attribution (ERC-8021): append suffix to calldata for regular calls only.
+            // Never touch deployments (call.to is undefined) since that would modify init code.
+            try {
+                for (const c of formattedCalls) {
+                    if (c.to) {
+                        c.data = this.maybeAppendBuilderCode(c.data);
+                    }
+                }
+            } catch (e) {
+                console.log('Builder Code suffix skipped (non-critical):', e?.message || e);
+            }
             
             console.log('sendSponsoredCalls: Using wallet built-in paymaster');
             console.log('Calls:', JSON.stringify(formattedCalls));
@@ -1000,11 +1162,23 @@ const SponsoredTransactions = {
         
         if (statusCallback) statusCallback('Please confirm transaction...');
         
+        // Apply Builder Code attribution (ERC-8021) outside Base App.
+        // We only apply it to regular calls (txParams.to present). Do NOT append to contract deployments
+        // because that would modify init code.
+        let txData = txParams.data || '0x';
+        if (txParams.to) {
+            try {
+                txData = this.maybeAppendBuilderCode(txData);
+            } catch (e) {
+                log(`Builder Code suffix skipped: ${e?.message || e}`);
+            }
+        }
+
         // Build call object for wallet_sendCalls
         const call = {
             to: txParams.to || fromAddress,
             value: txParams.value || '0x0',
-            data: txParams.data || '0x'
+            data: txData
         };
         // For contract deployment (no 'to'), omit the 'to' field
         if (!txParams.to) {
@@ -1149,7 +1323,7 @@ const SponsoredTransactions = {
         const txRequest = {
             from: fromAddress,
             value: txParams.value || '0x0',
-            data: txParams.data || '0x'
+            data: txData
         };
         if (txParams.to) {
             txRequest.to = txParams.to;
@@ -6354,9 +6528,57 @@ class MatchThreePro {
         }
 
         try {
-            const txHash = await this.signNewGameTransaction();
+            const isBaseBuildPreview = (typeof document !== 'undefined' && (document.referrer || '').includes('build.base.org'));
+            const isMiniAppRuntime = !!(
+                (typeof window !== 'undefined' && window.sdk) ||
+                (typeof window !== 'undefined' && window.farcaster && window.farcaster.miniapp) ||
+                (typeof window !== 'undefined' && window.__farcasterSDKReady && window.__farcasterSDK) ||
+                (typeof window !== 'undefined' && window.__farcasterContext && window.__farcasterContext.user)
+            );
+
+            // Outside of the real Mini App runtime (browser / Base Build Preview),
+            // we allow the game to start without a wallet/transaction so gameplay is testable.
+            let txHash = null;
+            let txSkipped = false;
+
+            if (isBaseBuildPreview) {
+                txSkipped = true;
+                if (typeof debugLog === 'function') debugLog('New game: Base Build Preview detected, skipping start transaction');
+            } else {
+                // In the Mini App we try to send the start tx (gasless). Outside, only if sponsorship is available.
+                let shouldAttemptTx = isMiniAppRuntime;
+
+                if (!shouldAttemptTx) {
+                    try {
+                        if (typeof SponsoredTransactions !== 'undefined' && typeof SponsoredTransactions.checkSponsorshipAvailable === 'function') {
+                            shouldAttemptTx = await SponsoredTransactions.checkSponsorshipAvailable();
+                        }
+                    } catch (e) {
+                        shouldAttemptTx = false;
+                    }
+                }
+
+                if (shouldAttemptTx) {
+                    try {
+                        txHash = await this.signNewGameTransaction();
+                    } catch (txError) {
+                        // In a real Mini App we keep the strict behavior: tx is required.
+                        // Outside (browser), fall back to "offline" start.
+                        if (isMiniAppRuntime) {
+                            throw txError;
+                        }
+                        txSkipped = true;
+                        console.warn('New game start tx failed (continuing without it):', txError);
+                        if (typeof debugLog === 'function') debugLog('New game: start transaction failed, continuing without it');
+                    }
+                } else {
+                    txSkipped = true;
+                }
+            }
+
             if (typeof debugLog === 'function') {
-                debugLog(`New game TX: ${txHash || 'sent'}`);
+                if (txHash) debugLog(`New game TX: ${txHash || 'sent'}`);
+                else if (txSkipped) debugLog('New game TX: skipped');
             }
 
             if (typeof afterStart === 'function') {
@@ -6766,6 +6988,7 @@ function initStartMenu() {
     const closeRulesBtn = document.getElementById('closeRulesBtn');
     const closeDeployBtn = document.getElementById('closeDeployBtn');
     const closeProfileBtn = document.getElementById('closeProfileBtn');
+    const profileWalletBtn = document.getElementById('profileWalletBtn');
     const menuMintNFTBtn = document.getElementById('menuMintNFTBtn');
     const mintNFTModal = document.getElementById('mintNFTModal');
     const closeMintNFTBtn = document.getElementById('closeMintNFTBtn');
@@ -7188,6 +7411,61 @@ function initStartMenu() {
         });
     }
 
+    function getProfileWalletManager() {
+        return window.walletManager || (window.game && window.game.walletManager) || null;
+    }
+
+    function updateProfileWalletButton() {
+        if (!profileWalletBtn) return;
+        const wm = getProfileWalletManager();
+        const connected = !!(wm && typeof wm.isConnected === 'function' && wm.isConnected());
+        profileWalletBtn.textContent = connected ? 'Disconnect Wallet' : 'Connect Wallet';
+    }
+
+    if (profileWalletBtn) {
+        updateProfileWalletButton();
+        profileWalletBtn.addEventListener('click', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+
+            const wm = getProfileWalletManager();
+            if (!wm) {
+                alert('Wallet is not ready yet. Please try again in a moment.');
+                return;
+            }
+
+            // Avoid double clicks while connecting/disconnecting
+            profileWalletBtn.disabled = true;
+
+            try {
+                try {
+                    if (wm.initPromise) {
+                        await wm.initPromise;
+                    }
+                } catch (e) {}
+
+                const isConnected = (typeof wm.isConnected === 'function') ? wm.isConnected() : false;
+                if (isConnected) {
+                    await wm.disconnect();
+                } else {
+                    const result = await wm.connect({ silent: false, waitForProvider: true });
+                    if (!result || !result.success) {
+                        const msg = (result && result.error) ? result.error : 'Failed to connect wallet.';
+                        if (typeof wm.showWalletModal === 'function') wm.showWalletModal(msg);
+                    }
+                }
+            } catch (err) {
+                const msg = err && err.message ? err.message : String(err);
+                if (typeof wm.showWalletModal === 'function') wm.showWalletModal(msg);
+                else console.error('Profile wallet button error:', err);
+            } finally {
+                profileWalletBtn.disabled = false;
+                updateProfileWalletButton();
+                updateProfileDisplay();
+            }
+        });
+    }
+
     // Функция обновления данных профиля
     function updateProfileDisplay() {
         const profileName = document.getElementById('profileName');
@@ -7383,6 +7661,9 @@ function initStartMenu() {
                 profileAvatarPlaceholder.style.display = 'flex';
             }
         }
+
+        // Wallet connect/disconnect button state
+        updateProfileWalletButton();
     }
 
     if (closeDeployBtn && deployModal) {
@@ -9287,7 +9568,18 @@ async function sendMintNFT() {
         const tradeCall = await getZoraTradeQuote(ZORA_COIN_ADDRESS, from, amountWei);
         
         const txTarget = tradeCall.target;
-        const txData = tradeCall.data;
+        const rawTxData = tradeCall.data;
+        let txData = rawTxData;
+        try {
+            // Builder Code attribution (ERC-8021) for non-Base-App contexts.
+            txData = SponsoredTransactions.maybeAppendBuilderCode(rawTxData);
+            if (txData !== rawTxData) {
+                mintDebug('Builder Code suffix appended to calldata');
+            }
+        } catch (e) {
+            mintDebug(`Builder Code suffix skipped: ${e?.message || e}`);
+            txData = rawTxData;
+        }
         const txValue = '0x' + BigInt(tradeCall.value).toString(16);
         
         mintDebug(`Trade target: ${txTarget}`);
