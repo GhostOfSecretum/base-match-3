@@ -1153,7 +1153,7 @@ const SponsoredTransactions = {
      * Send transaction via wallet_sendCalls (EIP-5792) with paymasterService for instant "Free" UI,
      * with fallback to eth_sendTransaction for wallets that don't support EIP-5792.
      */
-    async sendViaFarcasterSDK(txParams, statusCallback) {
+    async sendViaFarcasterSDK(txParams, statusCallback, ethProviderOverride = null) {
         const log = (msg) => {
             console.log('[TX]', msg);
             if (window.DebugLogger) {
@@ -1166,10 +1166,12 @@ const SponsoredTransactions = {
         if (statusCallback) statusCallback('Connecting to wallet...');
         
         // Get Ethereum provider
-        let ethProvider = null;
+        let ethProvider = ethProviderOverride || null;
         const farcasterSDK = this.getFarcasterSDK();
         
-        if (farcasterSDK?.wallet?.ethProvider) {
+        if (ethProvider) {
+            log('Using provided ethProvider override');
+        } else if (farcasterSDK?.wallet?.ethProvider) {
             ethProvider = farcasterSDK.wallet.ethProvider;
             log('Using sdk.wallet.ethProvider');
         } else if (farcasterSDK?.wallet?.getEthereumProvider) {
@@ -1486,7 +1488,7 @@ const SponsoredTransactions = {
         return await this.sendViaFarcasterSDK({
             ...txParams,
             from: userAddress
-        }, statusCallback);
+        }, statusCallback, provider);
     },
     
     /**
@@ -9487,6 +9489,7 @@ function getDeployedContracts() {
 
 function saveDeployedContract(txHash) {
     try {
+        if (!txHash || typeof txHash !== 'string') return;
         const contracts = getDeployedContracts();
         contracts.unshift({
             txHash: txHash,
@@ -9538,36 +9541,70 @@ async function sendSimpleDeploy() {
     }
     
     try {
-        if (deployStatus) deployStatus.textContent = 'Please confirm transaction...';
+        // Pick the same provider that mint/gasless flows use.
+        let provider = null;
+        const farcasterSDK = SponsoredTransactions.getFarcasterSDK();
+        if (farcasterSDK?.wallet?.ethProvider) {
+            provider = farcasterSDK.wallet.ethProvider;
+        } else if (window.ethereum) {
+            provider = window.ethereum;
+        } else if (window.coinbaseEvmProvider && typeof window.coinbaseEvmProvider.request === 'function') {
+            provider = window.coinbaseEvmProvider;
+        }
 
-        const result = await SponsoredTransactions.sendViaFarcasterSDK(
+        if (!provider) {
+            throw new Error('No wallet found. Open in Base app.');
+        }
+
+        if (deployStatus) deployStatus.textContent = 'Getting account...';
+        const accounts = await provider.request({ method: 'eth_requestAccounts' });
+        const from = accounts?.[0];
+        if (!from) {
+            throw new Error('No account connected');
+        }
+
+        // Ensure we're deploying on Base (same as Mint NFT flow).
+        if (deployStatus) deployStatus.textContent = 'Switching to Base...';
+        await ensureBaseChain(provider);
+
+        if (deployStatus) deployStatus.textContent = 'Sending deployment (gasless first)...';
+
+        const result = await SponsoredTransactions.sendTransaction(
+            provider,
             {
                 value: '0x0',
                 data: SIMPLE_STORAGE_BYTECODE
             },
+            from,
             (status) => { if (deployStatus) deployStatus.textContent = status; }
         );
 
         const txHash = result?.txHash;
+        const wasSponsored = result?.sponsored === true;
 
-        console.log('Deploy TX sent:', txHash);
-        
+        if (!txHash || typeof txHash !== 'string') {
+            throw new Error('Failed to get transaction hash');
+        }
+
+        console.log('Deploy TX sent:', txHash, wasSponsored ? '(sponsored)' : '(not sponsored)');
+
         // Save to list
         saveDeployedContract(txHash);
-        
+
         if (deployStatus) {
-            deployStatus.innerHTML = `Contract deployed! <a href="https://basescan.org/tx/${txHash}" target="_blank" style="color: #0052ff;">View TX</a>`;
+            const badge = wasSponsored ? SponsoredTransactions.getSponsoredBadge() + ' ' : '';
+            deployStatus.innerHTML = `${badge}Contract deployed! <a href="https://basescan.org/tx/${txHash}" target="_blank" style="color: #0052ff;">View TX</a>`;
             deployStatus.style.color = '#4ade80';
         }
-        
+
         // Update UI and re-enable button for next deploy
         updateDeployUI();
-        
+
         if (deployBtn) {
             deployBtn.disabled = false;
             deployBtn.textContent = 'Deploy Another';
         }
-        
+
     } catch (error) {
         console.error('Deploy error:', error);
         if (deployStatus) {
