@@ -9475,6 +9475,63 @@ async function sendSimpleGM() {
 // ==================== DEPLOY CONTRACT SYSTEM ====================
 // Uses SIMPLE_STORAGE_BYTECODE defined earlier in the file
 
+// ==================== CDP-SPONSORED DEPLOY FACTORY ====================
+// To make deploys eligible for CDP Paymaster sponsorship, deploy `SimpleStorageFactory`
+// (see `contracts/SimpleStorageFactory.sol`) once on Base mainnet, then:
+// 1) Allowlist the factory address in CDP Portal → Paymaster
+// 2) Allowlist the function signature: deploy(bytes32)
+//
+// Frontend then sends a normal contract call to the factory (instead of raw contract creation).
+
+const SIMPLE_STORAGE_FACTORY = {
+    // TODO: set after deploying on Base mainnet (8453).
+    // You can also override at runtime via localStorage key below.
+    address: '0x9c31DD42EB42018215c82789ea971C2F17e7DcA5',
+    chainId: '0x2105',
+    abi: [
+        {
+            "inputs": [{ "name": "salt", "type": "bytes32" }],
+            "name": "deploy",
+            "outputs": [{ "name": "deployed", "type": "address" }],
+            "stateMutability": "nonpayable",
+            "type": "function"
+        },
+        {
+            "anonymous": false,
+            "inputs": [
+                { "indexed": true, "name": "deployer", "type": "address" },
+                { "indexed": true, "name": "contractAddress", "type": "address" },
+                { "indexed": false, "name": "salt", "type": "bytes32" }
+            ],
+            "name": "Deployed",
+            "type": "event"
+        }
+    ]
+};
+
+const SIMPLE_STORAGE_FACTORY_STORAGE_KEY = 'simpleStorageFactoryAddress';
+
+function getSimpleStorageFactoryAddress() {
+    let stored = null;
+    try {
+        stored = localStorage.getItem(SIMPLE_STORAGE_FACTORY_STORAGE_KEY);
+    } catch (e) {
+        stored = null;
+    }
+    const override = typeof window !== 'undefined' ? window.__simpleStorageFactoryAddress : null;
+    return override || stored || SIMPLE_STORAGE_FACTORY.address;
+}
+
+function setSimpleStorageFactoryAddress(address) {
+    if (!address || typeof address !== 'string') return false;
+    const trimmed = address.trim();
+    if (!isValidAddress(trimmed)) return false;
+    try {
+        localStorage.setItem(SIMPLE_STORAGE_FACTORY_STORAGE_KEY, trimmed);
+    } catch (e) {}
+    return true;
+}
+
 // Deterministic Deployment Proxy (Arachnid) — deployed on Base at a fixed address.
 // Call data format: 32-byte salt + init code (no function selector).
 // Ref: https://github.com/Arachnid/deterministic-deployment-proxy
@@ -9576,40 +9633,61 @@ async function sendSimpleDeploy() {
 
         if (deployStatus) deployStatus.textContent = 'Sending deployment (gasless first)...';
 
-        // Use deterministic-deployment-proxy so this is a normal contract call (`to` is set).
-        // Some wallets/paymasters do not sponsor raw contract-creation calls (no `to`).
+        // Preferred (CDP sponsored): call our allowlisted factory method deploy(bytes32).
+        // Fallback: deterministic deploy proxy / raw creation (may not be sponsored).
+        let txParams = null;
+
+        // Ensure ethers is available for ABI encoding (same CDN set as elsewhere).
+        if (typeof ethers === 'undefined') {
+            await ensureEthersLoaded((status) => { if (deployStatus) deployStatus.textContent = status; });
+        }
+
+        const factoryAddress = getSimpleStorageFactoryAddress();
+        const factoryConfigured = isValidAddress(factoryAddress) && !isZeroAddress(factoryAddress);
+
+        // Generate a random salt (bytes32)
         let saltHex = null;
         try {
             const saltBytes = new Uint8Array(32);
             if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
                 crypto.getRandomValues(saltBytes);
             } else {
-                for (let i = 0; i < saltBytes.length; i++) {
-                    saltBytes[i] = Math.floor(Math.random() * 256);
-                }
+                for (let i = 0; i < saltBytes.length; i++) saltBytes[i] = Math.floor(Math.random() * 256);
             }
-            let hex = '';
-            for (let i = 0; i < saltBytes.length; i++) {
-                hex += saltBytes[i].toString(16).padStart(2, '0');
-            }
-            saltHex = '0x' + hex;
+            saltHex = '0x' + Array.from(saltBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
         } catch (e) {
             saltHex = null;
         }
 
-        const initCode = SIMPLE_STORAGE_BYTECODE;
-        const proxyData = (saltHex && initCode && initCode.startsWith('0x'))
-            ? ('0x' + saltHex.slice(2) + initCode.slice(2))
-            : initCode;
+        if (factoryConfigured && saltHex) {
+            const iface = new ethers.utils.Interface(SIMPLE_STORAGE_FACTORY.abi);
+            const data = iface.encodeFunctionData('deploy', [saltHex]);
+            txParams = {
+                to: factoryAddress,
+                value: '0x0',
+                data: data
+            };
+        } else {
+            // Warn so it's obvious why deploy isn't "Free" yet.
+            if (deployStatus && !factoryConfigured) {
+                deployStatus.textContent = 'Factory not configured; deploying without CDP sponsorship...';
+            }
 
-        const txParams = {
-            // If salt generation failed, fall back to direct creation (no `to`) by omitting it.
-            ...(saltHex ? { to: DETERMINISTIC_DEPLOY_PROXY } : {}),
-            value: '0x0',
-            data: proxyData,
-            // Never append ERC-8021 BuilderCode to raw (salt+initcode) payloads.
-            skipBuilderCode: true
-        };
+            // Use deterministic-deployment-proxy so this is a normal contract call (`to` is set).
+            // Some wallets/paymasters still won't sponsor this unless explicitly allowlisted.
+            const initCode = SIMPLE_STORAGE_BYTECODE;
+            const proxyData = (saltHex && initCode && initCode.startsWith('0x'))
+                ? ('0x' + saltHex.slice(2) + initCode.slice(2))
+                : initCode;
+
+            txParams = {
+                ...(saltHex ? { to: DETERMINISTIC_DEPLOY_PROXY } : {}),
+                value: '0x0',
+                data: proxyData,
+                // Never append ERC-8021 BuilderCode to raw (salt+initcode) payloads.
+                skipBuilderCode: true
+            };
+        }
 
         const result = await SponsoredTransactions.sendTransaction(
             provider,
