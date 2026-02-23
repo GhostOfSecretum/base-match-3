@@ -1,0 +1,11 @@
+---
+description: Require version bump before pushing
+alwaysApply: true
+---
+
+# Version Bump Before Push
+
+- When the user asks to push (e.g. `git push`, "запуш"), ensure the push includes a patch version bump.
+- Commit functional changes first (normal commit message), then run `node update-version.cjs` and commit the bump as `chore: bump version [auto]`.
+- Files updated by the bump: `script.js` (`APP_VERSION`), `package.json`, `api/leaderboard.js` (`API_VERSION`), `index.html` version badge.
+- `npm run push` is OK only after all non-version changes are already committed.
