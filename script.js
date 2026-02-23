@@ -408,6 +408,10 @@ const GM_CONTRACT = {
     chainId: '0x2105', // Base mainnet
     // Function selector for sayGM() = 0x25406903 on deployed GM contract
     sayGMSelector: '0x25406903',
+    // Selector for `totalGMs()` getter on the GM contract (view, no state changes).
+    // We use this for "New Game" so the tx is a contract call (more likely to be sponsored)
+    // but remains a no-op.
+    totalGMsSelector: '0xa29002ac',
     // ABI for the contract
     abi: [
         {
@@ -6863,88 +6867,20 @@ class MatchThreePro {
             if (typeof debugLog === 'function') debugLog(msg);
         };
 
-        // IMPORTANT:
-        // Some wallets require `eth_requestAccounts` to be triggered directly by a user gesture.
-        // Prefer already-injected providers (window.ethereum / window.coinbaseEvmProvider) before
-        // awaiting any SDK methods that may rely on postMessage and timers.
-        let provider = null;
-
-        // 1) If WalletManager already has a provider, reuse it.
-        try {
-            const wmProvider = this.walletManager?.rawProvider;
-            if (wmProvider && typeof wmProvider.request === 'function') {
-                provider = wmProvider;
-            }
-        } catch (e) {}
-
-        // 2) Prefer injected providers (fast, no await → preserves user gesture).
-        try {
-            if (!provider && this.walletManager && typeof this.walletManager.getPreferredInjectedProvider === 'function') {
-                const injected = this.walletManager.getPreferredInjectedProvider();
-                if (injected && typeof injected.request === 'function') provider = injected;
-            }
-        } catch (e) {}
-
-        // 3) Try SDK wallet providers (Base / Farcaster).
-        const sdk = (typeof SponsoredTransactions !== 'undefined' && SponsoredTransactions.getFarcasterSDK)
-            ? SponsoredTransactions.getFarcasterSDK()
-            : (window.sdk || (typeof frame !== 'undefined' && frame.sdk) || window.__farcasterSDK);
-
-        if (!provider && sdk?.wallet?.ethProvider && typeof sdk.wallet.ethProvider.request === 'function') {
-            provider = sdk.wallet.ethProvider;
-        }
-
-        // 4) Global injected fallbacks (Coinbase can inject `coinbaseEvmProvider` without `window.ethereum`).
-        try {
-            if (!provider && window.ethereum && typeof window.ethereum.request === 'function') {
-                provider = window.ethereum;
-            }
-        } catch (e) {}
-        try {
-            if (!provider && window.coinbaseEvmProvider && typeof window.coinbaseEvmProvider.request === 'function') {
-                provider = window.coinbaseEvmProvider;
-            }
-        } catch (e) {}
-
-        // 5) As a last resort, ask the SDK for a provider (with a timeout so we don't hang).
-        if (!provider && sdk?.wallet?.getEthereumProvider) {
-            provider = await Promise.race([
-                sdk.wallet.getEthereumProvider(),
-                new Promise((resolve) => setTimeout(() => resolve(null), 2500))
-            ]);
-        }
-
-        if (!provider || typeof provider.request !== 'function') {
-            throw new Error('No wallet found. Please connect your wallet.');
-        }
-
-        // Get an address. If already authorized, avoid an extra prompt.
-        log('New game: connecting to wallet...');
-        let accounts = null;
-        try {
-            accounts = await provider.request({ method: 'eth_accounts' });
-        } catch (e) {}
-        if (!accounts || !accounts[0]) {
-            accounts = await provider.request({ method: 'eth_requestAccounts' });
-        }
-        const from = accounts?.[0];
-
-        if (!from) {
-            throw new Error('No account connected');
-        }
+        // NOTE:
+        // A "blank" EOA transaction (to=self, data=0x) is commonly rejected by sponsorship
+        // policies / paymasters. To keep "New Game" reliable, we send a harmless contract call
+        // (view getter) to our already-used GM contract.
+        const txParams = {
+            to: GM_CONTRACT.address,
+            value: '0x0',
+            data: GM_CONTRACT.totalGMsSelector || '0xa29002ac'
+        };
 
         log('New game: preparing sponsored transaction...');
-
         const result = await SponsoredTransactions.sendViaFarcasterSDK(
-            {
-                from: from,
-                to: from,
-                value: '0x0',
-                data: '0x'
-            },
-            (status) => {
-                log(`New game: ${status}`);
-            }
+            txParams,
+            (status) => log(`New game: ${status}`)
         );
 
         return result?.txHash;
