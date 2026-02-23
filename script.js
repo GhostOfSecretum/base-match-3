@@ -1214,10 +1214,12 @@ const SponsoredTransactions = {
         if (statusCallback) statusCallback('Please confirm transaction...');
         
         // Apply Builder Code attribution (ERC-8021) outside Base App.
-        // We only apply it to regular calls (txParams.to present). Do NOT append to contract deployments
-        // because that would modify init code.
+        // We only apply it to regular calls (txParams.to present) by default.
+        // Some "to"-calls may still carry raw binary payloads (e.g. CREATE2 deployer),
+        // so allow callers to explicitly skip the suffix.
+        const skipBuilderCode = txParams?.skipBuilderCode === true;
         let txData = txParams.data || '0x';
-        if (txParams.to) {
+        if (txParams.to && !skipBuilderCode) {
             try {
                 txData = this.maybeAppendBuilderCode(txData);
             } catch (e) {
@@ -9473,6 +9475,11 @@ async function sendSimpleGM() {
 // ==================== DEPLOY CONTRACT SYSTEM ====================
 // Uses SIMPLE_STORAGE_BYTECODE defined earlier in the file
 
+// Deterministic Deployment Proxy (Arachnid) — deployed on Base at a fixed address.
+// Call data format: 32-byte salt + init code (no function selector).
+// Ref: https://github.com/Arachnid/deterministic-deployment-proxy
+const DETERMINISTIC_DEPLOY_PROXY = '0x4e59b44847b379578588920ca78fbf26c0b4956c';
+
 const DEPLOY_STORAGE_KEY = 'deployed_contracts';
 
 function getDeployedContracts() {
@@ -9569,12 +9576,44 @@ async function sendSimpleDeploy() {
 
         if (deployStatus) deployStatus.textContent = 'Sending deployment (gasless first)...';
 
+        // Use deterministic-deployment-proxy so this is a normal contract call (`to` is set).
+        // Some wallets/paymasters do not sponsor raw contract-creation calls (no `to`).
+        let saltHex = null;
+        try {
+            const saltBytes = new Uint8Array(32);
+            if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+                crypto.getRandomValues(saltBytes);
+            } else {
+                for (let i = 0; i < saltBytes.length; i++) {
+                    saltBytes[i] = Math.floor(Math.random() * 256);
+                }
+            }
+            let hex = '';
+            for (let i = 0; i < saltBytes.length; i++) {
+                hex += saltBytes[i].toString(16).padStart(2, '0');
+            }
+            saltHex = '0x' + hex;
+        } catch (e) {
+            saltHex = null;
+        }
+
+        const initCode = SIMPLE_STORAGE_BYTECODE;
+        const proxyData = (saltHex && initCode && initCode.startsWith('0x'))
+            ? ('0x' + saltHex.slice(2) + initCode.slice(2))
+            : initCode;
+
+        const txParams = {
+            // If salt generation failed, fall back to direct creation (no `to`) by omitting it.
+            ...(saltHex ? { to: DETERMINISTIC_DEPLOY_PROXY } : {}),
+            value: '0x0',
+            data: proxyData,
+            // Never append ERC-8021 BuilderCode to raw (salt+initcode) payloads.
+            skipBuilderCode: true
+        };
+
         const result = await SponsoredTransactions.sendTransaction(
             provider,
-            {
-                value: '0x0',
-                data: SIMPLE_STORAGE_BYTECODE
-            },
+            txParams,
             from,
             (status) => { if (deployStatus) deployStatus.textContent = status; }
         );
