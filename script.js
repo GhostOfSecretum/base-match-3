@@ -2553,8 +2553,59 @@ class WalletManager {
     showWalletModal(message) {
         const modal = document.getElementById('walletModal');
         const messageEl = document.getElementById('walletModalMessage');
+
+        // In some flows (e.g. from the start menu) the wallet modal can live inside a container
+        // that is `display: none` (like `#gameContainer`). Move it to `document.body` so the
+        // user always sees the error/status message.
+        if (!modal || !messageEl) {
+            // Last-resort fallback: at least show the message.
+            try { alert(message); } catch (e) {}
+            console.error('Wallet modal elements not found:', { modal, messageEl, message });
+            return;
+        }
+
+        // Ensure modal isn't hidden by a parent container.
+        try {
+            if (modal.parentElement !== document.body) {
+                document.body.appendChild(modal);
+            }
+        } catch (e) {
+            // If moving fails, we still try to show it in-place.
+        }
+
+        // Ensure it appears above any other modal currently open.
+        modal.style.zIndex = '100000';
+
+        // Make sure the modal can always be closed, even if the game's
+        // event listeners haven't been initialized yet.
+        try {
+            if (!modal.dataset.closeHandlersAttached) {
+                modal.dataset.closeHandlersAttached = '1';
+                const closeBtn = document.getElementById('closeWalletModalBtn');
+                if (closeBtn) {
+                    closeBtn.addEventListener('click', () => {
+                        modal.classList.remove('show');
+                    });
+                }
+                const backdrop = modal.querySelector('.modal-backdrop');
+                if (backdrop) {
+                    backdrop.addEventListener('click', (e) => {
+                        if (e.target === backdrop) {
+                            modal.classList.remove('show');
+                        }
+                    });
+                }
+            }
+        } catch (e) {}
+
         messageEl.textContent = message;
         modal.classList.add('show');
+
+        // Helpful for keyboard users and makes the modal "feel" responsive.
+        try {
+            const closeBtn = document.getElementById('closeWalletModalBtn');
+            if (closeBtn && typeof closeBtn.focus === 'function') closeBtn.focus();
+        } catch (e) {}
     }
 
     isConnected() {
@@ -7436,6 +7487,8 @@ function initStartMenu() {
 
             // Avoid double clicks while connecting/disconnecting
             profileWalletBtn.disabled = true;
+            // Give immediate feedback (MetaMask/Coinbase prompt may take a moment to appear)
+            profileWalletBtn.textContent = 'Connecting...';
 
             try {
                 try {
@@ -7446,6 +7499,7 @@ function initStartMenu() {
 
                 const isConnected = (typeof wm.isConnected === 'function') ? wm.isConnected() : false;
                 if (isConnected) {
+                    profileWalletBtn.textContent = 'Disconnecting...';
                     await wm.disconnect();
                 } else {
                     const result = await wm.connect({ silent: false, waitForProvider: true });
