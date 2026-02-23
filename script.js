@@ -829,9 +829,21 @@ const SponsoredTransactions = {
         // Native Farcaster object (some clients)
         if (window.farcaster && window.farcaster.miniapp) return window.farcaster.miniapp;
 
-        // Our cached SDK after a successful ready()/context handshake
-        if (window.__farcasterSDKReady && window.__farcasterSDK) return window.__farcasterSDK;
-        if (window.__farcasterContext?.user && window.__farcasterSDK) return window.__farcasterSDK;
+        // Our cached SDK after a successful ready()/context handshake.
+        // IMPORTANT: `frame.sdk` can exist in any browser (CDN), and some bootstrap code sets
+        // `__farcasterSDKReady=true` even when we're NOT inside a real Mini App/Frame runtime.
+        // Treat the cached SDK as trusted only when we have strong signals.
+        const cached = window.__farcasterSDK;
+        if (window.__farcasterSDKReady && cached) {
+            if (cached === window.sdk) return cached;
+            if (window.farcaster?.miniapp && cached === window.farcaster.miniapp) return cached;
+            if (window.__farcasterContext?.user) return cached;
+            try {
+                if (cached.context && cached.context.user) return cached;
+            } catch (e) {}
+            // Otherwise ignore cached SDK and fall back to injected `window.ethereum`.
+        }
+        if (window.__farcasterContext?.user && cached) return cached;
 
         // Last resort: only trust frame.sdk if it already has context user
         try {
@@ -853,7 +865,11 @@ const SponsoredTransactions = {
         if (window.sdk) return true;
         if (window.farcaster) return true;
         if (window.__farcasterContext?.user) return true;
-        if (window.__farcasterSDKReady && window.__farcasterSDK) return true;
+        // Do NOT treat "__farcasterSDKReady" alone as a strong signal:
+        // frame-sdk can be present in a normal browser.
+        try {
+            if (window.__farcasterSDKReady && window.__farcasterSDK && window.__farcasterSDK.context?.user) return true;
+        } catch (e) {}
 
         // URL / referrer hints (we avoid `frame.sdk` presence as a signal)
         try {
@@ -1664,13 +1680,30 @@ class WalletManager {
                 ? SponsoredTransactions.getFarcasterSDK()
                 : (window.sdk || (typeof frame !== 'undefined' && frame.sdk) || window.__farcasterSDK);
 
+            // In a regular browser we should prefer injected providers (MetaMask/Coinbase extensions)
+            // and avoid hanging on SDK calls that may wait for a host postMessage response.
+            const injectedNow = this.getPreferredInjectedProvider();
+            const hasStrongMiniAppSignals = !!(
+                (typeof window !== 'undefined' && window.sdk) ||
+                (typeof window !== 'undefined' && window.farcaster && window.farcaster.miniapp) ||
+                (typeof window !== 'undefined' && window.__farcasterContext && window.__farcasterContext.user)
+            );
+            if (!hasStrongMiniAppSignals && injectedNow) {
+                return injectedNow;
+            }
+
             if (farcasterSDK?.wallet?.ethProvider) {
                 return farcasterSDK.wallet.ethProvider;
             }
 
             if (farcasterSDK?.wallet?.getEthereumProvider) {
-                const sdkProvider = await farcasterSDK.wallet.getEthereumProvider();
-                if (sdkProvider) return sdkProvider;
+                // Timeout so the browser connect button never "hangs" waiting for SDK host responses.
+                const sdkTimeoutMs = hasStrongMiniAppSignals ? 4000 : 800;
+                const sdkProvider = await Promise.race([
+                    farcasterSDK.wallet.getEthereumProvider(),
+                    new Promise((resolve) => setTimeout(() => resolve(null), sdkTimeoutMs))
+                ]);
+                if (sdkProvider && typeof sdkProvider.request === 'function') return sdkProvider;
             }
         } catch (e) {
             console.log('SDK provider lookup failed:', e.message);
@@ -1755,28 +1788,47 @@ class WalletManager {
             let sdkInstance = null;
             let isInMiniApp = false;
 
-            // Способ 1: frame.sdk (CDN версия @farcaster/frame-sdk)
-            if (typeof frame !== 'undefined' && frame.sdk) {
-                sdkInstance = frame.sdk;
-                console.log('Found frame.sdk');
+            // IMPORTANT:
+            // `frame.sdk` exists in ANY browser if the CDN script is loaded. Outside the real
+            // host (Base app / Farcaster) some SDK methods can hang (waiting for postMessage).
+            // Prefer strong injected SDKs first.
+
+            // Способ 0: window.sdk (Base App injected)
+            if (typeof window.sdk !== 'undefined' && window.sdk) {
+                sdkInstance = window.sdk;
+                console.log('Found window.sdk');
             }
 
-            // Способ 2: window.__farcasterSDK (сохраненный при инициализации)
-            if (!sdkInstance && window.__farcasterSDK) {
-                sdkInstance = window.__farcasterSDK;
-                console.log('Found window.__farcasterSDK');
-            }
-
-            // Способ 3: window.farcaster.miniapp
+            // Способ 1: window.farcaster.miniapp
             if (!sdkInstance && window.farcaster && window.farcaster.miniapp) {
                 sdkInstance = window.farcaster.miniapp;
                 console.log('Found window.farcaster.miniapp');
             }
 
-            // Способ 4: window.miniappSdk
+            // Способ 2: window.__farcasterSDK (кэш)
+            if (!sdkInstance && window.__farcasterSDK) {
+                sdkInstance = window.__farcasterSDK;
+                console.log('Found window.__farcasterSDK');
+            }
+
+            // Способ 3: window.miniappSdk
             if (!sdkInstance && window.miniappSdk) {
                 sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
                 console.log('Found window.miniappSdk');
+            }
+
+            // Способ 4: frame.sdk (ONLY as a last resort; may hang outside frames)
+            const ref = (typeof document !== 'undefined' ? (document.referrer || '') : '');
+            const hasFrameHints = (() => {
+                try {
+                    const params = new URLSearchParams(window.location.search || '');
+                    if (params.has('fid')) return true;
+                } catch (e) {}
+                return ref.includes('warpcast.com') || ref.includes('farcaster');
+            })();
+            if (!sdkInstance && hasFrameHints && typeof frame !== 'undefined' && frame.sdk) {
+                sdkInstance = frame.sdk;
+                console.log('Found frame.sdk (with frame hints)');
             }
 
             if (!sdkInstance) {
@@ -1786,8 +1838,20 @@ class WalletManager {
 
             // Проверяем, находимся ли мы в Mini App
             try {
-                if (typeof sdkInstance.isInMiniApp === 'function') {
-                    isInMiniApp = await sdkInstance.isInMiniApp();
+                const hasStrongMiniAppSignals = !!(
+                    (typeof window !== 'undefined' && window.sdk) ||
+                    (typeof window !== 'undefined' && window.farcaster && window.farcaster.miniapp) ||
+                    (typeof window !== 'undefined' && window.__farcasterContext && window.__farcasterContext.user)
+                );
+
+                if (hasStrongMiniAppSignals) {
+                    isInMiniApp = true;
+                } else if (typeof sdkInstance.isInMiniApp === 'function') {
+                    // Timeout so initPromise never blocks "Connect Wallet" in a normal browser.
+                    isInMiniApp = await Promise.race([
+                        sdkInstance.isInMiniApp(),
+                        new Promise((resolve) => setTimeout(() => resolve(false), 800))
+                    ]);
                 } else {
                     // Если метода нет, проверяем по наличию context
                     isInMiniApp = !!(sdkInstance.context);
@@ -1795,7 +1859,8 @@ class WalletManager {
                 console.log('isInMiniApp:', isInMiniApp);
             } catch (e) {
                 console.log('Could not check isInMiniApp:', e.message);
-                isInMiniApp = true; // Предполагаем, что да
+                // Safer default: assume NOT in Mini App to avoid hanging SDK calls in browsers.
+                isInMiniApp = false;
             }
 
             if (!isInMiniApp) {
@@ -1809,11 +1874,20 @@ class WalletManager {
 
                 // Пробуем разные способы получения контекста
                 if (typeof sdkInstance.context === 'function') {
-                    context = await sdkInstance.context();
+                    context = await Promise.race([
+                        sdkInstance.context(),
+                        new Promise((resolve) => setTimeout(() => resolve(null), 1200))
+                    ]);
                 } else if (sdkInstance.context && typeof sdkInstance.context.get === 'function') {
-                    context = await sdkInstance.context.get();
+                    context = await Promise.race([
+                        sdkInstance.context.get(),
+                        new Promise((resolve) => setTimeout(() => resolve(null), 1200))
+                    ]);
                 } else if (sdkInstance.context && typeof sdkInstance.context.then === 'function') {
-                    context = await sdkInstance.context;
+                    context = await Promise.race([
+                        sdkInstance.context,
+                        new Promise((resolve) => setTimeout(() => resolve(null), 1200))
+                    ]);
                 } else if (sdkInstance.context) {
                     context = sdkInstance.context;
                 }
@@ -6580,11 +6654,13 @@ class MatchThreePro {
 
         try {
             const isBaseBuildPreview = (typeof document !== 'undefined' && (document.referrer || '').includes('build.base.org'));
+            // IMPORTANT: `__farcasterSDKReady` can be set in a normal browser if frame-sdk is loaded.
+            // Require real runtime signals so browser gameplay doesn't get blocked by a "phantom" SDK.
             const isMiniAppRuntime = !!(
                 (typeof window !== 'undefined' && window.sdk) ||
                 (typeof window !== 'undefined' && window.farcaster && window.farcaster.miniapp) ||
-                (typeof window !== 'undefined' && window.__farcasterSDKReady && window.__farcasterSDK) ||
-                (typeof window !== 'undefined' && window.__farcasterContext && window.__farcasterContext.user)
+                (typeof window !== 'undefined' && window.__farcasterContext && window.__farcasterContext.user) ||
+                (typeof window !== 'undefined' && window.__farcasterSDK && window.__farcasterSDK.context && window.__farcasterSDK.context.user)
             );
 
             // Outside of the real Mini App runtime (browser / Base Build Preview),
