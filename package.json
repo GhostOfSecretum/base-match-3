@@ -1,6 +1,6 @@
 {
   "name": "base-match-3",
-  "version": "1.0.125",
+  "version": "1.0.126",
   "description": "Match-3 puzzle game with crypto tokens for Base Mini Apps",
   "main": "script.js",
   "type": "module",
