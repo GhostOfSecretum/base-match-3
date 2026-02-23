@@ -574,9 +574,28 @@
                 }
 
                 // Способ 2: frame.sdk (CDN версия)
+                // IMPORTANT: `frame.sdk` exists in any browser if the CDN script is loaded.
+                // Outside a real Farcaster/Base host, calling `ready()`/`context()` can hang or throw.
                 if (!sdkInstance && typeof frame !== 'undefined' && frame.sdk) {
-                    sdkInstance = frame.sdk;
-                    debugLog('✅ Found frame.sdk');
+                    let hasFrameHints = false;
+                    try {
+                        const params = new URLSearchParams(window.location.search || '');
+                        if (params.has('fid')) hasFrameHints = true;
+                    } catch (e) {}
+                    try {
+                        const ref = (document.referrer || '');
+                        if (ref.includes('warpcast.com') || ref.includes('farcaster')) hasFrameHints = true;
+                    } catch (e) {}
+                    try {
+                        if (frame.sdk.context && frame.sdk.context.user) hasFrameHints = true;
+                    } catch (e) {}
+
+                    if (hasFrameHints) {
+                        sdkInstance = frame.sdk;
+                        debugLog('✅ Found frame.sdk (with frame hints)');
+                    } else {
+                        debugLog('ℹ️ frame.sdk present but no frame hints; ignoring');
+                    }
                 }
 
                 // Способ 3: window.farcaster (native)
@@ -661,9 +680,26 @@
             const foundKeys = findAllSDKs();
             debugLog(`  Keys now: ${foundKeys.join(', ') || 'none'}`);
             
-            let sdkInstance = window.sdk || (typeof frame !== 'undefined' && frame.sdk) || 
+            let sdkInstance = window.sdk ||
                               window.farcaster?.miniapp || window.farcaster?.sdk ||
                               window.Farcaster || window.miniApp || window.MiniApp || window.base;
+
+            // Consider frame.sdk only with strong hints (see comment above).
+            if (!sdkInstance && typeof frame !== 'undefined' && frame.sdk) {
+                let hasFrameHints = false;
+                try {
+                    const params = new URLSearchParams(window.location.search || '');
+                    if (params.has('fid')) hasFrameHints = true;
+                } catch (e) {}
+                try {
+                    const ref = (document.referrer || '');
+                    if (ref.includes('warpcast.com') || ref.includes('farcaster')) hasFrameHints = true;
+                } catch (e) {}
+                try {
+                    if (frame.sdk.context && frame.sdk.context.user) hasFrameHints = true;
+                } catch (e) {}
+                if (hasFrameHints) sdkInstance = frame.sdk;
+            }
             
             if (sdkInstance && !window.__farcasterSDK) {
                 debugLog('✅ Found SDK on retry!');

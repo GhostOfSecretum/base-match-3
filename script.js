@@ -334,17 +334,26 @@ function debugLog(msg) {
     await new Promise(resolve => setTimeout(resolve, 100));
 
     try {
-        // Способ 1: Официальный CDN - frame.sdk (документация Farcaster)
-        if (typeof frame !== 'undefined' && frame.sdk && frame.sdk.actions) {
-            await frame.sdk.actions.ready();
+        const ref = (typeof document !== 'undefined' ? (document.referrer || '') : '');
+        const hasFrameHints = (() => {
+            try {
+                const params = new URLSearchParams(window.location.search || '');
+                if (params.has('fid')) return true;
+            } catch (e) {}
+            return ref.includes('warpcast.com') || ref.includes('farcaster');
+        })();
+
+        // Prefer Base-injected SDK when available.
+        if (window.sdk && window.sdk.actions && typeof window.sdk.actions.ready === 'function') {
+            await window.sdk.actions.ready();
             window.__farcasterSDKReady = true;
-            window.__farcasterSDK = frame.sdk;
-            console.log('Farcaster SDK ready() called via frame.sdk (retry)');
+            window.__farcasterSDK = window.sdk;
+            console.log('Farcaster SDK ready() called via window.sdk (retry)');
             return;
         }
 
-        // Способ 2: window.farcaster.miniapp (Farcaster native)
-        if (window.farcaster && window.farcaster.miniapp && window.farcaster.miniapp.actions) {
+        // Farcaster native miniapp SDK (some clients).
+        if (window.farcaster && window.farcaster.miniapp && window.farcaster.miniapp.actions && typeof window.farcaster.miniapp.actions.ready === 'function') {
             await window.farcaster.miniapp.actions.ready();
             window.__farcasterSDKReady = true;
             window.__farcasterSDK = window.farcaster.miniapp;
@@ -352,9 +361,22 @@ function debugLog(msg) {
             return;
         }
 
-        // Способ 3: Уже сохраненный SDK
-        if (window.__farcasterSDK && window.__farcasterSDK.actions) {
-            await window.__farcasterSDK.actions.ready();
+        // frame-sdk CDN can exist in any browser. Only call into it when we have strong hints
+        // that we're actually inside a Farcaster Frame host.
+        if (hasFrameHints && typeof frame !== 'undefined' && frame.sdk && frame.sdk.actions && typeof frame.sdk.actions.ready === 'function') {
+            await frame.sdk.actions.ready();
+            window.__farcasterSDKReady = true;
+            window.__farcasterSDK = frame.sdk;
+            console.log('Farcaster SDK ready() called via frame.sdk (retry)');
+            return;
+        }
+
+        // Cached SDK (only if it looks real; avoid phantom SDKs in browsers).
+        if (window.__farcasterSDK && window.__farcasterSDK.actions && typeof window.__farcasterSDK.actions.ready === 'function') {
+            const cached = window.__farcasterSDK;
+            const ok = !!(window.sdk || window.farcaster?.miniapp || window.__farcasterContext?.user || cached?.context?.user);
+            if (!ok) return;
+            await cached.actions.ready();
             window.__farcasterSDKReady = true;
             console.log('Farcaster SDK ready() called via cached SDK (retry)');
         }
@@ -929,7 +951,7 @@ const SponsoredTransactions = {
                     console.log('CDP Paymaster sponsorship available');
                     return true;
                 }
-                this.lastError = data.error || data.reason || null;
+                this.lastError = (data && (data.error || data.reason)) || null;
             } catch (e) {
                 console.log('CDP Paymaster check failed:', e.message);
             }
@@ -1147,11 +1169,18 @@ const SponsoredTransactions = {
             ethProvider = farcasterSDK.wallet.ethProvider;
             log('Using sdk.wallet.ethProvider');
         } else if (farcasterSDK?.wallet?.getEthereumProvider) {
-            ethProvider = await farcasterSDK.wallet.getEthereumProvider();
-            log('Using sdk.wallet.getEthereumProvider()');
+            // Avoid hanging in browsers when the SDK is present but no real host exists.
+            ethProvider = await Promise.race([
+                farcasterSDK.wallet.getEthereumProvider(),
+                new Promise((resolve) => setTimeout(() => resolve(null), 1200))
+            ]);
+            if (ethProvider) log('Using sdk.wallet.getEthereumProvider()');
         } else if (window.ethereum) {
             ethProvider = window.ethereum;
             log('Using window.ethereum');
+        } else if (window.coinbaseEvmProvider && typeof window.coinbaseEvmProvider.request === 'function') {
+            ethProvider = window.coinbaseEvmProvider;
+            log('Using window.coinbaseEvmProvider');
         }
         
         if (!ethProvider) {
@@ -1622,16 +1651,28 @@ class WalletManager {
     }
 
     getPreferredInjectedProvider() {
-        if (typeof window === 'undefined' || !window.ethereum) return null;
+        if (typeof window === 'undefined') return null;
 
-        const injected = window.ethereum;
-        if (Array.isArray(injected.providers) && injected.providers.length > 0) {
-            const coinbaseProvider = injected.providers.find((p) => p && p.isCoinbaseWallet);
-            const metamaskProvider = injected.providers.find((p) => p && p.isMetaMask);
-            return coinbaseProvider || metamaskProvider || injected.providers[0];
+        // Standard injected provider (MetaMask, Coinbase Wallet extension, etc).
+        if (window.ethereum) {
+            const injected = window.ethereum;
+            if (Array.isArray(injected.providers) && injected.providers.length > 0) {
+                const coinbaseProvider = injected.providers.find((p) => p && p.isCoinbaseWallet);
+                const metamaskProvider = injected.providers.find((p) => p && p.isMetaMask);
+                return coinbaseProvider || metamaskProvider || injected.providers[0];
+            }
+            return injected;
         }
 
-        return injected;
+        // Coinbase can inject a separate provider in some contexts.
+        // (Keeps browser-connect working even when `window.ethereum` is missing.)
+        try {
+            if (window.coinbaseEvmProvider && typeof window.coinbaseEvmProvider.request === 'function') {
+                return window.coinbaseEvmProvider;
+            }
+        } catch (e) {}
+
+        return null;
     }
 
     async waitForEthereumProvider(timeoutMs = 3000) {
@@ -1806,9 +1847,19 @@ class WalletManager {
             }
 
             // Способ 2: window.__farcasterSDK (кэш)
+            // `frame.sdk` can be cached here in a normal browser. Trust it only with strong signals.
             if (!sdkInstance && window.__farcasterSDK) {
-                sdkInstance = window.__farcasterSDK;
-                console.log('Found window.__farcasterSDK');
+                const cached = window.__farcasterSDK;
+                const ok = !!(
+                    window.__farcasterContext?.user ||
+                    (window.sdk && cached === window.sdk) ||
+                    (window.farcaster?.miniapp && cached === window.farcaster.miniapp) ||
+                    (cached && cached.context && cached.context.user)
+                );
+                if (ok) {
+                    sdkInstance = cached;
+                    console.log('Found trusted window.__farcasterSDK');
+                }
             }
 
             // Способ 3: window.miniappSdk
@@ -2219,14 +2270,38 @@ class WalletManager {
             let sdkInstance = null;
 
             // Ищем SDK в различных местах
-            if (typeof frame !== 'undefined' && frame.sdk) {
-                sdkInstance = frame.sdk;
-            } else if (window.__farcasterSDK) {
-                sdkInstance = window.__farcasterSDK;
+            // IMPORTANT: `frame.sdk` exists in any browser when the CDN script is loaded.
+            // Outside the real host it can hang (waiting for postMessage responses).
+            const ref = (typeof document !== 'undefined' ? (document.referrer || '') : '');
+            const hasFrameHints = (() => {
+                try {
+                    const params = new URLSearchParams(window.location.search || '');
+                    if (params.has('fid')) return true;
+                } catch (e) {}
+                return ref.includes('warpcast.com') || ref.includes('farcaster');
+            })();
+            const hasStrongMiniAppSignals = !!(
+                (typeof window !== 'undefined' && window.sdk) ||
+                (typeof window !== 'undefined' && window.farcaster && window.farcaster.miniapp) ||
+                (typeof window !== 'undefined' && window.__farcasterContext && window.__farcasterContext.user)
+            );
+
+            if (window.sdk) {
+                sdkInstance = window.sdk;
             } else if (window.farcaster && window.farcaster.miniapp) {
                 sdkInstance = window.farcaster.miniapp;
+            } else if (window.__farcasterSDK) {
+                // Trust cached SDK only with strong signals.
+                const cached = window.__farcasterSDK;
+                const ok = !!(
+                    hasStrongMiniAppSignals ||
+                    (cached && cached.context && cached.context.user)
+                );
+                if (ok) sdkInstance = cached;
             } else if (window.miniappSdk) {
                 sdkInstance = window.miniappSdk.sdk || window.miniappSdk;
+            } else if (hasFrameHints && typeof frame !== 'undefined' && frame.sdk) {
+                sdkInstance = frame.sdk;
             }
 
             if (!sdkInstance) {
@@ -2236,12 +2311,22 @@ class WalletManager {
             // Получаем контекст (разные способы в зависимости от версии SDK)
             let context = null;
             try {
+                const ctxTimeoutMs = hasStrongMiniAppSignals ? 2000 : 700;
                 if (typeof sdkInstance.context === 'function') {
-                    context = await sdkInstance.context();
+                    context = await Promise.race([
+                        sdkInstance.context(),
+                        new Promise((resolve) => setTimeout(() => resolve(null), ctxTimeoutMs))
+                    ]);
                 } else if (sdkInstance.context && typeof sdkInstance.context.get === 'function') {
-                    context = await sdkInstance.context.get();
+                    context = await Promise.race([
+                        sdkInstance.context.get(),
+                        new Promise((resolve) => setTimeout(() => resolve(null), ctxTimeoutMs))
+                    ]);
                 } else if (sdkInstance.context && typeof sdkInstance.context.then === 'function') {
-                    context = await sdkInstance.context;
+                    context = await Promise.race([
+                        sdkInstance.context,
+                        new Promise((resolve) => setTimeout(() => resolve(null), ctxTimeoutMs))
+                    ]);
                 } else if (sdkInstance.context) {
                     context = sdkInstance.context;
                 }
@@ -2469,20 +2554,10 @@ class WalletManager {
         if (!silent) this._connecting = true;
 
         try {
-            // Проверяем наличие ethers.js
-            if (typeof ethers === 'undefined') {
-                // Пытаемся загрузить ethers.js динамически
-                console.log('ethers.js not found, attempting to load...');
-                await this.loadEthersLibrary();
-
-                // Проверяем еще раз после попытки загрузки
-                if (typeof ethers === 'undefined') {
-                    throw new Error('Ethers.js library could not be loaded. Please check your internet connection and refresh the page.\n\nIf the problem persists, the CDN may be blocked. Wallet connection requires ethers.js library.');
-                }
-            }
-
             const rawProvider = providedProvider || await this.getEthereumProvider({
-                waitForInjection: waitForProvider || silent,
+                // For interactive connect we should NOT wait (it can break the browser "user gesture"
+                // required by many wallets for eth_requestAccounts).
+                waitForInjection: silent ? true : false,
                 timeoutMs: 3500
             });
 
@@ -2491,11 +2566,15 @@ class WalletManager {
             }
 
             this.attachProviderListeners(rawProvider);
-            this.provider = new ethers.providers.Web3Provider(rawProvider, 'any');
 
             // Для авто-восстановления используем только уже авторизованные аккаунты.
             const method = silent ? 'eth_accounts' : 'eth_requestAccounts';
-            const accounts = await rawProvider.request({ method: method });
+            let accounts = await rawProvider.request({ method: method });
+
+            if (!Array.isArray(accounts)) {
+                // Some providers can return non-array values; treat that as "not connected".
+                accounts = [];
+            }
 
             if (accounts.length === 0) {
                 if (silent) {
@@ -2509,6 +2588,25 @@ class WalletManager {
             }
 
             this.account = accounts[0];
+            if (typeof this.account === 'string') {
+                this.account = this.account.toLowerCase();
+            }
+            try {
+                if (typeof this.account === 'string') {
+                    window.__userAddress = this.account;
+                }
+            } catch (e) {}
+
+            // Load ethers AFTER the account request so we don't risk losing the user gesture.
+            if (typeof ethers === 'undefined') {
+                console.log('ethers.js not found, attempting to load...');
+                await this.loadEthersLibrary();
+                if (typeof ethers === 'undefined') {
+                    throw new Error('Ethers.js library could not be loaded. Please check your internet connection and refresh the page.\n\nIf the problem persists, the CDN may be blocked. Wallet connection requires ethers.js library.');
+                }
+            }
+
+            this.provider = new ethers.providers.Web3Provider(rawProvider, 'any');
             this.signer = this.provider.getSigner();
 
             // Получаем текущую сеть
@@ -2519,10 +2617,20 @@ class WalletManager {
             await this.checkNetwork();
 
             // Пытаемся получить username из Base app SDK, если доступен
-            await this.getUsernameFromSDK();
+            try {
+                await Promise.race([
+                    this.getUsernameFromSDK(),
+                    new Promise((resolve) => setTimeout(resolve, 1500))
+                ]);
+            } catch (e) {}
 
             // Сохраняем состояние подключения
             localStorage.setItem('walletConnected', 'true');
+            try {
+                if (typeof this.account === 'string') {
+                    localStorage.setItem('walletAddress', this.account);
+                }
+            } catch (e) {}
 
             this.updateWalletUI();
             
@@ -2599,6 +2707,9 @@ class WalletManager {
     }
 
     async disconnect() {
+        // Clean up listeners on the injected provider (if any)
+        this.detachProviderListeners();
+        this.rawProvider = null;
         this.provider = null;
         this.signer = null;
         this.account = null;
@@ -2609,6 +2720,8 @@ class WalletManager {
         this.userContext = null;
 
         localStorage.removeItem('walletConnected');
+        try { localStorage.removeItem('walletAddress'); } catch (e) {}
+        try { window.__userAddress = null; } catch (e) {}
 
         // Принудительно обновляем UI
         this.updateWalletUI();
@@ -3185,9 +3298,9 @@ class LeaderboardManager {
             if (!response.ok) {
                 if (response.status === 503 && data.setup_instructions) {
                     this.lastError = 'storage_not_configured';
-                    console.error('Leaderboard storage not configured:', data.error);
+                    console.error('Leaderboard storage not configured:', data && data.error);
                 }
-                throw new Error(data.error || `HTTP error! status: ${response.status}`);
+                throw new Error((data && data.error) || `HTTP error! status: ${response.status}`);
             }
 
             if (data.success && data.result) {
@@ -3204,7 +3317,7 @@ class LeaderboardManager {
             } else {
                 console.error('=== SAVE FAILED ===');
                 console.error('Response:', data);
-                throw new Error(data.error || 'Failed to save result');
+                throw new Error((data && data.error) || 'Failed to save result');
             }
         } catch (error) {
             console.error('=== CATCH ERROR ===');
@@ -6979,15 +7092,24 @@ class MatchThreePro {
     // Метод для отправки событий в Base analytics
     trackEvent(eventName, eventData = {}) {
         try {
-            const sdk = window.__farcasterSDK || window.sdk || (typeof frame !== 'undefined' ? frame.sdk : null);
+            // Avoid calling into frame-sdk in regular browsers (CDN presence alone is not a runtime signal).
+            const hasStrongMiniAppSignals = !!(
+                (typeof window !== 'undefined' && window.sdk) ||
+                (typeof window !== 'undefined' && window.farcaster && window.farcaster.miniapp) ||
+                (typeof window !== 'undefined' && window.__farcasterContext && window.__farcasterContext.user) ||
+                (typeof window !== 'undefined' && window.__farcasterSDK && window.__farcasterSDK.context && window.__farcasterSDK.context.user)
+            );
+            const sdk = hasStrongMiniAppSignals ? (window.sdk || window.farcaster?.miniapp || window.__farcasterSDK || null) : null;
             
             if (sdk && sdk.track) {
                 // Используем track метод если доступен
-                sdk.track(eventName, eventData);
+                const p = sdk.track(eventName, eventData);
+                if (p && typeof p.catch === 'function') p.catch(() => {});
                 console.log(`Tracked event: ${eventName}`, eventData);
             } else if (sdk && sdk.actions && sdk.actions.track) {
                 // Альтернативный путь через actions
-                sdk.actions.track(eventName, eventData);
+                const p = sdk.actions.track(eventName, eventData);
+                if (p && typeof p.catch === 'function') p.catch(() => {});
                 console.log(`Tracked event via actions: ${eventName}`, eventData);
             } else {
                 // Fallback - отправляем через postMessage
@@ -7338,7 +7460,7 @@ function initStartMenu() {
                 if (totalPlayersEl) totalPlayersEl.textContent = data.totalPlayers != null ? data.totalPlayers : 0;
                 if (totalGamesEl) totalGamesEl.textContent = data.totalGames != null ? data.totalGames : 0;
                 if (!data.success || !Array.isArray(data.results) || data.results.length === 0) {
-                    if (data.error && (data.error + '').toLowerCase().indexOf('not configured') !== -1) {
+                    if (data && data.error && (data.error + '').toLowerCase().indexOf('not configured') !== -1) {
                         list.innerHTML = '<div class="leaderboard-empty"><div style="font-weight:600;">Leaderboard Storage Not Configured</div><div style="font-size:12px;opacity:0.7;margin-top:8px;">Connect Upstash Redis via Vercel Marketplace.</div></div>';
                     } else {
                         list.innerHTML = '<div class="leaderboard-empty">No results yet. Be the first to play!</div>';
@@ -7567,18 +7689,14 @@ function initStartMenu() {
             profileWalletBtn.textContent = 'Connecting...';
 
             try {
-                try {
-                    if (wm.initPromise) {
-                        await wm.initPromise;
-                    }
-                } catch (e) {}
-
                 const isConnected = (typeof wm.isConnected === 'function') ? wm.isConnected() : false;
                 if (isConnected) {
                     profileWalletBtn.textContent = 'Disconnecting...';
                     await wm.disconnect();
                 } else {
-                    const result = await wm.connect({ silent: false, waitForProvider: true });
+                    // Do not wait for provider injection here: waiting can break the "user gesture"
+                    // requirement for eth_requestAccounts in browser wallets.
+                    const result = await wm.connect({ silent: false, waitForProvider: false });
                     if (!result || !result.success) {
                         const msg = (result && result.error) ? result.error : 'Failed to connect wallet.';
                         if (typeof wm.showWalletModal === 'function') wm.showWalletModal(msg);
@@ -9629,7 +9747,7 @@ async function getZoraTradeQuote(coinAddress, sender, amountWei) {
     mintDebug(`Zora quote response: success=${data.success}, target=${data.call?.target || 'N/A'}`);
 
     if (!data.success || !data.call) {
-        throw new Error(`Zora quote failed: ${data.error || 'Unknown error'}`);
+        throw new Error(`Zora quote failed: ${(data && data.error) || 'Unknown error'}`);
     }
 
     return data.call; // { target, data, value }
