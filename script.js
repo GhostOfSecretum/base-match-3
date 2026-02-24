@@ -1816,7 +1816,7 @@ class WalletManager {
     }
 
     async getEthereumProvider(options = {}) {
-        const { waitForInjection = false, timeoutMs = 3000 } = options;
+        const { waitForInjection = false, timeoutMs = 3000, preferInjected = false } = options;
 
         try {
             const farcasterSDK = (typeof SponsoredTransactions !== 'undefined' && SponsoredTransactions.getFarcasterSDK)
@@ -1831,6 +1831,12 @@ class WalletManager {
                 (typeof window !== 'undefined' && window.farcaster && window.farcaster.miniapp) ||
                 (typeof window !== 'undefined' && window.__farcasterContext && window.__farcasterContext.user)
             );
+
+            // Manual browser wallet connect should always prefer injected providers when present.
+            if (preferInjected && injectedNow) {
+                return injectedNow;
+            }
+
             if (!hasStrongMiniAppSignals && injectedNow) {
                 return injectedNow;
             }
@@ -1840,6 +1846,17 @@ class WalletManager {
             }
 
             if (farcasterSDK?.wallet?.getEthereumProvider) {
+                // Avoid calling into frame-sdk when we're NOT actually inside a host iframe/runtime.
+                // This prevents hard crashes like "Cannot read properties of undefined (reading 'error')"
+                // that some SDK builds can throw when no host responds.
+                const inIframe = (() => {
+                    try { return window.parent && window.parent !== window; } catch (e) { return true; }
+                })();
+                const allowSdkProviderCall = !!(hasStrongMiniAppSignals || inIframe);
+                if (!allowSdkProviderCall) {
+                    return injectedNow || null;
+                }
+
                 // Timeout so the browser connect button never "hangs" waiting for SDK host responses.
                 const sdkTimeoutMs = hasStrongMiniAppSignals ? 4000 : 800;
                 const sdkProvider = await Promise.race([
@@ -2659,8 +2676,11 @@ class WalletManager {
             const rawProvider = providedProvider || await this.getEthereumProvider({
                 // For interactive connect we should NOT wait (it can break the browser "user gesture"
                 // required by many wallets for eth_requestAccounts).
-                waitForInjection: silent ? true : false,
-                timeoutMs: 3500
+                waitForInjection: silent ? true : !!waitForProvider,
+                timeoutMs: 3500,
+                // When the user clicks "Connect", prefer injected browser wallets over SDK providers.
+                // This avoids brittle postMessage flows in previews/iframes and matches user intent.
+                preferInjected: !silent
             });
 
             if (!rawProvider || typeof rawProvider.request !== 'function') {
