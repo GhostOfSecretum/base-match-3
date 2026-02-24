@@ -824,6 +824,79 @@ const SponsoredTransactions = {
 
         return this.appendDataSuffix(calldata, suffix);
     },
+
+    /**
+     * Some wallets inject multiple providers at `window.ethereum.providers`.
+     * If we're given the "multiprovider" object, pick a concrete provider.
+     */
+    normalizeInjectedProvider(provider) {
+        if (typeof window === 'undefined') return provider;
+        if (!provider || typeof provider.request !== 'function') return provider;
+
+        try {
+            // Only normalize when the passed provider IS the multiprovider.
+            if (provider === window.ethereum && Array.isArray(window.ethereum?.providers) && window.ethereum.providers.length > 0) {
+                const providers = window.ethereum.providers;
+                const coinbaseProvider = providers.find((p) => p && p.isCoinbaseWallet);
+                const metamaskProvider = providers.find((p) => p && p.isMetaMask);
+                return coinbaseProvider || metamaskProvider || providers[0] || provider;
+            }
+        } catch (e) {}
+
+        return provider;
+    },
+
+    /**
+     * Ensure the connected wallet is on Base mainnet (8453 / 0x2105).
+     * This matters for injected browser wallets because `eth_sendTransaction`
+     * does NOT carry a chainId.
+     */
+    async ensureBaseChain(provider, logFn) {
+        if (!provider || typeof provider.request !== 'function') return;
+
+        let chainId = null;
+        try {
+            chainId = await provider.request({ method: 'eth_chainId' });
+        } catch (e) {
+            // Some providers may not support eth_chainId; don't hard-fail.
+            if (typeof logFn === 'function') {
+                logFn(`eth_chainId not available (continuing): ${e?.message || e}`);
+            }
+            return;
+        }
+
+        if (typeof chainId !== 'string') return;
+        if (chainId.toLowerCase() === (BASE_NETWORK.chainId || '').toLowerCase()) return;
+
+        if (typeof logFn === 'function') {
+            logFn(`Wrong network (${chainId}). Switching to Base...`);
+        }
+
+        try {
+            await provider.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: BASE_NETWORK.chainId }]
+            });
+            return;
+        } catch (switchError) {
+            // 4902 = chain not added yet.
+            if (switchError && switchError.code === 4902) {
+                await provider.request({
+                    method: 'wallet_addEthereumChain',
+                    params: [BASE_NETWORK]
+                });
+                // Some wallets require an explicit follow-up switch.
+                try {
+                    await provider.request({
+                        method: 'wallet_switchEthereumChain',
+                        params: [{ chainId: BASE_NETWORK.chainId }]
+                    });
+                } catch (e) {}
+                return;
+            }
+            throw switchError;
+        }
+    },
     /**
      * Get the paymaster proxy URL for ERC-7677 compliant requests.
      * Our /api/paymaster endpoint acts as a transparent proxy to CDP,
@@ -1168,9 +1241,15 @@ const SponsoredTransactions = {
         // Get Ethereum provider
         let ethProvider = ethProviderOverride || null;
         const farcasterSDK = this.getFarcasterSDK();
+        const wm = (typeof window !== 'undefined')
+            ? (window.walletManager || (window.game && window.game.walletManager) || null)
+            : null;
         
         if (ethProvider) {
             log('Using provided ethProvider override');
+        } else if (wm && wm.rawProvider && typeof wm.rawProvider.request === 'function') {
+            ethProvider = wm.rawProvider;
+            log('Using window.walletManager.rawProvider');
         } else if (farcasterSDK?.wallet?.ethProvider) {
             ethProvider = farcasterSDK.wallet.ethProvider;
             log('Using sdk.wallet.ethProvider');
@@ -1188,6 +1267,9 @@ const SponsoredTransactions = {
             ethProvider = window.coinbaseEvmProvider;
             log('Using window.coinbaseEvmProvider');
         }
+
+        // Normalize multiprovider -> concrete provider (Coinbase/MetaMask/etc).
+        ethProvider = this.normalizeInjectedProvider(ethProvider);
         
         if (!ethProvider) {
             log('ERROR: No Ethereum provider available');
@@ -1209,6 +1291,18 @@ const SponsoredTransactions = {
         
         if (!fromAddress) {
             throw new Error('No wallet address available.');
+        }
+
+        // Make sure browser wallets are on Base.
+        // For smart wallets, `wallet_sendCalls` includes chainId, but the legacy fallback does not.
+        try {
+            await this.ensureBaseChain(ethProvider, log);
+        } catch (switchErr) {
+            const msg = (switchErr?.message || '').toLowerCase();
+            if (switchErr?.code === 4001 || msg.includes('rejected') || msg.includes('denied') || msg.includes('cancel')) {
+                throw new Error('Network switch cancelled.');
+            }
+            throw new Error('Please switch to Base network in your wallet.');
         }
         
         if (statusCallback) statusCallback('Please confirm transaction...');
