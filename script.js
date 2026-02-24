@@ -4316,21 +4316,52 @@ class MatchThreePro {
 
                 // Показываем avatar - только реальный из профиля с fallback
                 if (playerAvatarDisplay) {
-                    // Собираем все возможные источники аватара
-                    let sources = window.__avatarSources || [];
-                    
-                    // Добавляем другие источники если есть
+                    // Собираем все возможные источники аватара и НОРМАЛИЗУЕМ их,
+                    // чтобы не падать на `img.src = { ... }` (Cannot convert object to primitive value).
+                    const rawSources = (typeof window !== 'undefined' && Array.isArray(window.__avatarSources))
+                        ? window.__avatarSources
+                        : [];
+                    const sources = [];
+                    const extractUrl = (value) => {
+                        if (typeof value === 'string') return value;
+                        if (value && typeof value === 'object') {
+                            if (typeof value.url === 'string') return value.url;
+                            if (typeof value.href === 'string') return value.href;
+                        }
+                        return null;
+                    };
+                    const pushBack = (value) => {
+                        const raw = extractUrl(value);
+                        const normalized = raw ? this.normalizeAvatarUrl(raw) : null;
+                        if (!normalized) return;
+                        if (sources.includes(normalized)) return;
+                        sources.push(normalized);
+                    };
+                    const pushFront = (value) => {
+                        const raw = extractUrl(value);
+                        const normalized = raw ? this.normalizeAvatarUrl(raw) : null;
+                        if (!normalized) return;
+                        if (sources.includes(normalized)) return;
+                        sources.unshift(normalized);
+                    };
+
+                    // Start with whatever earlier scripts put there (sanitized as we ingest it).
+                    for (const v of rawSources) pushBack(v);
+
+                    // Add higher-priority sources (Base app / SDK avatar).
                     const baseAppAvatar = this.getBaseAppAvatar();
-                    if (baseAppAvatar && !sources.includes(baseAppAvatar)) sources.unshift(baseAppAvatar);
-                    const sdkAvatar = this.walletManager.getAvatar();
-                    if (sdkAvatar && !sources.includes(sdkAvatar)) sources.unshift(sdkAvatar);
-                    if (window.__userAvatar && !sources.includes(window.__userAvatar)) sources.push(window.__userAvatar);
-                    
-                    // Из localStorage
-                    try {
-                        const savedAvatar = localStorage.getItem('playerAvatar');
-                        if (savedAvatar && !sources.includes(savedAvatar)) sources.push(savedAvatar);
-                    } catch (e) {}
+                    pushFront(baseAppAvatar);
+                    const sdkAvatar = (this.walletManager && typeof this.walletManager.getAvatar === 'function')
+                        ? this.walletManager.getAvatar()
+                        : null;
+                    pushFront(sdkAvatar);
+
+                    // Other sources.
+                    pushBack(window.__userAvatar);
+                    try { pushBack(localStorage.getItem('playerAvatar')); } catch (e) {}
+
+                    // Keep the global cache clean for later reads.
+                    try { window.__avatarSources = sources; } catch (e) {}
                     
                     // Показываем только реальный аватар с fallback
                     if (sources.length > 0) {
@@ -4341,7 +4372,14 @@ class MatchThreePro {
                                 playerAvatarDisplay.style.display = 'none';
                                 return;
                             }
-                            playerAvatarDisplay.src = sources[currentIndex];
+                            const next = sources[currentIndex];
+                            // Extra safety: src must be a string.
+                            if (typeof next !== 'string') {
+                                currentIndex++;
+                                tryNextAvatar();
+                                return;
+                            }
+                            playerAvatarDisplay.src = next;
                             playerAvatarDisplay.style.display = 'block';
                             currentIndex++;
                         };
@@ -4380,13 +4418,24 @@ class MatchThreePro {
                 // Показываем аватар если есть сохраненный (приоритет: Base App)
                 if (playerAvatarDisplay) {
                     const sources = [];
-                    const baseAppAvatar = this.getBaseAppAvatar();
-                    if (baseAppAvatar) sources.push(baseAppAvatar);
-                    if (window.__userAvatar && !sources.includes(window.__userAvatar)) sources.push(window.__userAvatar);
-                    try {
-                        const savedAvatar = localStorage.getItem('playerAvatar');
-                        if (savedAvatar && !sources.includes(savedAvatar)) sources.push(savedAvatar);
-                    } catch (e) {}
+                    const extractUrl = (value) => {
+                        if (typeof value === 'string') return value;
+                        if (value && typeof value === 'object') {
+                            if (typeof value.url === 'string') return value.url;
+                            if (typeof value.href === 'string') return value.href;
+                        }
+                        return null;
+                    };
+                    const pushBack = (value) => {
+                        const raw = extractUrl(value);
+                        const normalized = raw ? this.normalizeAvatarUrl(raw) : null;
+                        if (!normalized) return;
+                        if (sources.includes(normalized)) return;
+                        sources.push(normalized);
+                    };
+                    pushBack(this.getBaseAppAvatar());
+                    pushBack(window.__userAvatar);
+                    try { pushBack(localStorage.getItem('playerAvatar')); } catch (e) {}
 
                     if (sources.length > 0) {
                         let currentIndex = 0;
@@ -4395,7 +4444,13 @@ class MatchThreePro {
                                 playerAvatarDisplay.style.display = 'none';
                                 return;
                             }
-                            playerAvatarDisplay.src = sources[currentIndex];
+                            const next = sources[currentIndex];
+                            if (typeof next !== 'string') {
+                                currentIndex++;
+                                tryNextAvatar();
+                                return;
+                            }
+                            playerAvatarDisplay.src = next;
                             playerAvatarDisplay.style.display = 'block';
                             currentIndex++;
                         };
@@ -9719,31 +9774,24 @@ async function sendSimpleDeploy() {
     }
     
     try {
-        // Pick the same provider that mint/gasless flows use.
-        let provider = null;
-        const farcasterSDK = SponsoredTransactions.getFarcasterSDK();
-        if (farcasterSDK?.wallet?.ethProvider) {
-            provider = farcasterSDK.wallet.ethProvider;
-        } else if (window.ethereum) {
-            provider = window.ethereum;
-        } else if (window.coinbaseEvmProvider && typeof window.coinbaseEvmProvider.request === 'function') {
-            provider = window.coinbaseEvmProvider;
-        }
+        // IMPORTANT:
+        // Use the same provider selection + network check logic as other tx flows.
+        // Avoid directly calling window.ethereum here (it can be a "multiprovider" object).
+        const wm = (typeof window !== 'undefined')
+            ? (window.walletManager || (window.game && window.game.walletManager) || null)
+            : null;
+        const provider = (wm && wm.rawProvider && typeof wm.rawProvider.request === 'function')
+            ? wm.rawProvider
+            : (window.ethereum || (window.coinbaseEvmProvider && typeof window.coinbaseEvmProvider.request === 'function' ? window.coinbaseEvmProvider : null));
 
-        if (!provider) {
-            throw new Error('No wallet found. Open in Base app.');
+        if (!provider || typeof provider.request !== 'function') {
+            throw new Error('No wallet found. Please connect your wallet.');
         }
 
         if (deployStatus) deployStatus.textContent = 'Getting account...';
         const accounts = await provider.request({ method: 'eth_requestAccounts' });
         const from = accounts?.[0];
-        if (!from) {
-            throw new Error('No account connected');
-        }
-
-        // Ensure we're deploying on Base (same as Mint NFT flow).
-        if (deployStatus) deployStatus.textContent = 'Switching to Base...';
-        await ensureBaseChain(provider);
+        if (!from) throw new Error('No account connected');
 
         if (deployStatus) deployStatus.textContent = 'Sending deployment (gasless first)...';
 
@@ -9803,11 +9851,11 @@ async function sendSimpleDeploy() {
             };
         }
 
-        const result = await SponsoredTransactions.sendTransaction(
-            provider,
-            txParams,
-            from,
-            (status) => { if (deployStatus) deployStatus.textContent = status; }
+        // Use the unified tx pipeline (adds ERC-8021, normalizes providers, ensures Base chain).
+        const result = await SponsoredTransactions.sendViaFarcasterSDK(
+            { ...txParams, from },
+            (status) => { if (deployStatus) deployStatus.textContent = status; },
+            provider
         );
 
         const txHash = result?.txHash;
