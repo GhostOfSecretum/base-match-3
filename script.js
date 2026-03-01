@@ -649,17 +649,28 @@ async function deployGameResultContract(statusCallback) {
 
     if (!contractAddress) {
         updateStatus('Confirm deployment in wallet...');
-        const contract = await factory.deploy();
+        const fallbackDeployTx = factory.getDeployTransaction();
+        let fallbackDeployData = fallbackDeployTx.data || '0x';
+        try {
+            fallbackDeployData = SponsoredTransactions.maybeAppendBuilderCode(fallbackDeployData);
+        } catch (e) {
+            console.log('Builder Code suffix skipped for deploy fallback:', e?.message || e);
+        }
+
+        const txResponse = await signer.sendTransaction({
+            ...fallbackDeployTx,
+            data: fallbackDeployData
+        });
+
         updateStatus('Waiting for confirmation...');
-        const deployedContract = await contract.deployed();
-        const receipt = await provider.getTransactionReceipt(contract.deployTransaction.hash);
+        const receipt = await txResponse.wait();
         if (!receipt) {
             throw new Error('Transaction not found. Please check your wallet.');
         }
         if (receipt.status === 0) {
             throw new Error('Transaction failed on-chain. Check BaseScan for details.');
         }
-        contractAddress = receipt.contractAddress || deployedContract.address;
+        contractAddress = receipt.contractAddress;
     }
 
     if (!contractAddress) {
@@ -1097,11 +1108,11 @@ const SponsoredTransactions = {
                 data: call.data || '0x'
             }));
 
-            // Builder Code attribution (ERC-8021): append suffix to calldata for regular calls only.
-            // Never touch deployments (call.to is undefined) since that would modify init code.
+            // Builder Code attribution (ERC-8021): append suffix to calldata for calls and deployments.
+            // Suffix is indexed off-chain for Base attribution.
             try {
                 for (const c of formattedCalls) {
-                    if (c.to) {
+                    if (c.data && c.data !== '0x') {
                         c.data = this.maybeAppendBuilderCode(c.data);
                     }
                 }
@@ -1308,16 +1319,52 @@ const SponsoredTransactions = {
         if (statusCallback) statusCallback('Please confirm transaction...');
         
         // Apply Builder Code attribution (ERC-8021) outside Base App.
-        // We only apply it to regular calls (txParams.to present) by default.
-        // Some "to"-calls may still carry raw binary payloads (e.g. CREATE2 deployer),
-        // so allow callers to explicitly skip the suffix.
+        // Prefer wallet `dataSuffix` capability for wallet_sendCalls (smart wallet / 4337),
+        // and fallback to direct calldata suffix if capability is unavailable.
         const skipBuilderCode = txParams?.skipBuilderCode === true;
-        let txData = txParams.data || '0x';
-        if (txParams.to && !skipBuilderCode) {
+        const rawTxData = txParams.data || '0x';
+        const hasTxDataPayload = typeof rawTxData === 'string' && rawTxData !== '0x';
+        let txDataForCalls = rawTxData;
+        let txDataForLegacy = rawTxData;
+        let dataSuffixCapability = null;
+
+        if (!skipBuilderCode && hasTxDataPayload) {
             try {
-                txData = this.maybeAppendBuilderCode(txData);
+                const builderSuffix = this.getBuilderCodeDataSuffix();
+                if (builderSuffix) {
+                    let supportsDataSuffixCapability = false;
+                    try {
+                        const caps = await ethProvider.request({
+                            method: 'wallet_getCapabilities',
+                            params: []
+                        });
+                        const baseCaps = caps?.['8453'] || caps?.['0x2105'] || caps?.['eip155:8453'];
+                        supportsDataSuffixCapability = !!(
+                            baseCaps?.dataSuffix?.supported ||
+                            baseCaps?.dataSuffix === true
+                        );
+                    } catch (capError) {
+                        log(`wallet_getCapabilities for dataSuffix unavailable: ${capError?.message || capError}`);
+                    }
+
+                    if (supportsDataSuffixCapability) {
+                        dataSuffixCapability = {
+                            dataSuffix: {
+                                value: builderSuffix,
+                                optional: true
+                            }
+                        };
+                        txDataForLegacy = this.appendDataSuffix(rawTxData, builderSuffix);
+                        log('Builder Code: using wallet dataSuffix capability for wallet_sendCalls');
+                    } else {
+                        const suffixedData = this.appendDataSuffix(rawTxData, builderSuffix);
+                        txDataForCalls = suffixedData;
+                        txDataForLegacy = suffixedData;
+                        log('Builder Code: dataSuffix capability unavailable, appending directly to calldata');
+                    }
+                }
             } catch (e) {
-                log(`Builder Code suffix skipped: ${e?.message || e}`);
+                log(`Builder Code attribution skipped: ${e?.message || e}`);
             }
         }
 
@@ -1325,7 +1372,7 @@ const SponsoredTransactions = {
         const call = {
             to: txParams.to || fromAddress,
             value: txParams.value || '0x0',
-            data: txData
+            data: txDataForCalls
         };
         // For contract deployment (no 'to'), omit the 'to' field
         if (!txParams.to) {
@@ -1343,17 +1390,20 @@ const SponsoredTransactions = {
         // === Strategy 1: wallet_sendCalls + CDP paymasterService URL ===
         try {
             log('[1/4] Trying wallet_sendCalls with CDP paymasterService URL...');
+            const sendCallsParams = {
+                version: '1.0',
+                chainId: '0x2105',
+                from: fromAddress,
+                calls: [call],
+                capabilities: {
+                    paymasterService: paymasterCapability,
+                    ...(dataSuffixCapability || {})
+                }
+            };
+
             const bundleId = await ethProvider.request({
                 method: 'wallet_sendCalls',
-                params: [{
-                    version: '1.0',
-                    chainId: '0x2105',
-                    from: fromAddress,
-                    calls: [call],
-                    capabilities: {
-                        paymasterService: paymasterCapability
-                    }
-                }]
+                params: [sendCallsParams]
             });
             
             log(`[1/4] wallet_sendCalls + CDP paymaster SUCCESS! Bundle ID: ${bundleId}`);
@@ -1386,17 +1436,20 @@ const SponsoredTransactions = {
         // === Strategy 2: wallet_sendCalls + paymasterService: true (wallet-native sponsorship) ===
         try {
             log('[2/4] Trying wallet_sendCalls with paymasterService: true (wallet-native sponsorship)...');
+            const sendCallsParams = {
+                version: '1.0',
+                chainId: '0x2105',
+                from: fromAddress,
+                calls: [call],
+                capabilities: {
+                    paymasterService: true,
+                    ...(dataSuffixCapability || {})
+                }
+            };
+
             const bundleId1b = await ethProvider.request({
                 method: 'wallet_sendCalls',
-                params: [{
-                    version: '1.0',
-                    chainId: '0x2105',
-                    from: fromAddress,
-                    calls: [call],
-                    capabilities: {
-                        paymasterService: true
-                    }
-                }]
+                params: [sendCallsParams]
             });
             
             log(`[2/4] wallet_sendCalls + paymasterService:true SUCCESS! Bundle ID: ${bundleId1b}`);
@@ -1429,14 +1482,19 @@ const SponsoredTransactions = {
         // === Strategy 3: wallet_sendCalls without paymaster ===
         try {
             log('[3/4] Trying wallet_sendCalls without paymaster...');
+            const sendCallsParams = {
+                version: '1.0',
+                chainId: '0x2105',
+                from: fromAddress,
+                calls: [call]
+            };
+            if (dataSuffixCapability) {
+                sendCallsParams.capabilities = { ...dataSuffixCapability };
+            }
+
             const bundleId2 = await ethProvider.request({
                 method: 'wallet_sendCalls',
-                params: [{
-                    version: '1.0',
-                    chainId: '0x2105',
-                    from: fromAddress,
-                    calls: [call]
-                }]
+                params: [sendCallsParams]
             });
             
             log(`[3/4] wallet_sendCalls (no paymaster) SUCCESS! Bundle ID: ${bundleId2}`);
@@ -1470,7 +1528,7 @@ const SponsoredTransactions = {
         const txRequest = {
             from: fromAddress,
             value: txParams.value || '0x0',
-            data: txData
+            data: txDataForLegacy
         };
         if (txParams.to) {
             txRequest.to = txParams.to;
@@ -9197,22 +9255,29 @@ async function deployContract(statusCallback = null) {
             // Create contract factory
             const factory = new ethers.ContractFactory(SIMPLE_STORAGE_ABI, SIMPLE_STORAGE_BYTECODE, signer);
             
-            // Deploy contract
+            // Deploy contract via explicit tx request so attribution suffix can be added.
+            const fallbackDeployTx = factory.getDeployTransaction();
+            let fallbackDeployData = fallbackDeployTx.data || '0x';
+            try {
+                fallbackDeployData = SponsoredTransactions.maybeAppendBuilderCode(fallbackDeployData);
+            } catch (e) {
+                console.log('Builder Code suffix skipped for direct deploy fallback:', e?.message || e);
+            }
+
             console.log('Deploying contract...');
-            const contract = await factory.deploy();
+            const txResponse = await signer.sendTransaction({
+                ...fallbackDeployTx,
+                data: fallbackDeployData
+            });
             
-            console.log('Deploy transaction hash:', contract.deployTransaction.hash);
+            console.log('Deploy transaction hash:', txResponse.hash);
             updateStatus('Waiting for confirmation...');
-            
-            // Wait for deployment with timeout
-            const deployedContract = await contract.deployed();
-            
+
             // Verify the contract was actually deployed
-            const deployTxHash = contract.deployTransaction.hash;
+            const deployTxHash = txResponse.hash;
             console.log('Transaction hash:', deployTxHash);
             
-            // Get transaction receipt to verify
-            const receipt = await provider.getTransactionReceipt(deployTxHash);
+            const receipt = await txResponse.wait();
             console.log('Transaction receipt:', receipt);
             
             if (!receipt) {
@@ -9224,7 +9289,7 @@ async function deployContract(statusCallback = null) {
             }
             
             // Use address from receipt (more reliable)
-            contractAddress = receipt.contractAddress || deployedContract.address;
+            contractAddress = receipt.contractAddress;
             console.log('Contract deployed at:', contractAddress);
             console.log('Block number:', receipt.blockNumber);
             console.log('Gas used:', receipt.gasUsed.toString());
@@ -9832,7 +9897,7 @@ async function sendSimpleDeploy() {
         } else {
             // Warn so it's obvious why deploy isn't "Free" yet.
             if (deployStatus && !factoryConfigured) {
-                deployStatus.textContent = 'Factory not configured; deploying without CDP sponsorship...';
+                deployStatus.textContent = 'Factory not configured; deploying without CDP sponsorship and Builder Code attribution...';
             }
 
             // Use deterministic-deployment-proxy so this is a normal contract call (`to` is set).
