@@ -1327,8 +1327,9 @@ const SponsoredTransactions = {
         let txDataForCalls = rawTxData;
         let txDataForLegacy = rawTxData;
         let dataSuffixCapability = null;
+        const shouldApplyBuilderCode = !skipBuilderCode && hasTxDataPayload && this.shouldApplyBuilderCode();
 
-        if (!skipBuilderCode && hasTxDataPayload) {
+        if (shouldApplyBuilderCode) {
             try {
                 const builderSuffix = this.getBuilderCodeDataSuffix();
                 if (builderSuffix) {
@@ -1366,6 +1367,8 @@ const SponsoredTransactions = {
             } catch (e) {
                 log(`Builder Code attribution skipped: ${e?.message || e}`);
             }
+        } else if (!skipBuilderCode && hasTxDataPayload) {
+            log('Builder Code: skipping manual attribution in Base App context');
         }
 
         // Build call object for wallet_sendCalls
